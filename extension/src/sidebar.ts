@@ -178,7 +178,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
       }
       this.activeRunId = runId;
       this.activeRunStartedAt = startedAt;
-    const args = ["run", message.task];
+    const args = ["run", message.task, "--repo", cwd!];
     if (message.command === "dry-run") args.push("--dry-run");
     else if (autoApprove()) args.push("--auto-accept");
       this.view?.webview.postMessage({ type: "started", runId });
@@ -220,7 +220,7 @@ private async discoverModels(cwd?: string, provider?: string) {
   private async readInfo(cwd?: string) {
     requireTrustedWorkspace(cwd);
     const cli = vscode.workspace.getConfiguration("minitok").get<string>("cliPath", "minitok");
-    const commands = [["status"], ["doctor"], ["evolution", "status"], ["workspace", "current"]];
+    const commands = [["status", "--repo", cwd!], ["doctor"], ["evolution", "status"], ["workspace", "current"]];
     const outputs: string[] = [];
     for (const args of commands) {
       try { outputs.push(`$ minitok ${args.join(" ")}\n${await new Promise<string>((resolve, reject) => execFile(cli, args, { cwd, timeout: 15000, windowsHide: true }, (error, stdout, stderr) => error ? reject(new Error(stderr || error.message)) : resolve(stdout.trim())))} `); }

@@ -292,6 +292,18 @@ describe("Medium: Config resolves from repoRoot", () => {
   });
 });
 
+describe("Medium: CLI repository status", () => {
+  it("accepts an explicit repository without a registered workspace", async () => {
+    const { cmdStatus } = require("../src/cli/commands/status");
+    const repoRoot = tmpDir();
+    fs.mkdirSync(p.join(repoRoot, ".minitok"), { recursive: true });
+    fs.writeFileSync(p.join(repoRoot, "minitok.yml"), "project:\n  name: probe\nroles: {}\n");
+    const result = await cmdStatus({ repo: repoRoot, json: true });
+    assert.equal(result.workspace.repository_root, p.resolve(repoRoot));
+    clean(repoRoot);
+  });
+});
+
 describe("Medium: Policy decreases on success", () => {
   it("decreases max_cycles when success rate is high", () => {
     const { recommendPolicy } = require("../src/evolution/policy");

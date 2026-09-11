@@ -52,7 +52,7 @@ async function cmdStatusHuman(options = {}) {
   const wm = new WorkspaceManager();
   let ws;
   try {
-    ws = options.workspace ? wm.resolve(options.workspace) : wm.currentWorkspace();
+    ws = options.repo ? { name: path.basename(path.resolve(options.repo)), repository_root: path.resolve(options.repo), project_type: "repository", last_used: null } : options.workspace ? wm.resolve(options.workspace) : wm.currentWorkspace();
   } catch (error) {
     console.error(`Workspace error: ${error.message}`);
     return 1;
@@ -98,7 +98,7 @@ async function cmdStatusHuman(options = {}) {
 async function cmdStatus(options = {}) {
   if (options.json) {
     const ws = new WorkspaceManager();
-    const workspace = options.workspace ? ws.resolve(options.workspace) : ws.currentWorkspace();
+    const workspace = options.repo ? { name: path.basename(path.resolve(options.repo)), repository_root: path.resolve(options.repo), project_type: "repository", last_used: null } : options.workspace ? ws.resolve(options.workspace) : ws.currentWorkspace();
     const gate = await authorizeEntitlement();
     const config = workspace ? loadConfig(path.join(workspace.repository_root, "minitok.yml")) : null;
     const providers = config ? await detectAvailableProviders(config) : [];

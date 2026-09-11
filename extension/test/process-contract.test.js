@@ -21,6 +21,9 @@ test("panel process lifecycle contract", () => {
   assert.match(workspace, /ComSpec/);
   assert.match(panel, /taskkill/);
   assert.match(panel, /A minitok run is already active/);
+  assert.match(panel, /\["status", "--repo", cwd!\]/);
+  assert.match(panel, /\["run", message\.task, "--repo", cwd!\]/);
+  assert.match(sidebar, /\["run", message\.task, "--repo", cwd!\]/);
 });
 
 test("extension entitlement contract", () => {

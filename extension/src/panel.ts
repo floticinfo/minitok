@@ -56,12 +56,12 @@ const cwd = workspacePath();
      try {
        if (message.command === "stop") { this.stopProcess(); this.post(true, "Run stopped."); return; }
        await requireEntitlement();
-       if (message.command === "status") this.post(true, await runCli(cli, ["status"], cwd, child => { this.process = child; }));
+       if (message.command === "status") this.post(true, await runCli(cli, ["status", "--repo", cwd!], cwd, child => { this.process = child; }));
       else {
         requireTrustedWorkspace(cwd);
         if (!message.task?.trim()) throw new Error("Task description required");
         if (this.process) throw new Error("A minitok run is already active");
-        const args = ["run", message.task];
+        const args = ["run", message.task, "--repo", cwd!];
         if (message.command === "dry-run") args.push("--dry-run");
         else if (autoApprove()) args.push("--auto-accept");
         else {
