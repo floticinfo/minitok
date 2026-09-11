@@ -70,6 +70,22 @@ describe("Pipeline stages", () => {
     assert.match(source, /verdict === "REJECT" \|\| verdict === "VERIFICATION_FAILED"/);
   });
 
+  it("synchronizes embedded runtime before canonical verification", () => {
+    const { syncCanonicalRuntime } = require("./check");
+    const d = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-canonical-") );
+    fs.writeFileSync(path.join(d, "package.json"), JSON.stringify({ name: "customer-app" }));
+    assert.equal(syncCanonicalRuntime(d), null);
+    fs.rmSync(d, { recursive: true, force: true });
+  });
+
+  it("does not leak minitok control environment variables into customer verification", () => {
+    const { verificationEnvironment } = require("./check");
+    const env = verificationEnvironment({ MINITOK_BUDGET_MAX_CYCLES: "3", MINITOK_BUDGET_STAGNATION_LIMIT: "4", CUSTOMER_FLAG: "keep" });
+    assert.equal(env.MINITOK_BUDGET_MAX_CYCLES, undefined);
+    assert.equal(env.MINITOK_BUDGET_STAGNATION_LIMIT, undefined);
+    assert.equal(env.CUSTOMER_FLAG, "keep");
+  });
+
   it("builds a repair task from review and check failures", () => {
     const task = buildRepairTask("original goal", { summary: "bad change", findings: [{ severity: "error", message: "fix this" }] }, { evidence: { command: "npm test", output: "failed test" } });
     assert.match(task, /original goal/);

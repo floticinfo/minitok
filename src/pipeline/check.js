@@ -90,19 +90,43 @@ function runVerification(repoRoot, options = {}) {
   return runProcess(command, args, repoRoot, options);
 }
 
+function verificationEnvironment(base = process.env) {
+  const env = { ...base };
+  for (const key of Object.keys(env)) {
+    if (/^MINITOK_(OFFLINE|DEFAULT_PROVIDER|SERVER_URL|PROJECT_|BUDGET_|EXECUTION_|VALIDATION_)/i.test(key)) delete env[key];
+  }
+  return env;
+}
+
 function runProcess(command, args, repoRoot, options = {}) {
   const started = Date.now();
   try {
-    const output = execFileSync(command, args, { cwd: repoRoot, encoding: "utf-8", timeout: options.timeout_ms || 120000, stdio: ["ignore", "pipe", "pipe"] });
+    const output = execFileSync(command, args, { cwd: repoRoot, env: options.env || verificationEnvironment(), encoding: "utf-8", timeout: options.timeout_ms || 120000, stdio: ["ignore", "pipe", "pipe"] });
     return { status: "passed", command: [command, ...args].join(" "), output: output.slice(-4000), duration_ms: Date.now() - started, exit_code: 0 };
   } catch (error) {
     return { status: "failed", command: [command, ...args].join(" "), output: `${error.stdout || ""}${error.stderr || ""}`.slice(-4000), duration_ms: Date.now() - started, exit_code: typeof error.status === "number" ? error.status : 1 };
   }
 }
 
+function syncCanonicalRuntime(repoRoot) {
+  try {
+    const packagePath = path.join(repoRoot, "package.json");
+    if (!fs.existsSync(packagePath)) return null;
+    const packageJson = JSON.parse(fs.readFileSync(packagePath, "utf8"));
+    if (packageJson.name !== "@flotic/minitok") return null;
+    const script = path.join(repoRoot, "scripts", "sync-extension-runtime.mjs");
+    if (!fs.existsSync(script)) return null;
+    return runProcess(process.execPath, [script], repoRoot, { timeout_ms: 120000, env: verificationEnvironment() });
+  } catch (error) {
+    return { status: "failed", command: "sync-extension-runtime", output: error.message, exit_code: 1, duration_ms: 0 };
+  }
+}
+
 function verifyCommand(repoRoot, options = {}) {
+  const sync = syncCanonicalRuntime(repoRoot);
+  if (sync && sync.status !== "passed") return { passed: false, evidence: sync };
   const evidence = runVerification(repoRoot, options);
   return { passed: evidence.status === "passed" && evidence.exit_code === 0, evidence };
 }
 
-module.exports = { runVerification, verifyCommand, bashAvailable, bashRuntime };
+module.exports = { runVerification, verifyCommand, bashAvailable, bashRuntime, verificationEnvironment, syncCanonicalRuntime };

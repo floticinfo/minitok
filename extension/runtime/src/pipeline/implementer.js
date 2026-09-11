@@ -14,6 +14,7 @@ const { auditLog } = require("../core/audit");
  */
 const PROTECTED_PATHS = ["minitok.yml", ".minitok"];
 const RELEASE_PROTECTED_PATHS = ["package.json", "package-lock.json", "extension/package.json", "extension/package-lock.json", "extension/runtime/package.json", "extension/runtime/runtime-manifest.json"];
+const VERIFICATION_PROTECTED_PATHS = ["tests", "scripts", "VERIFY_CMD.mjs", "VERIFY_CMD.sh", "release-manifest.json"];
 
 /**
  * Default blocked file extensions for autonomous pipeline.
@@ -110,6 +111,10 @@ function safePath(repoRoot, filePath) {
  * @param {string} filePath - resolved absolute path
  * @returns {{ protected: boolean, reason?: string }}
  */
+function isCanonicalReleaseRepository(repoRoot) {
+  try { return JSON.parse(fs.readFileSync(path.join(path.resolve(repoRoot), "package.json"), "utf8")).name === "@flotic/minitok"; } catch { return false; }
+}
+
 function isProtectedPath(repoRoot, filePath) {
   const root = path.resolve(repoRoot);
   let rel = path.relative(root, filePath).replace(/\\/g, "/");
@@ -117,10 +122,8 @@ function isProtectedPath(repoRoot, filePath) {
   if (process.platform === "win32") {
     rel = rel.toLowerCase();
   }
-  const releaseProtected = (() => {
-    try { return JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).name === "@flotic/minitok"; } catch { return false; }
-  })();
-  const protectedPaths = releaseProtected ? [...PROTECTED_PATHS, ...RELEASE_PROTECTED_PATHS] : PROTECTED_PATHS;
+  const releaseProtected = isCanonicalReleaseRepository(root);
+  const protectedPaths = releaseProtected ? [...PROTECTED_PATHS, ...RELEASE_PROTECTED_PATHS, ...VERIFICATION_PROTECTED_PATHS] : PROTECTED_PATHS;
   for (const p of protectedPaths) {
     const pat = process.platform === "win32" ? p.toLowerCase() : p;
     if (rel === pat || rel.startsWith(pat + "/")) {
@@ -173,7 +176,8 @@ function applyChanges(repoRoot, changesResult, dryRun = false, options = {}) {
 
     // 🔒 Check protected paths
     const { protected: isProtected, reason: protReason } = isProtectedPath(repoRoot, filePath);
-    if (isProtected) {
+    const releaseProtected = isCanonicalReleaseRepository(repoRoot);
+    if (isProtected && !(releaseProtected && change.action === "create" && path.relative(path.resolve(repoRoot), filePath).replace(/\\/g, "/").startsWith("tests/"))) {
       recordAudit({ action: change.action, file: change.file, result: "rejected", reason: protReason });
       results.errors.push(protReason);
       continue;
@@ -287,4 +291,4 @@ function validateChanges(changesResult) {
   return { valid: errors.length === 0, errors, validatedChanges: validated };
 }
 
-module.exports = { implement, applyChanges, safePath, isProtectedPath, isBlockedExtension, validateChange, validateChanges, PROTECTED_PATHS, RELEASE_PROTECTED_PATHS, DEFAULT_BLOCKED_EXTENSIONS, IMPLEMENT_SYSTEM_PROMPT };
+module.exports = { implement, applyChanges, safePath, isProtectedPath, isBlockedExtension, validateChange, validateChanges, PROTECTED_PATHS, RELEASE_PROTECTED_PATHS, VERIFICATION_PROTECTED_PATHS, DEFAULT_BLOCKED_EXTENSIONS, IMPLEMENT_SYSTEM_PROMPT };

@@ -116,6 +116,30 @@ describe("SEC-01b: Release metadata protection", () => {
   });
 });
 
+describe("SEC-01c: Verification surface protection", () => {
+  it("blocks edits to existing verification files in the canonical repository", () => {
+    const { applyChanges } = require("../src/pipeline/implementer");
+    const d = tmpDir();
+    fs.writeFileSync(p.join(d, "package.json"), JSON.stringify({ name: "@flotic/minitok" }));
+    fs.mkdirSync(p.join(d, "tests"), { recursive: true });
+    fs.writeFileSync(p.join(d, "tests", "existing.js"), "original");
+    const result = applyChanges(d, { changes: [{ file: "tests/existing.js", action: "modify", content: "changed" }, { file: "VERIFY_CMD.mjs", action: "modify", content: "bad" }] });
+    assert.equal(result.applied, 0);
+    assert.equal(result.errors.length, 2);
+    clean(d);
+  });
+
+  it("allows new focused tests in the canonical repository", () => {
+    const { applyChanges } = require("../src/pipeline/implementer");
+    const d = tmpDir();
+    fs.writeFileSync(p.join(d, "package.json"), JSON.stringify({ name: "@flotic/minitok" }));
+    fs.mkdirSync(p.join(d, "tests"), { recursive: true });
+    const result = applyChanges(d, { changes: [{ file: "tests/new-regression.js", action: "create", content: "test('ok', () => {});" }] });
+    assert.equal(result.applied, 1);
+    clean(d);
+  });
+});
+
 describe("SEC-02: LLM Output Validation", () => {
   it("rejects non-array changes", () => {
     const { applyChanges } = require("../src/pipeline/implementer");
