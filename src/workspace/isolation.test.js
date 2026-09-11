@@ -23,6 +23,16 @@ function tmpRepo() {
   return d;
 }
 
+describe("isolation: canonical verification preparation", () => {
+  it("prepares canonical metadata and artifacts before verification", () => {
+    const repo = tmpRepo();
+    fs.writeFileSync(path.join(repo, "package.json"), JSON.stringify({ name: "customer-app" }));
+    const { prepareCanonicalVerification } = require("./isolation");
+    assert.equal(prepareCanonicalVerification(repo), null);
+    fs.rmSync(repo, { recursive: true, force: true });
+  });
+});
+
 describe("isolation: dependency preparation", () => {
   it("installs locked Node dependencies for isolated verification", () => {
     const repo = tmpRepo();
