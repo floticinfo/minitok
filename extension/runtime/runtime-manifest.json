@@ -195,8 +195,8 @@
       "embedded": "220710a5d67b936afec88e9ac9ff1dedf5a521bfdc7cab28c498074209e4ce0f"
     },
     "pipeline/implementer.js": {
-      "source": "7681f8250f777584240471d03ba02eaee5f819a63c5f6561e23f9e0d608fd6f7",
-      "embedded": "7681f8250f777584240471d03ba02eaee5f819a63c5f6561e23f9e0d608fd6f7"
+      "source": "993dea8129452ee1c587231b340a15c01485daf2039898f86eebbec6b9a2905e",
+      "embedded": "993dea8129452ee1c587231b340a15c01485daf2039898f86eebbec6b9a2905e"
     },
     "pipeline/intel.js": {
       "source": "156f608704bbfde60702b53b83647612b49f28f98d7b2fc010986c27d517a442",
@@ -299,8 +299,8 @@
       "embedded": "fcd0d4408472476c9deed589ac8da80396a5fc538866cffe7530ec52b1794443"
     },
     "workspace/isolation.js": {
-      "source": "47ec5522dd559d964662bde30fedcf30febc8111cfe52fbd15eb877eeec388c1",
-      "embedded": "47ec5522dd559d964662bde30fedcf30febc8111cfe52fbd15eb877eeec388c1"
+      "source": "2762db27dabdb4aa9a6ad660ad2418edf6d0b77892192959d34854b1b0c1567e",
+      "embedded": "2762db27dabdb4aa9a6ad660ad2418edf6d0b77892192959d34854b1b0c1567e"
     },
     "workspace/manager.js": {
       "source": "158bf7d9e83cd892a97eb703c03be65b8b48f30f3544a583400bb180a6519ae3",

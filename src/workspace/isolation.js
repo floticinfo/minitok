@@ -56,8 +56,7 @@ function prepareCanonicalVerification(workspace) {
     return { prepared: true };
   } catch (error) {
     const detail = `${error.stdout || ""}${error.stderr || ""}`.trim().slice(-1000);
-    const prepareError = new Error(`Could not prepare canonical verification artifacts: ${detail || error.message}`);
-    prepareError.code = "minitok_canonical_prepare_failed";
+    const prepareError = Object.assign(new Error(`Could not prepare canonical verification artifacts: ${detail || error.message}`), { code: "minitok_canonical_prepare_failed" });
     prepareError.cause = error;
     throw prepareError;
   }
@@ -81,9 +80,8 @@ function installWorkspaceDependencies(workspace) {
       return { directory: path.relative(workspace, directory) || ".", package_manager: packageManager, installed: true };
     } catch (error) {
       const detail = `${error.stdout || ""}${error.stderr || ""}`.trim().slice(-1000);
-      const installError = new Error(`Could not install isolated workspace dependencies with ${packageManager} in ${path.relative(workspace, directory) || "."}: ${detail || error.message}`);
-      installError.code = "minitok_dependency_install_failed";
-      installError.cause = error;
+      const installError = Object.assign(new Error(`Could not install isolated workspace dependencies with ${packageManager} in ${path.relative(workspace, directory) || "."}: ${detail || error.message}`), { code: "minitok_dependency_install_failed" });
+    installError.cause = error;
       throw installError;
     }
   };

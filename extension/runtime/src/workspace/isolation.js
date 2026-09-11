@@ -40,6 +40,28 @@ function assertNoLinks(root) {
   visit(resolvedRoot);
 }
 
+function prepareCanonicalVerification(workspace) {
+  const packagePath = path.join(workspace, "package.json");
+  if (!fs.existsSync(packagePath)) return null;
+  try {
+    const packageJson = JSON.parse(fs.readFileSync(packagePath, "utf8"));
+    if (packageJson.name !== "@flotic/minitok") return null;
+    const syncScript = path.join(workspace, "scripts", "sync-version-metadata.mjs");
+    if (fs.existsSync(syncScript)) execFileSync(process.execPath, [syncScript], { cwd: workspace, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 120000 });
+    const runtimeScript = path.join(workspace, "scripts", "sync-extension-runtime.mjs");
+    if (fs.existsSync(runtimeScript)) execFileSync(process.execPath, [runtimeScript], { cwd: workspace, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 120000 });
+    const extensionPackage = path.join(workspace, "extension", "package.json");
+    const packageExtension = path.join(workspace, "scripts", "package-extension.mjs");
+    if (fs.existsSync(extensionPackage) && fs.existsSync(packageExtension)) execFileSync(process.execPath, [packageExtension], { cwd: workspace, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 120000 });
+    return { prepared: true };
+  } catch (error) {
+    const detail = `${error.stdout || ""}${error.stderr || ""}`.trim().slice(-1000);
+    const prepareError = Object.assign(new Error(`Could not prepare canonical verification artifacts: ${detail || error.message}`), { code: "minitok_canonical_prepare_failed" });
+    prepareError.cause = error;
+    throw prepareError;
+  }
+}
+
 function installWorkspaceDependencies(workspace) {
   const installOne = directory => {
     const packageJson = path.join(directory, "package.json");
@@ -58,12 +80,12 @@ function installWorkspaceDependencies(workspace) {
       return { directory: path.relative(workspace, directory) || ".", package_manager: packageManager, installed: true };
     } catch (error) {
       const detail = `${error.stdout || ""}${error.stderr || ""}`.trim().slice(-1000);
-      const installError = new Error(`Could not install isolated workspace dependencies with ${packageManager} in ${path.relative(workspace, directory) || "."}: ${detail || error.message}`);
-      installError.code = "minitok_dependency_install_failed";
-      installError.cause = error;
+      const installError = Object.assign(new Error(`Could not install isolated workspace dependencies with ${packageManager} in ${path.relative(workspace, directory) || "."}: ${detail || error.message}`), { code: "minitok_dependency_install_failed" });
+    installError.cause = error;
       throw installError;
     }
   };
+  prepareCanonicalVerification(workspace);
   const results = [];
   const rootResult = installOne(workspace);
   if (rootResult) results.push(rootResult);
@@ -241,4 +263,4 @@ function preserveWorkspaceDiff(repoRoot, isolatedRoot) {
   }
 }
 
-module.exports = { createIsolatedWorkspace, installWorkspaceDependencies, applyWorkspaceDiff, removeIsolatedWorkspace, preserveWorkspaceDiff };
+module.exports = { createIsolatedWorkspace, prepareCanonicalVerification, installWorkspaceDependencies, applyWorkspaceDiff, removeIsolatedWorkspace, preserveWorkspaceDiff };

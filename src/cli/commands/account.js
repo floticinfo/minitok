@@ -21,6 +21,7 @@ function saveAccountSession(session, filePath = ACCOUNT_FILE) {
   fs.renameSync(temp, filePath);
   setOwnerOnlyPermissions(filePath);
 }
+/** @returns {({ customer_id?: unknown, access_token: string, refresh_token: string, token_type: unknown, expires_in?: number, expires_at?: string, expired?: boolean } | null)} */
 function loadAccountSession(filePath = ACCOUNT_FILE) {
   try {
     const session = normalizeCustomerSession(JSON.parse(fs.readFileSync(filePath, "utf8")));

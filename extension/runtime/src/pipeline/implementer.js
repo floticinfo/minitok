@@ -105,16 +105,16 @@ function safePath(repoRoot, filePath) {
   return { resolved, safe: true };
 }
 
+function isCanonicalReleaseRepository(repoRoot) {
+  try { return JSON.parse(fs.readFileSync(path.join(path.resolve(repoRoot), "package.json"), "utf8")).name === "@flotic/minitok"; } catch { return false; }
+}
+
 /**
  * Check if a resolved file path is protected from autonomous modification.
  * @param {string} repoRoot
  * @param {string} filePath - resolved absolute path
  * @returns {{ protected: boolean, reason?: string }}
  */
-function isCanonicalReleaseRepository(repoRoot) {
-  try { return JSON.parse(fs.readFileSync(path.join(path.resolve(repoRoot), "package.json"), "utf8")).name === "@flotic/minitok"; } catch { return false; }
-}
-
 function isProtectedPath(repoRoot, filePath) {
   const root = path.resolve(repoRoot);
   let rel = path.relative(root, filePath).replace(/\\/g, "/");
