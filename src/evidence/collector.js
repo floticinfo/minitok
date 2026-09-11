@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { execFileSync } = require("child_process");
+const { packageManagerCommand } = require("../core/package-manager");
 
 function collectEvidence(repoRoot, options = {}) {
   const evidence = { timestamp: new Date().toISOString(), tests: {}, lint: {}, types: {} };
@@ -10,7 +11,8 @@ function collectEvidence(repoRoot, options = {}) {
   // Test evidence
   try {
     if (fs.existsSync(path.join(repoRoot, "package.json"))) {
-      const output = execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", ["test"], { cwd: repoRoot, encoding: "utf-8", timeout: 120000, stdio: ["ignore", "pipe", "pipe"] });
+      const npm = packageManagerCommand("npm");
+      const output = execFileSync(npm.command, [...npm.args, "test"], { cwd: repoRoot, encoding: "utf-8", timeout: 120000, stdio: ["ignore", "pipe", "pipe"] });
       evidence.tests = { status: "passed", output: output.slice(-2000) };
     } else if (fs.existsSync(path.join(repoRoot, "pyproject.toml"))) {
       const output = execFileSync("python", ["-m", "pytest", "tests/", "-q", "--tb=short"], { cwd: repoRoot, encoding: "utf-8", timeout: 120000, stdio: ["ignore", "pipe", "pipe"] });
@@ -25,12 +27,12 @@ function collectEvidence(repoRoot, options = {}) {
   // Lint evidence
   try {
     if (fs.existsSync(path.join(repoRoot, "package.json"))) {
-      const npm = process.platform === "win32" ? "npm.cmd" : "npm";
+      const npm = packageManagerCommand("npm");
       const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"));
       if (!pkg.scripts || typeof pkg.scripts.lint !== "string" || pkg.scripts.lint.trim() === "") {
         evidence.lint = { status: "skipped", reason: "No lint script detected" };
       } else {
-        const output = execFileSync(npm, ["run", "lint", "--", "--quiet"], { cwd: repoRoot, encoding: "utf-8", timeout: 60000, stdio: ["ignore", "pipe", "pipe"] });
+        const output = execFileSync(npm.command, [...npm.args, "run", "lint", "--", "--quiet"], { cwd: repoRoot, encoding: "utf-8", timeout: 60000, stdio: ["ignore", "pipe", "pipe"] });
         evidence.lint = { status: "clean", output: output.slice(-2000) };
       }
     }
@@ -41,7 +43,8 @@ function collectEvidence(repoRoot, options = {}) {
   try {
     const pkg = JSON.parse(fs.readFileSync(path.join(repoRoot, "package.json"), "utf8"));
     if (pkg.scripts && pkg.scripts.typecheck) {
-      const output = execFileSync(process.platform === "win32" ? "npm.cmd" : "npm", ["run", "typecheck"], { cwd: repoRoot, encoding: "utf-8", timeout: 120000, stdio: ["ignore", "pipe", "pipe"] });
+      const npm = packageManagerCommand("npm");
+      const output = execFileSync(npm.command, [...npm.args, "run", "typecheck"], { cwd: repoRoot, encoding: "utf-8", timeout: 120000, stdio: ["ignore", "pipe", "pipe"] });
       evidence.types = { status: "passed", output: output.slice(-2000) };
     } else evidence.types = { status: "skipped", reason: "No typecheck script detected" };
   } catch (e) {

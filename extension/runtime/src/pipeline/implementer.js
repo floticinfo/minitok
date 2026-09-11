@@ -13,6 +13,7 @@ const { auditLog } = require("../core/audit");
  * These control minitok's own runtime behavior and provider selection.
  */
 const PROTECTED_PATHS = ["minitok.yml", ".minitok"];
+const RELEASE_PROTECTED_PATHS = ["package.json", "package-lock.json", "extension/package.json", "extension/package-lock.json", "extension/runtime/package.json", "extension/runtime/runtime-manifest.json"];
 
 /**
  * Default blocked file extensions for autonomous pipeline.
@@ -116,7 +117,11 @@ function isProtectedPath(repoRoot, filePath) {
   if (process.platform === "win32") {
     rel = rel.toLowerCase();
   }
-  for (const p of PROTECTED_PATHS) {
+  const releaseProtected = (() => {
+    try { return JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).name === "@flotic/minitok"; } catch { return false; }
+  })();
+  const protectedPaths = releaseProtected ? [...PROTECTED_PATHS, ...RELEASE_PROTECTED_PATHS] : PROTECTED_PATHS;
+  for (const p of protectedPaths) {
     const pat = process.platform === "win32" ? p.toLowerCase() : p;
     if (rel === pat || rel.startsWith(pat + "/")) {
       return { protected: true, reason: `Protected path: ${p}` };
@@ -282,4 +287,4 @@ function validateChanges(changesResult) {
   return { valid: errors.length === 0, errors, validatedChanges: validated };
 }
 
-module.exports = { implement, applyChanges, safePath, isProtectedPath, isBlockedExtension, validateChange, validateChanges, PROTECTED_PATHS, DEFAULT_BLOCKED_EXTENSIONS, IMPLEMENT_SYSTEM_PROMPT };
+module.exports = { implement, applyChanges, safePath, isProtectedPath, isBlockedExtension, validateChange, validateChanges, PROTECTED_PATHS, RELEASE_PROTECTED_PATHS, DEFAULT_BLOCKED_EXTENSIONS, IMPLEMENT_SYSTEM_PROMPT };

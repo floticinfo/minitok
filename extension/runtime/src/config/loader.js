@@ -89,10 +89,34 @@ function coerceValue(value) {
 
 function loadEnvVars() {
   const result = {};
+  const envPaths = {
+    offline: ["offline"],
+    default_provider: ["default_provider"],
+    project_name: ["project", "name"],
+    project_stack: ["project", "stack"],
+    budget_max_cycles: ["budget", "max_cycles"],
+    budget_token_budget: ["budget", "token_budget"],
+    budget_max_cycles_hard_limit: ["budget", "max_cycles_hard_limit"],
+    budget_token_hard_limit: ["budget", "token_hard_limit"],
+    budget_stagnation_limit: ["budget", "stagnation_limit"],
+    execution_max_retries: ["execution", "max_retries"],
+    execution_timeout_sec: ["execution", "timeout_sec"],
+    execution_retry_hard_limit: ["execution", "retry_hard_limit"],
+    execution_timeout_hard_limit_sec: ["execution", "timeout_hard_limit_sec"],
+    execution_retry_backoff_sec: ["execution", "retry_backoff_sec"],
+    execution_retry_max_sec: ["execution", "retry_max_sec"],
+    execution_research_enabled: ["execution", "research_enabled"],
+    validation_enabled: ["validation", "enabled"],
+    validation_script_path: ["validation", "script_path"],
+    validation_timeout_ms: ["validation", "timeout_ms"],
+    validation_confidence_threshold: ["validation", "confidence_threshold"],
+    validation_max_changed_files: ["validation", "max_changed_files"],
+  };
   for (const [key, value] of Object.entries(process.env)) {
-    if (!ENV_ALLOWLIST.has(key.toLowerCase())) continue;
-    const configKey = key.slice("minitok_".length).toLowerCase();
-    const parts = configKey.split("_");
+    const normalizedKey = key.toLowerCase();
+    if (!ENV_ALLOWLIST.has(normalizedKey)) continue;
+    const configKey = normalizedKey.slice("minitok_".length);
+    const parts = envPaths[configKey] || [configKey];
     let nested = result;
     for (let i = 0; i < parts.length - 1; i++) {
       if (!nested[parts[i]] || typeof nested[parts[i]] !== "object") nested[parts[i]] = {};

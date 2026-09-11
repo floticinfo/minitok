@@ -23,6 +23,20 @@ function tmpRepo() {
   return d;
 }
 
+describe("isolation: dependency preparation", () => {
+  it("installs locked Node dependencies for isolated verification", () => {
+    const repo = tmpRepo();
+    fs.writeFileSync(path.join(repo, "package.json"), JSON.stringify({ name: "fixture", version: "1.0.0", dependencies: {} }));
+    fs.writeFileSync(path.join(repo, "package-lock.json"), JSON.stringify({ name: "fixture", version: "1.0.0", lockfileVersion: 3, requires: true, packages: { "": { name: "fixture", version: "1.0.0" } } }));
+    const { installWorkspaceDependencies } = require("./isolation");
+    const result = installWorkspaceDependencies(repo);
+    assert.equal(result.installed, true);
+    assert.equal(result.installed, true);
+    assert.equal(result.packages[0].package_manager, "npm");
+    fs.rmSync(repo, { recursive: true, force: true });
+  });
+});
+
 describe("isolation: working-tree layering", () => {
   let repo, iso;
   beforeEach(() => { repo = tmpRepo(); });

@@ -102,6 +102,20 @@ describe("F-01: Case-insensitive protected path bypass", () => {
   });
 });
 
+describe("SEC-01b: Release metadata protection", () => {
+  it("protects release manifests only in the canonical minitok repository", () => {
+    const { isProtectedPath } = require("../src/pipeline/implementer");
+    const canonical = p.join(tmpDir(), "canonical");
+    fs.mkdirSync(canonical, { recursive: true });
+    fs.writeFileSync(p.join(canonical, "package.json"), JSON.stringify({ name: "@flotic/minitok" }));
+    assert.equal(isProtectedPath(canonical, p.join(canonical, "package.json")).protected, true);
+    const customer = tmpDir();
+    fs.writeFileSync(p.join(customer, "package.json"), JSON.stringify({ name: "customer-app" }));
+    assert.equal(isProtectedPath(customer, p.join(customer, "package.json")).protected, false);
+    clean(canonical); clean(customer);
+  });
+});
+
 describe("SEC-02: LLM Output Validation", () => {
   it("rejects non-array changes", () => {
     const { applyChanges } = require("../src/pipeline/implementer");

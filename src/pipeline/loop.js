@@ -31,7 +31,6 @@ let TEST_AUTHORIZATION = Object.freeze({});
 try { ({ TEST_AUTHORIZATION } = require("./test-seam")); } catch {}
 const git = require("../git/operations");
 const readline = require("readline");
-
 const os = require("os");
 
 const INSTALLATION_TOKEN_FILE = path.join(os.homedir(), ".minitok", "entitlement", "installation-token.json");
@@ -477,7 +476,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
     opts.onProgress?.({ phase: "review", state: "completed", cycle, tokens: verifyResult.tokens, total_tokens: results.totalTokens, total_cost: results.totalCost });
     const reviewVerdict = verifyResult.review.verdict || "UNKNOWN";
     const checkPassed = checkResult.passed;
-    const verdict = checkPassed ? reviewVerdict : "REJECT";
+    const verdict = checkPassed ? reviewVerdict : "VERIFICATION_FAILED";
     const icon = verdict === "APPROVE" ? "✅" : "❌";
     console.log(`     Review: ${icon} ${verdict} (confidence: ${verifyResult.review.confidence || "N/A"})`);
 
@@ -546,8 +545,8 @@ async function runPipelineInWorkspace(task, opts = {}) {
     }
 
     // Phase 6: Repair
-    if (verdict === "REJECT") {
-      console.log("  🔧 Preparing repair task...");
+    if (verdict === "REJECT" || verdict === "VERIFICATION_FAILED") {
+      console.log(`  🔧 Preparing ${verdict === "VERIFICATION_FAILED" ? "verification repair" : "review repair"} task...`);
       task = buildRepairTask(originalGoal, verifyResult.review, checkResult);
     }
   }

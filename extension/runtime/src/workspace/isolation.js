@@ -5,6 +5,7 @@ const os = require("os");
 const path = require("path");
 const { execFileSync } = require("child_process");
 const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
+const { packageManagerCommand } = require("../core/package-manager");
 
 const workspaceBaselines = new Map();
 
@@ -37,6 +38,38 @@ function assertNoLinks(root) {
     for (const entry of fs.readdirSync(current)) visit(path.join(current, entry));
   };
   visit(resolvedRoot);
+}
+
+function installWorkspaceDependencies(workspace) {
+  const installOne = directory => {
+    const packageJson = path.join(directory, "package.json");
+    if (!fs.existsSync(packageJson)) return null;
+    const hasPnpmLock = fs.existsSync(path.join(directory, "pnpm-lock.yaml"));
+    const hasYarnLock = fs.existsSync(path.join(directory, "yarn.lock"));
+    const hasNpmLock = fs.existsSync(path.join(directory, "package-lock.json"));
+    const manifest = JSON.parse(fs.readFileSync(packageJson, "utf8"));
+    const dependencyCount = Object.keys({ ...(manifest.dependencies || {}), ...(manifest.devDependencies || {}), ...(manifest.optionalDependencies || {}) }).length;
+    if (!hasPnpmLock && !hasYarnLock && !hasNpmLock && dependencyCount === 0) return null;
+    const packageManager = hasPnpmLock ? "pnpm" : hasYarnLock ? "yarn" : "npm";
+  const packageArgs = packageManager === "npm" ? [hasNpmLock ? "ci" : "install", "--ignore-scripts", "--no-audit", "--no-fund"] : packageManager === "pnpm" ? ["install", "--frozen-lockfile", "--ignore-scripts"] : ["install", "--frozen-lockfile", "--ignore-scripts"];
+  const { command, args } = packageManagerCommand(packageManager, packageArgs);
+    try {
+      execFileSync(command, args, { cwd: directory, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 600000 });
+      return { directory: path.relative(workspace, directory) || ".", package_manager: packageManager, installed: true };
+    } catch (error) {
+      const detail = `${error.stdout || ""}${error.stderr || ""}`.trim().slice(-1000);
+      const installError = new Error(`Could not install isolated workspace dependencies with ${packageManager} in ${path.relative(workspace, directory) || "."}: ${detail || error.message}`);
+      installError.code = "minitok_dependency_install_failed";
+      installError.cause = error;
+      throw installError;
+    }
+  };
+  const results = [];
+  const rootResult = installOne(workspace);
+  if (rootResult) results.push(rootResult);
+  const extensionResult = installOne(path.join(workspace, "extension"));
+  if (extensionResult) results.push(extensionResult);
+  return results.length ? { installed: true, packages: results } : null;
 }
 
 function createIsolatedWorkspace(repoRoot, isolationRoot) {
@@ -106,7 +139,8 @@ function createIsolatedWorkspace(repoRoot, isolationRoot) {
       runGit(workspace, ["reset", "-q", "HEAD", "--", "."]);
       workspaceBaselines.set(workspace, { untracked: new Set(baselineUntracked), trackedTree: baselineTrackedTree });
     }
-    return { path: workspace, mode: "git-clone" };
+    const dependencies = installWorkspaceDependencies(workspace);
+    return { path: workspace, mode: "git-clone", dependencies };
   } catch (cloneError) {
     const isolationError = /** @type {NodeJS.ErrnoException} */ (cloneError);
     if (isolationError.code === "minitok_isolate_failed") {
@@ -124,7 +158,8 @@ function createIsolatedWorkspace(repoRoot, isolationRoot) {
       runGit(workspace, ["add", "-A"]);
       runGit(workspace, ["commit", "-m", "isolated workspace baseline"]);
       fallbackComplete = true;
-      return { path: workspace, mode: "working-tree-snapshot", cloneError: cloneError.message };
+      const dependencies = installWorkspaceDependencies(workspace);
+      return { path: workspace, mode: "working-tree-snapshot", cloneError: cloneError.message, dependencies };
     } finally {
       if (!fallbackComplete) fs.rmSync(workspace, { recursive: true, force: true });
     }
@@ -206,4 +241,4 @@ function preserveWorkspaceDiff(repoRoot, isolatedRoot) {
   }
 }
 
-module.exports = { createIsolatedWorkspace, applyWorkspaceDiff, removeIsolatedWorkspace, preserveWorkspaceDiff };
+module.exports = { createIsolatedWorkspace, installWorkspaceDependencies, applyWorkspaceDiff, removeIsolatedWorkspace, preserveWorkspaceDiff };

@@ -150,6 +150,13 @@ describe("F3: Pipeline", () => {
   });
 });
 describe("Config", () => {
+  it("loads uppercase environment variable names into budget settings", () => {
+    const loader = require("../src/config/loader");
+    const original = process.env.MINITOK_BUDGET_STAGNATION_LIMIT;
+    process.env.MINITOK_BUDGET_STAGNATION_LIMIT = "100";
+    try { assert.equal(loader.loadConfig(p.join(tmpDir(), "missing.yml")).budget.stagnation_limit, 100); }
+    finally { if (original === undefined) delete process.env.MINITOK_BUDGET_STAGNATION_LIMIT; else process.env.MINITOK_BUDGET_STAGNATION_LIMIT = original; }
+  });
   it("defaults", () => { const d = tmpDir(); const orig = process.cwd(); process.chdir(d); try { const c = require("../src/config/loader").loadConfig(p.join(d, "n.yml")); assert.equal(c.project.name, "unknown"); assert.equal(c.roles.plan.adapter, "claude"); assert.equal(c.budget.token_budget, "unlimited"); assert.equal(c.budget.token_hard_limit, 2000000); assert.equal(c.budget.max_cycles_hard_limit, 100); } finally { process.chdir(orig); clean(d); } });
   it("deep merge", () => { const r = require("../src/config/loader").deepMerge({ a: 1, b: { c: 2, d: 3 } }, { b: { c: 99 } }); assert.equal(r.a, 1); assert.equal(r.b.c, 99); assert.equal(r.b.d, 3); });
   it("loads yaml", () => { const d = tmpDir(); fs.writeFileSync(p.join(d, "m.yml"), "project:\n  name: test\n"); assert.equal(require("../src/config/loader").loadConfig(p.join(d, "m.yml")).project.name, "test"); clean(d); });
@@ -171,6 +178,20 @@ describe("Git Ops", () => {
   it("fileCount", () => assert.ok(g.fileCount(dir) >= 1));
   it("remoteUrl", () => assert.equal(g.remoteUrl(dir), ""));
   it("staged", () => assert.ok(Array.isArray(g.stagedFiles(dir))));
+});
+
+describe("Package manager execution", () => {
+  it("uses a Windows shell wrapper for npm", () => {
+    const { packageManagerCommand } = require("../src/core/package-manager");
+    const result = packageManagerCommand("npm", ["test"]);
+    if (process.platform === "win32") {
+      assert.equal(result.command, process.env.ComSpec || "cmd.exe");
+      assert.deepEqual(result.args.slice(-2), ["npm", "test"]);
+    } else {
+      assert.equal(result.command, "npm");
+      assert.deepEqual(result.args, ["test"]);
+    }
+  });
 });
 
 describe("Evidence", () => {

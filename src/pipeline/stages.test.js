@@ -64,6 +64,12 @@ describe("Pipeline stages", () => {
     fs.rmSync(repo, { recursive: true, force: true });
   });
 
+  it("marks verification failures separately from reviewer rejection", () => {
+    const source = fs.readFileSync(path.join(__dirname, "loop.js"), "utf8");
+    assert.match(source, /const verdict = checkPassed \? reviewVerdict : "VERIFICATION_FAILED"/);
+    assert.match(source, /verdict === "REJECT" \|\| verdict === "VERIFICATION_FAILED"/);
+  });
+
   it("builds a repair task from review and check failures", () => {
     const task = buildRepairTask("original goal", { summary: "bad change", findings: [{ severity: "error", message: "fix this" }] }, { evidence: { command: "npm test", output: "failed test" } });
     assert.match(task, /original goal/);
