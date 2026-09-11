@@ -85,7 +85,6 @@ function installWorkspaceDependencies(workspace) {
       throw installError;
     }
   };
-  prepareCanonicalVerification(workspace);
   const results = [];
   const rootResult = installOne(workspace);
   if (rootResult) results.push(rootResult);
@@ -134,6 +133,7 @@ function createIsolatedWorkspace(repoRoot, isolationRoot) {
         }
         fs.rmSync(p, { force: true });
       }
+      prepareCanonicalVerification(workspace);
       // Untracked files (excluding .gitignore'd noise is not possible via
       // diff; copy untracked-but-not-ignored files verbatim).
       let untracked = "";
