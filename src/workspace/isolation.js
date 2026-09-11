@@ -156,9 +156,12 @@ function createIsolatedWorkspace(repoRoot, isolationRoot) {
         fs.cpSync(src, dest);
         baselineUntracked.push(rel);
       }
-      runGit(workspace, ["add", "-u"]);
+      runGit(workspace, ["add", "-A"]);
+      for (const name of baselineUntracked) {
+        try { runGit(workspace, ["reset", "-q", "HEAD", "--", name]); } catch {}
+      }
+      runGit(workspace, ["commit", "--allow-empty", "-m", "minitok isolated baseline"]);
       const baselineTrackedTree = runGit(workspace, ["write-tree"]);
-      runGit(workspace, ["reset", "-q", "HEAD", "--", "."]);
       workspaceBaselines.set(workspace, { untracked: new Set(baselineUntracked), trackedTree: baselineTrackedTree });
     }
     const dependencies = installWorkspaceDependencies(workspace);
