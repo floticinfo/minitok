@@ -13,11 +13,14 @@ function providerError(name, status) {
   return new Error(`${name} API request failed (${status})`);
 }
 
-function validateProviderEndpoint(raw, label = "Provider endpoint") {
+function validateProviderEndpoint(raw, label = "Provider endpoint", options = {}) {
   let parsed;
   try { parsed = new URL(raw); } catch { throw new Error(`${label} must be a valid URL`); }
   if (!["https:", "http:"].includes(parsed.protocol)) throw new Error(`${label} must use HTTP or HTTPS`);
-  if (parsed.protocol === "http:" && !["localhost", "127.0.0.1", "::1"].includes(parsed.hostname)) throw new Error(`${label} HTTP endpoints are limited to localhost`);
+  const localHost = ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname);
+  const allowLocalHttp = options.allowInsecureLocalEndpoint === true || options.allowInsecureLocalEndpoint === undefined;
+  if (parsed.protocol === "http:" && !localHost) throw new Error(`${label} HTTP endpoints are limited to localhost`);
+  if (parsed.protocol === "http:" && options.strictHttps === true && !allowLocalHttp) throw new Error(`${label} requires HTTPS; explicitly enable allow_insecure_local_endpoint for localhost development`);
   const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
   if (parsed.protocol === "https:" && (isBlockedAddress(hostname) || hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local") || hostname === "metadata" || hostname === "metadata.google.internal" || hostname === "metadata.google.internal.")) throw new Error(`${label} host is blocked`);
   if (parsed.username || parsed.password) throw new Error(`${label} must not contain credentials`);
@@ -118,8 +121,8 @@ async function resolvePublicEndpoint(raw, label = "Provider endpoint") {
 
 const resolvePublicCustomEndpoint = (raw) => resolvePublicEndpoint(raw, "Custom provider endpoint");
 
-const validateCustomEndpoint = (raw) => {
-  const endpoint = validateProviderEndpoint(raw, "Custom provider endpoint");
+const validateCustomEndpoint = (raw, options = {}) => {
+  const endpoint = validateProviderEndpoint(raw, "Custom provider endpoint", { ...options, strictHttps: true });
   if (new URL(endpoint).protocol === "https:") {
     const hostname = new URL(endpoint).hostname.toLowerCase().replace(/^\[|\]$/g, "");
     if (isBlockedAddress(hostname) || hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local") || hostname === "metadata.google.internal" || hostname === "metadata" || hostname === "metadata.google.internal.") throw new Error("Custom provider endpoint host is blocked");
@@ -504,10 +507,19 @@ class CustomProvider extends LLMProvider {
   constructor(config = {}) {
     super(config._name || "custom", config);
     this.apiKey = config.api_key || "";
-    this.baseUrl = config.base_url ? validateCustomEndpoint(config.base_url) : "";
+    this.baseUrl = config.base_url ? validateCustomEndpoint(config.base_url, { allowInsecureLocalEndpoint: config.allow_insecure_local_endpoint === true || config._name && config._name !== "custom" }) : "";
     this.models = config.models || [];
   }
-  async isAvailable() { return Boolean(this.baseUrl); }
+  async isAvailable() {
+    if (!this.baseUrl) return false;
+    if (!this.config.auth && !this.config.api_key && !this.config.api_key_env) return false;
+    try {
+      const resolved = await this._resolveAuth();
+      return Boolean(resolved.token || Object.keys(resolved.headers || {}).length > 0);
+    } catch {
+      return false;
+    }
+  }
   async complete(messages, options = {}) {
     if (!this.baseUrl) throw new Error(`${this.name}: base_url not configured`);
     const endpointTransport = await resolvePublicCustomEndpoint(this.baseUrl);
@@ -516,6 +528,9 @@ class CustomProvider extends LLMProvider {
     const model = validateProviderModel(this.name, options.model || this.config.model || (this.models[0]?.id) || "default", this.config);
     const body = { model, messages: messages.map(m => ({ role: m.role, content: m.content })), max_tokens: options.max_tokens || 4096 };
     const headers = { "Content-Type": "application/json", ...(auth.headers || {}) };
+    if (apiKey && !this.config.auth && headers["x-api-key"]) {
+      delete headers["x-api-key"];
+    }
     if (apiKey && !headers.Authorization && !headers["x-api-key"]) {
       const scheme = this.config.auth?.scheme || "Bearer";
       const header = this.config.auth?.header || "Authorization";
@@ -574,18 +589,20 @@ function createProvider(name, config = {}) {
 }
 
 async function detectAvailableProviders(config) {
-  const p = [];
-  if (await new AnthropicProvider(config.providers?.anthropic || {}).isAvailable()) p.push("anthropic");
-  if (await new OpenAIProvider(config.providers?.openai || {}).isAvailable()) p.push("openai");
-  if (await new GoogleProvider(config.providers?.google || config.providers?.gemini || {}).isAvailable()) p.push("google");
-  if (await new OpenRouterProvider(config.providers?.openrouter || {}).isAvailable()) p.push("openrouter");
-  // Tier 3: detect custom providers with base_url
+  const checks = new Map([
+    ["anthropic", new AnthropicProvider(config.providers?.anthropic || {})],
+    ["openai", new OpenAIProvider(config.providers?.openai || {})],
+    ["google", new GoogleProvider(config.providers?.google || config.providers?.gemini || {})],
+    ["openrouter", new OpenRouterProvider(config.providers?.openrouter || {})],
+  ]);
   for (const [name, cfg] of Object.entries(config.providers || {})) {
-    if (cfg.base_url && !p.includes(name)) {
-      try { if (await new CustomProvider({ ...cfg, _name: name }).isAvailable()) p.push(name); } catch {}
-    }
+    if (!cfg.base_url || checks.has(name)) continue;
+    try { checks.set(name, new CustomProvider({ ...cfg, _name: name })); } catch {}
   }
-  return p;
+  const results = await Promise.all([...checks].map(async ([name, provider]) => {
+    try { return [name, await provider.isAvailable()]; } catch { return [name, false]; }
+  }));
+  return results.filter(([, available]) => available).map(([name]) => name);
 }
 
 module.exports = { LLMProvider, FallbackProvider, AnthropicProvider, OpenAIProvider, GoogleProvider, OpenRouterProvider, CustomProvider, createProvider, detectAvailableProviders, fetchWithTimeout, configureRetries, validateProviderModel, _countTokens, _estimateCost };

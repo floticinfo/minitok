@@ -26,6 +26,30 @@ async function cmdRun(task, opts) {
     }
   }
 
+  // Preflight: fail fast with a setup guide when no provider credentials exist.
+  // runPipeline would otherwise burn cycles and end in a 401 from the API.
+  try {
+    const { loadConfig } = require("../../config/loader");
+    const { detectAvailableProviders } = require("../../llm/provider");
+    const preflightConfig = loadConfig(require("path").join(repoRoot, "minitok.yml"));
+    const available = await detectAvailableProviders(preflightConfig);
+    if (available.length === 0) {
+      console.error("Error: No LLM provider is configured.\n");
+      console.error("minitok needs one API key before it can run. Pick one:");
+      console.error("  $env:ANTHROPIC_API_KEY='sk-ant-...'   # Claude");
+      console.error("  $env:OPENAI_API_KEY='sk-...'          # GPT");
+      console.error("  $env:GEMINI_API_KEY='...'             # Gemini");
+      console.error("  $env:OPENROUTER_API_KEY='sk-or-...'   # OpenRouter");
+      console.error("");
+      console.error("Or save a key persistently:  minitok auth login <anthropic|openai|google|openrouter>");
+      console.error("Then verify with:  minitok doctor");
+      return 1;
+    }
+  } catch (preflightError) {
+    if (preflightError && preflightError.code) throw preflightError;
+    // Config load failure surfaces below with full context; do not mask it.
+  }
+
   try {
     const result = await runPipeline(task, {
       repoRoot,
