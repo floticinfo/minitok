@@ -15,7 +15,7 @@ function check(name, ok, detail = "") {
   return ok;
 }
 
-async function cmdDoctor() {
+async function cmdDoctor(opts = {}) {
   console.log(`minitok ${minitokVersion} — Environment Check\n`);
 
   let allOk;
@@ -69,6 +69,27 @@ async function cmdDoctor() {
   ];
   for (const [label, key, envVar] of providerChecks) {
     check(`  ${label}`, providers.includes(key), providers.includes(key) ? "configured" : `${envVar} not set`);
+  }
+
+  // --verify: live credential check (detects expired/revoked keys that
+  // presence checks cannot). Failures count toward the exit code.
+  if (opts && opts.verify) {
+    const { verifyCredentials } = require("../../llm/provider");
+    console.log("\nLive credential check:");
+    for (const [label, key, envVar] of providerChecks) {
+      if (!providers.includes(key)) {
+        check(`  ${label} (live)`, false, `${envVar} not set - skipped`);
+        continue;
+      }
+      const v = await verifyCredentials(key, config.providers?.[key] || {});
+      if (v.status === "ok") {
+        check(`  ${label} (live)`, true, "verified");
+      } else {
+        const reason = { absent: "no key found", invalid: `${v.detail} - renew with: minitok auth login ${key}`, network_error: "unreachable - " + v.detail, error: v.detail, skipped: "skipped (auth none)" }[v.status] || v.detail;
+        check(`  ${label} (live)`, false, reason);
+        allOk = false;
+      }
+    }
   }
   const anyProvider = providers.length > 0;
   allOk = check("LLM provider configured", anyProvider, anyProvider ? `using: ${providers.join(", ")}` : "set at least one provider API key (or configure a custom provider)") && allOk;

@@ -26,11 +26,12 @@ async function cmdRun(task, opts) {
     }
   }
 
-  // Preflight: fail fast with a setup guide when no provider credentials exist.
-  // runPipeline would otherwise burn cycles and end in a 401 from the API.
+    // Preflight: fail fast with a setup guide when no provider credentials exist,
+  // or when a provider key is rejected by the API (401/403). Otherwise
+  // runPipeline would burn cycles and only fail at the first real request.
   try {
-    const { loadConfig } = require("../../config/loader");
-    const { detectAvailableProviders } = require("../../llm/provider");
+    const { loadConfig, resolveProviderName } = require("../../config/loader");
+    const { detectAvailableProviders, verifyCredentials } = require("../../llm/provider");
     const preflightConfig = loadConfig(require("path").join(repoRoot, "minitok.yml"));
     const available = await detectAvailableProviders(preflightConfig);
     if (available.length === 0) {
@@ -44,6 +45,58 @@ async function cmdRun(task, opts) {
       console.error("Or save a key persistently:  minitok auth login <anthropic|openai|google|openrouter>");
       console.error("Then verify with:  minitok doctor");
       return 1;
+    }
+
+    // Live-check credentials, then judge only the providers the roles actually
+    // resolve to. Scope matters: a stale unrelated token (e.g. an old
+    // ~/.minitok/tokens/anthropic.json) must not abort an OpenAI-only run — the
+    // earlier "any rejected provider is fatal" rule made that configuration
+    // completely unrunnable. Unrelated rejected keys are reported as a warning.
+    const aliasOf = { claude: "anthropic", gpt: "openai", gemini: "google" };
+    const canonical = (name) => aliasOf[String(name || "").toLowerCase()] || String(name || "").toLowerCase();
+    const override = canonical(opts.providerOverride);
+    const roleNames = Object.keys(preflightConfig.roles || {});
+    let needed = [...new Set(roleNames.map(role => canonical(resolveProviderName(preflightConfig, role, opts.providerOverride))).filter(Boolean))];
+    if (override) needed = [override];
+    // Nothing selects a provider anywhere -> the pipeline auto-detects, so every
+    // available provider is a live candidate and each one has to be healthy.
+    if (needed.length === 0) needed = available.slice();
+
+    const health = new Map();
+    for (const name of available) {
+      health.set(name, await verifyCredentials(name, preflightConfig.providers?.[name] || {}));
+    }
+    const statusOf = (name) => {
+      if (!available.includes(name)) return "absent";
+      return (health.get(name) || {}).status === "invalid" ? "dead" : "ok";
+    };
+    const neededOk = needed.filter(name => statusOf(name) === "ok");
+    const alternatives = available.filter(name => statusOf(name) === "ok" && !needed.includes(name));
+
+    if (neededOk.length === 0) {
+      console.error("Error: no usable LLM provider for the configured roles (401/403 on every candidate):\n");
+      for (const name of needed) {
+        const state = statusOf(name);
+        const detail = state === "dead" ? (health.get(name) || {}).detail || "key rejected" : "no credentials configured";
+        console.error(`  ${name}: ${detail}`);
+      }
+      if (alternatives.length > 0) {
+        console.error(`\nWorking providers detected: ${alternatives.join(", ")}`);
+        console.error(`Run with:  minitok run "<task>" --provider-override ${alternatives[0]}`);
+        console.error(`Or set it permanently: change roles.*.provider / default_provider in minitok.yml`);
+      }
+      console.error("\nRenew the rejected key:  minitok auth login <provider>   (or set the provider environment variable)");
+      console.error("Then confirm with:      minitok doctor --verify");
+      return 1;
+    }
+
+    const deadUnrelated = available.filter(name => statusOf(name) === "dead" && !needed.includes(name));
+    if (deadUnrelated.length > 0) {
+      console.warn(`[warn] rejected provider(s) not used by the resolved roles: ${deadUnrelated.join(", ")} — continuing with ${neededOk.join(", ")}`);
+    }
+    const deadNeeded = needed.filter(name => statusOf(name) === "dead");
+    if (deadNeeded.length > 0) {
+      console.warn(`[warn] some roles point at a rejected provider (${deadNeeded.join(", ")}); they will fail unless failover is configured.`);
     }
   } catch (preflightError) {
     if (preflightError && preflightError.code) throw preflightError;

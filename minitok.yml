@@ -2,17 +2,24 @@ project:
   name: example-project
   stack: node
 
-default_provider: anthropic
+default_provider: openai
 providers:
+  # Kept so switching back is a one-line change. The Anthropic key on this
+  # machine currently returns 401 — renew it with `minitok auth login anthropic`
+  # or by exporting ANTHROPIC_API_KEY, then set default_provider/roles back to
+  # anthropic.
   anthropic:
     api_key_env: ANTHROPIC_API_KEY
     model: claude-sonnet-4-20250514
+  openai:
+    api_key_env: OPENAI_API_KEY
+    model: gpt-5.6-terra
 
 roles:
-  intel: { provider: anthropic }
-  plan: { provider: anthropic }
-  work: { provider: anthropic }
-  review: { provider: anthropic }
+  intel: { provider: openai }
+  plan: { provider: openai }
+  work: { provider: openai }
+  review: { provider: openai }
 
 execution:
   max_retries: 3

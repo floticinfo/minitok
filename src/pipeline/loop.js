@@ -206,6 +206,7 @@ async function promptConfirmation(changesResult, opts) {
 
 async function runPipelineInWorkspace(task, opts = {}) {
   const startTime = Date.now();
+  let rawRepoContext = null; // P1: computed once (see cycle loop below)
   const repoRoot = opts.repoRoot || process.cwd();
   const configPath = opts.configPath || path.join(repoRoot, "minitok.yml");
   const config = loadConfig(configPath, opts.overrides);
@@ -389,7 +390,10 @@ async function runPipelineInWorkspace(task, opts = {}) {
 
     console.log(`\n🔄 Cycle ${cycle}/${adaptedMaxCycles}`);
     // Context compaction (token savings)
-    const rawRepoContext = getRepoContext(repoRoot);
+    // P1: repo context is static on the real (non-isolated) repo while the
+    // pipeline edits the disposable clone — compute once per run instead of
+    // paying ~5 git spawns every cycle.
+    rawRepoContext ??= getRepoContext(repoRoot);
     const repoContext = compactContext(rawRepoContext, budgetChars);
     writeContextManifest(repoRoot, { goal: task, source: "pipeline", budget_chars: budgetChars, original_chars: rawRepoContext.length, final_chars: repoContext.length, files: ["package.json", "README.md", "minitok.yml"].filter(file => fs.existsSync(path.join(repoRoot, file))) });
 

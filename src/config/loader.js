@@ -157,6 +157,12 @@ function loadYaml(filePath) {
 function resolveProviderName(config, role, override) {
   const providers = config?.providers || {};
   const roleConfig = config?.roles?.[role] || {};
+  // Priority: explicit override > role provider > role adapter > default_provider
+  // > first configured provider. The role adapter fallback is a deliberate
+  // backwards-compatibility contract (tests/test-providers-tiers.js: "uses
+  // legacy adapter before default for compatibility"); provider aliases such as
+  // "claude"/"gpt"/"gemini" are resolved by createProvider(), so it cannot
+  // mis-route a role.
   return override || roleConfig.provider || roleConfig.adapter || config?.default_provider || Object.keys(providers)[0] || "";
 }
 

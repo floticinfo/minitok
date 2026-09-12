@@ -94,6 +94,24 @@ function installWorkspaceDependencies(workspace) {
 }
 
 function createIsolatedWorkspace(repoRoot, isolationRoot) {
+  // Clean up stale minitok-isolation-* directories left by crashed runs.
+  // Without this, repeated failures accumulate temp dirs that consume disk
+  // and interfere with Windows file locking during cleanup.
+  if (!isolationRoot) {
+    try {
+      const tmp = os.tmpdir();
+      const MAX_STALE_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
+      for (const name of fs.readdirSync(tmp, { withFileTypes: true })) {
+        if (!name.isDirectory() || !name.name.startsWith("minitok-isolation-")) continue;
+        const full = path.join(tmp, name.name);
+        try {
+          const stat = fs.statSync(full, { throwIfNoEntry: false });
+          if (!stat || Date.now() - stat.ctimeMs > MAX_STALE_AGE_MS) continue;
+          fs.rmSync(full, { recursive: true, force: true });
+        } catch {}
+      }
+    } catch {}
+  }
   const root = isolationRoot || fs.mkdtempSync(path.join(os.tmpdir(), "minitok-isolation-"));
   if (isolationRoot) fs.mkdirSync(root, { recursive: true });
   assertNoLinks(path.resolve(repoRoot));

@@ -80,6 +80,30 @@ async function cmdRuntimeStart(opts) {
     console.log(`minitok runtime already running (PID ${_readRecord().pid})`);
     return 0;
   }
+
+  // P4: --detach launches the runtime as a background daemon instead of
+  // blocking the terminal forever. The detached child re-enters this same
+  // command without --detach and publishes runtime.pid/runtime.token;
+  // ownership of those files is what "running" means everywhere else, so
+  // stop/status keep working unchanged.
+  if (opts.detach) {
+    const { spawn } = require("child_process");
+    const bin = path.resolve(String(process.argv[1] || ""));
+    const port = String(opts.port ?? 4578);
+    const args = [bin, "runtime", "start", "--port", port];
+    spawn(process.execPath, args, { stdio: "ignore", detached: true, windowsHide: true });
+    for (let attempt = 0; attempt < 15; attempt++) {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      const record = _readRecord();
+      if (record && _isRunning()) {
+        console.log(`minitok runtime started in background (PID ${record.pid}, port ${record.port || port})`);
+        return 0;
+      }
+    }
+    console.error("minitok runtime failed to start in background. Check ~/.minitok/runtime.pid and runtime.token.");
+    return 1;
+  }
+
   const { RuntimeServer } = require("../../runtime/server");
   const server = new RuntimeServer({
     port: opts.port ?? 4578,
