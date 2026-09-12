@@ -143,7 +143,6 @@ class OAuthFlow {
 
   /**
    * Get provider config, merging overrides.
-   * @param {string} provider
    * @param {object} overrides
    * @returns {object}
    */

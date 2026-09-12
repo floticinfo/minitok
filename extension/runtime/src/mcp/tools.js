@@ -74,6 +74,35 @@ function validateArgs(name, args) {
   validateSchema(input, definition.inputSchema, "arguments");
   return args;
 }
+/**
+ * stdout is the JSON-RPC channel for the stdio transport, so pipeline logging
+ * must be diverted to stderr while minitok_run executes. The redirect has to be
+ * reference counted: with two overlapping runs the first completion would
+ * otherwise restore the original console while the second is still logging,
+ * leaking raw pipeline output onto the JSON-RPC stream.
+ */
+const STDOUT_GUARD = { depth: 0, original: null };
+function acquireStdoutGuard() {
+  if (STDOUT_GUARD.depth === 0) {
+    STDOUT_GUARD.original = { log: console.log, info: console.info, warn: console.warn };
+    const toStderr = console.error;
+    console.log = (...values) => toStderr(...values);
+    console.info = (...values) => toStderr(...values);
+    console.warn = (...values) => toStderr(...values);
+  }
+  STDOUT_GUARD.depth += 1;
+}
+function releaseStdoutGuard() {
+  if (STDOUT_GUARD.depth === 0) return;
+  STDOUT_GUARD.depth -= 1;
+  if (STDOUT_GUARD.depth > 0) return;
+  const original = STDOUT_GUARD.original;
+  STDOUT_GUARD.original = null;
+  if (!original) return;
+  console.log = original.log;
+  console.info = original.info;
+  console.warn = original.warn;
+}
 async function _getToolHandler(name, args, services, runtimeOptions = {}) {
   validateArgs(name, args);
   if (name === "minitok_run_list") return { content: [{ type: "text", text: JSON.stringify([...(runtimeOptions.recoveredRuns || []).map(run => ({ run_id: run.run_id, state: run.state, recovery: run.recovery || undefined })), ...[...runtimeOptions.runs?.values?.() || []].map(run => ({ run_id: run.runId, state: run.state || (run.controller.signal.aborted ? "cancelled" : "running"), persistence: run.persistence || runtimeOptions.persistence || null }))]) }] };
@@ -88,20 +117,12 @@ async function _getToolHandler(name, args, services, runtimeOptions = {}) {
       if (args.auto_accept && !runtimeOptions.permissions?.has?.("auto_accept")) throw Object.assign(new Error("auto_accept requires explicit auto_accept permission"), { code: "AUTO_ACCEPT_DENIED" });
       const approvalFile = args.approval_file ? requireApprovalPath(args.approval_file, runtimeOptions.workspaceRoot || process.cwd()) : undefined;
       const pipelineRunner = runtimeOptions.runPipeline || runPipeline;
-      const log = console.log;
-      const info = console.info;
-      const warn = console.warn;
-      const error = console.error;
-      console.log = (...values) => error(...values);
-      console.info = (...values) => error(...values);
-      console.warn = (...values) => error(...values);
+      acquireStdoutGuard();
       let result;
       try {
         result = await pipelineRunner(args.task, { runId: args.run_id, repoRoot, dryRun: args.dry_run === true, autoAccept: args.auto_accept === true && runtimeOptions.permissions?.has?.("auto_accept"), providerOverride: args.provider_override, approvalFile, approvalTimeoutMs: args.approval_timeout_ms, signal: runtimeOptions.signal, onProgress: runtimeOptions.onProgress });
       } finally {
-        console.log = log;
-        console.info = info;
-        console.warn = warn;
+        releaseStdoutGuard();
       }
       return { content: [{ type: "text", text: JSON.stringify({ schema_version: 1, run_id: args.run_id || null, state: result.success ? "completed" : "failed", result }) }] };
     }
@@ -130,4 +151,4 @@ async function getToolHandler(name, args, services, runtimeOptions = {}) {
     return { content: [{ type: "text", text: JSON.stringify(structuredContent) }], structuredContent, isError: true, error: { code, message: error.message } };
   }
 }
-module.exports = { getToolDefinitions, getToolHandler, validateArgs, MCP_ERROR_CODES, requireWorkspacePath, requireApprovalPath };
+module.exports = { getToolDefinitions, getToolHandler, validateArgs, MCP_ERROR_CODES, requireWorkspacePath, requireApprovalPath, acquireStdoutGuard, releaseStdoutGuard };

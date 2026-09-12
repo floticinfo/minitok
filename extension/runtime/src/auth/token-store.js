@@ -30,10 +30,11 @@ class TokenStore {
 
   /**
    * Load stored token data for a provider.
-   * @returns {({ access_token?: string, refresh_token?: string, expires_at?: string } & Record<string, unknown>) | null}
+   * @returns {string}
    */
-  _keychainName(provider) { return `minitok:${provider}`; }
+   _keychainName(provider) { return `minitok:${provider}`; }
 
+  /** @returns {Record<string, unknown> | null} */
   _keychainLoad(provider) {
     try {
       if (process.platform === "win32") return JSON.parse(execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", `(Get-Secret -Name '${this._keychainName(provider)}' -AsPlainText -ErrorAction Stop | ConvertFrom-Json) | ConvertTo-Json -Compress`], { encoding: "utf8", timeout: 5000, windowsHide: true }).trim());
@@ -42,6 +43,7 @@ class TokenStore {
     } catch { return null; }
   }
 
+  /** @param {Record<string, unknown>} record @returns {boolean} */
   _keychainSave(provider, record) {
     const payload = JSON.stringify(record);
     try {

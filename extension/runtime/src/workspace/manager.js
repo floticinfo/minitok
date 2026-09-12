@@ -166,7 +166,14 @@ class WorkspaceManager {
     const resolved = path.resolve(cwd || process.cwd());
     const matches = [];
     for (const ws of Object.values(this._registry.workspaces)) {
-       if (isUnder(fs.realpathSync(resolved), fs.realpathSync(ws.repository_root))) {
+      let resolvedCwd, resolvedRoot;
+      try {
+        resolvedCwd = fs.realpathSync(resolved);
+        resolvedRoot = fs.realpathSync(ws.repository_root);
+      } catch {
+        continue;
+      }
+      if (isUnder(resolvedCwd, resolvedRoot)) {
         matches.push(ws);
       }
     }

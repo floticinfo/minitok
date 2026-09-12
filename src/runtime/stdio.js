@@ -81,7 +81,13 @@ class RuntimeStdio {
     this._fs = options.fs || fs;
     this._workspaceRoot = options.workspaceRoot || process.cwd();
     if (options.authRequired === false || options.entitlementRequired === false) throw new Error("MCP authentication and entitlement are mandatory");
-    this._permissions = new Set(parseLocalMcpScopes(options.permissions || "read"));
+    // Scopes are opt-in: the default stays read-only (tests/test-mcp-remote.js
+    // asserts `["read"]`), and write/auto_accept must be granted explicitly.
+    // Without the env fallback there was no reachable path to grant them, so
+    // every destructive MCP tool failed with PERMISSION_DENIED no matter how
+    // the server was launched. MINITOK_MCP_SCOPES lets `mcp connect --scopes`
+    // and `runtime start --scopes` deliver the grant to the server process.
+    this._permissions = new Set(parseLocalMcpScopes(options.permissions || process.env.MINITOK_MCP_SCOPES || "read"));
     this._authRequired = true;
     this._entitlementRequired = true;
     this._authToken = options.authToken || process.env.MINITOK_MCP_AUTH_TOKEN || loadAuthTokenFile(options.authTokenFile || process.env.MINITOK_MCP_AUTH_TOKEN_FILE, this._fs);
@@ -243,4 +249,4 @@ class RuntimeStdio {
   _errorCode(code) { return code === "INVALID_PARAMS" || code === "INVALID_PATH" || code === "PATH_OUTSIDE_WORKSPACE" ? -32602 : code === "RUN_NOT_FOUND" || code === "TOOL_NOT_FOUND" ? MCP_ERROR_CODES.NOT_FOUND : MCP_ERROR_CODES.TOOL_ERROR; }
   _respond(msg) { process.stdout.write(`${JSON.stringify(msg)}\n`); }
 }
-module.exports = { RuntimeStdio, SUPPORTED_PROTOCOLS, isValidJsonRpcRequest, loadAuthTokenFile };
+module.exports = { RuntimeStdio, SUPPORTED_PROTOCOLS, isValidJsonRpcRequest, loadAuthTokenFile, parseLocalMcpScopes, LOCAL_MCP_SCOPES };

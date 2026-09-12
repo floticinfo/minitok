@@ -81,6 +81,11 @@ async function cmdRuntimeStart(opts) {
     return 0;
   }
 
+  // Local MCP scopes are opt-in; validate here so a typo fails immediately
+  // instead of silently starting a read-only server (or throwing inside a
+  // detached child, where the error would be invisible to the operator).
+  const scopes = opts.scopes ? require("../../runtime/stdio").parseLocalMcpScopes(opts.scopes).join(",") : null;
+
   // P4: --detach launches the runtime as a background daemon instead of
   // blocking the terminal forever. The detached child re-enters this same
   // command without --detach and publishes runtime.pid/runtime.token;
@@ -91,6 +96,7 @@ async function cmdRuntimeStart(opts) {
     const bin = path.resolve(String(process.argv[1] || ""));
     const port = String(opts.port ?? 4578);
     const args = [bin, "runtime", "start", "--port", port];
+    if (scopes) args.push("--scopes", scopes);
     spawn(process.execPath, args, { stdio: "ignore", detached: true, windowsHide: true });
     for (let attempt = 0; attempt < 15; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -111,6 +117,7 @@ async function cmdRuntimeStart(opts) {
     entitlementDir: opts.entitlementDir,
     auditPath: opts.auditPath,
     runtimeToken: opts.runtimeToken || process.env.minitok_runtime_token,
+    permissions: scopes || undefined,
   });
   await server.start();
   return new Promise(() => {});

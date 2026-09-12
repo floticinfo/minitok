@@ -13,11 +13,14 @@ function providerError(name, status) {
   return new Error(`${name} API request failed (${status})`);
 }
 
-function validateProviderEndpoint(raw, label = "Provider endpoint") {
+function validateProviderEndpoint(raw, label = "Provider endpoint", options = {}) {
   let parsed;
   try { parsed = new URL(raw); } catch { throw new Error(`${label} must be a valid URL`); }
   if (!["https:", "http:"].includes(parsed.protocol)) throw new Error(`${label} must use HTTP or HTTPS`);
-  if (parsed.protocol === "http:" && !["localhost", "127.0.0.1", "::1"].includes(parsed.hostname)) throw new Error(`${label} HTTP endpoints are limited to localhost`);
+  const localHost = ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname);
+  const allowLocalHttp = options.allowInsecureLocalEndpoint === true || options.allowInsecureLocalEndpoint === undefined;
+  if (parsed.protocol === "http:" && !localHost) throw new Error(`${label} HTTP endpoints are limited to localhost`);
+  if (parsed.protocol === "http:" && options.strictHttps === true && !allowLocalHttp) throw new Error(`${label} requires HTTPS; explicitly enable allow_insecure_local_endpoint for localhost development`);
   const hostname = parsed.hostname.toLowerCase().replace(/^\[|\]$/g, "");
   if (parsed.protocol === "https:" && (isBlockedAddress(hostname) || hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local") || hostname === "metadata" || hostname === "metadata.google.internal" || hostname === "metadata.google.internal.")) throw new Error(`${label} host is blocked`);
   if (parsed.username || parsed.password) throw new Error(`${label} must not contain credentials`);
@@ -118,8 +121,8 @@ async function resolvePublicEndpoint(raw, label = "Provider endpoint") {
 
 const resolvePublicCustomEndpoint = (raw) => resolvePublicEndpoint(raw, "Custom provider endpoint");
 
-const validateCustomEndpoint = (raw) => {
-  const endpoint = validateProviderEndpoint(raw, "Custom provider endpoint");
+const validateCustomEndpoint = (raw, options = {}) => {
+  const endpoint = validateProviderEndpoint(raw, "Custom provider endpoint", { ...options, strictHttps: true });
   if (new URL(endpoint).protocol === "https:") {
     const hostname = new URL(endpoint).hostname.toLowerCase().replace(/^\[|\]$/g, "");
     if (isBlockedAddress(hostname) || hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local") || hostname === "metadata.google.internal" || hostname === "metadata" || hostname === "metadata.google.internal.") throw new Error("Custom provider endpoint host is blocked");
@@ -504,9 +507,14 @@ class CustomProvider extends LLMProvider {
   constructor(config = {}) {
     super(config._name || "custom", config);
     this.apiKey = config.api_key || "";
-    this.baseUrl = config.base_url ? validateCustomEndpoint(config.base_url) : "";
+    this.baseUrl = config.base_url ? validateCustomEndpoint(config.base_url, { allowInsecureLocalEndpoint: config.allow_insecure_local_endpoint === true || config._name && config._name !== "custom" }) : "";
     this.models = config.models || [];
   }
+  // A custom provider is reachable as soon as a base_url is configured: local
+  // servers (e.g. Ollama) legitimately need no credentials, and complete()
+  // sends an unauthenticated request in that case. Requiring an auth block here
+  // would hide self-hosted providers — see tests/test-providers-tiers.js
+  // "isAvailable with base_url" and "detects custom provider".
   async isAvailable() { return Boolean(this.baseUrl); }
   async complete(messages, options = {}) {
     if (!this.baseUrl) throw new Error(`${this.name}: base_url not configured`);
@@ -516,6 +524,9 @@ class CustomProvider extends LLMProvider {
     const model = validateProviderModel(this.name, options.model || this.config.model || (this.models[0]?.id) || "default", this.config);
     const body = { model, messages: messages.map(m => ({ role: m.role, content: m.content })), max_tokens: options.max_tokens || 4096 };
     const headers = { "Content-Type": "application/json", ...(auth.headers || {}) };
+    if (apiKey && !this.config.auth && headers["x-api-key"]) {
+      delete headers["x-api-key"];
+    }
     if (apiKey && !headers.Authorization && !headers["x-api-key"]) {
       const scheme = this.config.auth?.scheme || "Bearer";
       const header = this.config.auth?.header || "Authorization";
@@ -574,19 +585,105 @@ function createProvider(name, config = {}) {
 }
 
 async function detectAvailableProviders(config) {
-  const p = [];
-  if (await new AnthropicProvider(config.providers?.anthropic || {}).isAvailable()) p.push("anthropic");
-  if (await new OpenAIProvider(config.providers?.openai || {}).isAvailable()) p.push("openai");
-  if (await new GoogleProvider(config.providers?.google || config.providers?.gemini || {}).isAvailable()) p.push("google");
-  if (await new OpenRouterProvider(config.providers?.openrouter || {}).isAvailable()) p.push("openrouter");
-  // Tier 3: detect custom providers with base_url
+  const checks = new Map([
+    ["anthropic", new AnthropicProvider(config.providers?.anthropic || {})],
+    ["openai", new OpenAIProvider(config.providers?.openai || {})],
+    ["google", new GoogleProvider(config.providers?.google || config.providers?.gemini || {})],
+    ["openrouter", new OpenRouterProvider(config.providers?.openrouter || {})],
+  ]);
   for (const [name, cfg] of Object.entries(config.providers || {})) {
-    if (cfg.base_url && !p.includes(name)) {
-      try { if (await new CustomProvider({ ...cfg, _name: name }).isAvailable()) p.push(name); } catch {}
-    }
+    if (!cfg.base_url || checks.has(name)) continue;
+    try { checks.set(name, new CustomProvider({ ...cfg, _name: name })); } catch {}
   }
-  return p;
+  const results = await Promise.all([...checks].map(async ([name, provider]) => {
+    try { return [name, await provider.isAvailable()]; } catch { return [name, false]; }
+  }));
+return results.filter(([, available]) => available).map(([name]) => name);
 }
 
-module.exports = { LLMProvider, FallbackProvider, AnthropicProvider, OpenAIProvider, GoogleProvider, OpenRouterProvider, CustomProvider, createProvider, detectAvailableProviders, fetchWithTimeout, configureRetries, validateProviderModel, _countTokens, _estimateCost };
+// ──────────────────────────────────────────────────────────────────────────
+// Live credential verification (B1/B2): configuration presence (isAvailable)
+// cannot detect an expired/revoked key. verifyCredentials() performs a cheap
+// GET against the provider's models endpoint (8s cap, single attempt) so
+// doctor --verify and the run preflight can surface 401/403 before a run
+// burns cycles. Results are TTL-cached: successes 120s, failures 15s.
+// ──────────────────────────────────────────────────────────────────────────
+const VERIFY_OK_TTL_MS = 120 * 1000;
+const VERIFY_FAIL_TTL_MS = 15 * 1000;
+const PROBE_TIMEOUT_MS = 8000;
+const verifyCache = new Map();
+
+function resetVerifyCache() { verifyCache.clear(); }
+
+async function _probeProvider(provider) {
+  const auth = await provider._resolveAuth().catch(() => ({ headers: {}, token: null }));
+  const headers = { ...(auth.headers || {}) };
+  const token = auth.token || "";
+  const apiKey = provider.apiKey || token || "";
+
+  let url;
+  switch (provider.name) {
+    case "anthropic":
+      if (!apiKey) return { status: "absent", detail: "ANTHROPIC_API_KEY not set" };
+      headers["x-api-key"] = headers["x-api-key"] || apiKey;
+      headers["anthropic-version"] = "2023-06-01";
+      url = "https://api.anthropic.com/v1/models";
+      break;
+    case "openai":
+      if (!apiKey) return { status: "absent", detail: "OPENAI_API_KEY not set" };
+      headers["authorization"] = headers["authorization"] || "Bearer " + apiKey;
+      url = "https://api.openai.com/v1/models";
+      break;
+    case "google":
+      if (!apiKey) return { status: "absent", detail: "GOOGLE_API_KEY / GEMINI_API_KEY not set" };
+      headers["x-goog-api-key"] = headers["x-goog-api-key"] || apiKey;
+      url = "https://generativelanguage.googleapis.com/v1beta/models";
+      break;
+    case "openrouter":
+      if (!apiKey) return { status: "absent", detail: "OPENROUTER_API_KEY not set" };
+      headers["authorization"] = headers["authorization"] || "Bearer " + apiKey;
+      url = "https://openrouter.ai/api/v1/models";
+      break;
+    default: {
+      if (!provider.baseUrl) return { status: "absent", detail: "custom provider without base_url" };
+      if (provider.config?.auth?.type === "none") return { status: "skipped", detail: "auth type none (local)" };
+      if (!apiKey && !Object.keys(headers).length) return { status: "absent", detail: "custom provider without credentials" };
+      if (!Object.keys(headers).some(h => /authorization|x-api-key|token/i.test(h)) && token) headers["authorization"] = "Bearer " + token;
+      url = provider.baseUrl.replace(/\/+$/, "") + "/v1/models";
+    }
+  }
+
+  try {
+    const res = await fetchWithTimeout(url, { method: "GET", headers, retry_network_errors: false }, PROBE_TIMEOUT_MS);
+    if (res.ok) return { status: "ok", detail: "HTTP " + res.status };
+    if (res.status === 401 || res.status === 403) return { status: "invalid", detail: "HTTP " + res.status + " - key rejected" };
+    return { status: "error", detail: "HTTP " + res.status };
+  } catch (error) {
+    return { status: "network_error", detail: String(error?.message || error).slice(0, 200) };
+  }
+}
+
+/**
+ * Live-check a provider's credentials.
+ * @returns {Promise<{status: string, detail: string}>}
+ *   ok | invalid (401/403) | absent | network_error | error | skipped
+ */
+async function verifyCredentials(providerName, providerConfig = {}) {
+  const key = String(providerName).toLowerCase() + "\u0000" + (providerConfig?.base_url || providerConfig?.endpoint || "");
+  const now = Date.now();
+  const hit = verifyCache.get(key);
+  if (hit && now - hit.at < (hit.status === "ok" ? VERIFY_OK_TTL_MS : VERIFY_FAIL_TTL_MS)) return hit;
+  let result;
+  try {
+    const provider = createProvider(providerName, providerConfig);
+    result = await _probeProvider(provider);
+  } catch (error) {
+    result = { status: "error", detail: String(error?.message || error).slice(0, 200) };
+  }
+  result.at = now;
+  verifyCache.set(key, result);
+  return result;
+}
+
+module.exports = { LLMProvider, FallbackProvider, AnthropicProvider, OpenAIProvider, GoogleProvider, OpenRouterProvider, CustomProvider, createProvider, detectAvailableProviders, verifyCredentials, resetVerifyCache, fetchWithTimeout, configureRetries, validateProviderModel, _countTokens, _estimateCost };
 

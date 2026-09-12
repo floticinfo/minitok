@@ -14,15 +14,66 @@ function proxyUrl() {
   return process.env.HTTPS_PROXY || process.env.https_proxy || process.env.HTTP_PROXY || process.env.http_proxy || null;
 }
 
+/** Parse a dotted-quad IPv4 literal into a 32-bit integer, or null. */
+function ipv4ToInt(value) {
+  const parts = String(value).split(".");
+  if (parts.length !== 4) return null;
+  let result = 0;
+  for (const part of parts) {
+    if (!/^\d{1,3}$/.test(part)) return null;
+    const octet = Number(part);
+    if (octet > 255) return null;
+    result = result * 256 + octet;
+  }
+  return result;
+}
+
+/** Match a hostname against an IPv4 CIDR entry such as 10.0.0.0/8. */
+function matchesCidr(hostname, entry) {
+  const slash = entry.indexOf("/");
+  if (slash < 1) return false;
+  const network = ipv4ToInt(entry.slice(0, slash));
+  const host = ipv4ToInt(hostname);
+  const bits = Number(entry.slice(slash + 1));
+  if (network === null || host === null || !Number.isInteger(bits) || bits < 0 || bits > 32) return false;
+  const mask = bits === 0 ? 0 : (0xffffffff << (32 - bits)) >>> 0;
+  return ((network & mask) >>> 0) === ((host & mask) >>> 0);
+}
+
+/**
+ * NO_PROXY entries may be a hostname, a leading-dot domain suffix, an IPv4 CIDR
+ * block, or a host:port pair. Corporate bypass lists routinely use CIDR for
+ * internal ranges; ignoring that shape silently routed the traffic through the
+ * proxy, which surfaces as an unreachable server rather than a config error.
+ */
 function shouldBypassProxy(urlString) {
   const noProxy = process.env.NO_PROXY || process.env.no_proxy;
   if (!noProxy) return false;
-  let hostname;
-  try { hostname = new URL(urlString).hostname; } catch { return false; }
+  let target;
+  try { target = new URL(urlString); } catch { return false; }
+  const hostname = target.hostname.replace(/^\[|\]$/g, "");
+  const port = target.port || (target.protocol === "https:" ? "443" : target.protocol === "http:" ? "80" : "");
   return noProxy.split(",").map(s => s.trim().toLowerCase()).filter(Boolean).some(entry => {
     if (entry === "*") return true;
-    if (hostname === entry.replace(/^\./, "")) return true;
-    return hostname.endsWith(entry.startsWith(".") ? entry : `.${entry}`);
+    let host = entry;
+    // A bracketed IPv6 literal may carry a port: [::1]:8080
+    if (entry.startsWith("[")) {
+      const close = entry.indexOf("]");
+      if (close < 0) return false;
+      host = entry.slice(1, close);
+      const suffix = entry.slice(close + 1);
+      return hostname === host && (!suffix || suffix === `:${port}`);
+    }
+    // Exactly one colon means host:port. More than one is a bare IPv6 literal,
+    // which is only ever matched as an exact host.
+    if ((entry.match(/:/g) || []).length === 1) {
+      const colon = entry.indexOf(":");
+      if (entry.slice(colon + 1) !== port) return false;
+      host = entry.slice(0, colon);
+    }
+    if (matchesCidr(hostname, host)) return true;
+    if (hostname === host.replace(/^\./, "")) return true;
+    return hostname.endsWith(host.startsWith(".") ? host : `.${host}`);
   });
 }
 
