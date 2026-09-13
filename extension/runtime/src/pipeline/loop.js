@@ -790,6 +790,7 @@ async function runPipeline(task, opts = {}) {
   if (!git.isGitRepo(repoRoot)) throw new Error(`Not a git repository: ${repoRoot}`);
   const runLock = acquireRunLock(repoRoot);
   let isolated;
+  let result = null;
   try {
     isolated = createIsolatedWorkspace(repoRoot, opts.isolationRoot);
     // Heal the REAL repository's contract: a contract still marked "running"
@@ -801,7 +802,42 @@ async function runPipeline(task, opts = {}) {
     if (realContract && realContract.status === "running" && realContract.updated_at) {
       writeRealContract(repoRoot, { ...realContract, status: "interrupted" });
     }
-    const result = await runPipelineInWorkspace(task, { ...opts, repoRoot: isolated.path, isolatedWorkspace: true });
+    // The clone is disposable, so its contract disappears with it: without this
+    // mirror the operator-visible contract stayed on "running" (or on the
+    // "interrupted" written by the heal above) after every isolated run, and no
+    // tool could tell a finished run from a crashed one until the next run
+    // healed the file. Only the terminal status is mirrored — the clone's own
+    // contract file is unreadable once `removeIsolatedWorkspace` runs.
+    const mirrorContract = ({ status, approved, merged, error = undefined }) => {
+      try {
+        const cloneContract = readRealContract(isolated.path) || {};
+        writeRealContract(repoRoot, {
+          status,
+          goal: task,
+          verify_command: cloneContract.verify_command,
+          cycles: result?.cycles?.length ?? cloneContract.cycles,
+          success: status === "completed",
+          approved: approved === true,
+          last_cycle_status: result?.last_cycle_status ?? cloneContract.last_cycle_status ?? null,
+          isolated: true,
+          merged: merged === true,
+          ...(error ? { error } : {}),
+        });
+      } catch {
+        // Mirroring is reporting only — it must never change the run's outcome.
+      }
+    };
+    // Pass the operator-visible repository through as `approvalRoot`: the clone
+    // is `repoRoot` for everything the pipeline writes, but an approval request
+    // must land in the workspace the human/editor is actually watching.
+    try {
+      result = await runPipelineInWorkspace(task, { ...opts, repoRoot: isolated.path, approvalRoot: repoRoot, isolatedWorkspace: true });
+    } catch (error) {
+      // The clone's own "failed" contract is deleted with the clone, so the
+      // failure has to be recorded where the operator can still read it.
+      mirrorContract({ status: "failed", approved: false, merged: false, error: error.message });
+      throw error;
+    }
     let applied = false;
     if (result.success && !opts.dryRun) {
       try {
@@ -810,6 +846,7 @@ async function runPipeline(task, opts = {}) {
       } catch (applyError) {
         // Do NOT discard paid pipeline output: the patch is preserved at
         // .minitok/last-run.patch (see isolation.js) — surface it clearly.
+        mirrorContract({ status: "failed", approved: result.approved === true, merged: false, error: applyError.message });
         applyError.message = `${applyError.message}\nThe run itself succeeded; only the final merge into your repository failed.`;
         throw applyError;
       }
@@ -822,6 +859,9 @@ async function runPipeline(task, opts = {}) {
         preserveWorkspaceDiff(repoRoot, isolated.path);
       } catch {}
     }
+    // Terminal state for the operator-visible contract: "completed" only when the
+    // final cycle was approved AND its diff reached the repository (`merged`).
+    mirrorContract({ status: result.success ? "completed" : "failed", approved: result.approved === true, merged: applied });
     // Propagate run evidence out of the disposable clone — the default path
     // removes the isolated workspace, which would otherwise destroy
     // .minitok/evidence/ before it reaches the real repository (README:39-41).

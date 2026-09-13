@@ -308,6 +308,19 @@ test("an isolated run writes and honours the approval file in the real workspace
     assert.equal(fs.readFileSync(path.join(repo, "approved.txt"), "utf8").replace(/\r\n/g, "\n"), "approved_by_human\n");
     assert.equal(fs.existsSync(approvalFile), false, "an answered request is consumed");
     assert.equal(fs.existsSync(`${approvalFile}.response`), false, "the response file is consumed");
+
+    // The clone's own contract is deleted with the clone, so the terminal state has
+    // to reach the operator-visible one: without the mirror it stayed on "running"
+    // (or "interrupted") and no tool could tell a finished run from a crashed one.
+    const contract = JSON.parse(fs.readFileSync(path.join(repo, ".minitok", "contracts", "task-contract.json"), "utf8"));
+    assert.equal(contract.status, "completed");
+    assert.equal(contract.success, true);
+    assert.equal(contract.approved, true);
+    assert.equal(contract.merged, true, "the approved diff reached the repository");
+    assert.equal(contract.isolated, true);
+    assert.equal(contract.last_cycle_status, "APPROVE");
+    assert.equal(contract.goal, undefined, "the goal is stored as a hash, never in clear text");
+    assert.ok(contract.goal_id, "the sanitized goal id is recorded");
   } finally {
     providerModule.createProvider = originalCreateProvider;
     try { fs.rmSync(knowledgePath, { force: true }); } catch {}
