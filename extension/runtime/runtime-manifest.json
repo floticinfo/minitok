@@ -280,8 +280,8 @@
       "embedded": "4023e87bc6dd66a33cd8bbaaab20cc07af46584ced03e6093aaa762e097fef02"
     },
     "runtime/stdio.js": {
-      "source": "56db69695b0f673d69c68f15dc5f989aeb3d2cba453defe8339536546b419e86",
-      "embedded": "56db69695b0f673d69c68f15dc5f989aeb3d2cba453defe8339536546b419e86"
+      "source": "33c8da52ab96e52acaee0222cd3861a94200df01fa8f340a536cdf217cea7e24",
+      "embedded": "33c8da52ab96e52acaee0222cd3861a94200df01fa8f340a536cdf217cea7e24"
     },
     "runtime/workspace.js": {
       "source": "1ccbe48769fd72363230d4a914849ce6b5fc52f5db6496e0b35ce8ac655ff220",

@@ -211,7 +211,7 @@ class RuntimeStdio {
     process.stdin.setEncoding("utf-8");
     let buffer = "";
     process.stdin.on("data", chunk => {
-      const { lines, rest, oversized } = drainStdioLines(buffer, chunk);
+      const { lines, rest, oversized } = drainStdioLines(buffer, String(chunk));
       buffer = rest;
       for (const line of lines) this._handleLine(line.trim());
       if (oversized) {
