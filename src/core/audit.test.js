@@ -16,7 +16,7 @@ function clean(dir) { fs.rmSync(dir, { recursive: true, force: true }); }
 
 describe("auditRead", () => {
   it("returns an empty list for a missing file", () => {
-    const { dir, file } = tmpFile();
+    const { dir } = tmpFile();
     try { assert.deepEqual(auditRead(path.join(dir, "absent.jsonl")), []); }
     finally { clean(dir); }
   });

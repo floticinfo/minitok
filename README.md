@@ -244,6 +244,18 @@ Run `npm run readiness:all` for all three deterministic, local-only customer-fac
 
 Registry update checks run by default. Disable them with `MINITOK_UPDATE_CHECK=0`, `minitok_no_update_check=1`, or `NO_UPDATE_NOTIFIER=1`; checks are also skipped in `CI`.
 
+## Temporary file retention
+
+The pipeline and the test suite both work inside `minitok-*` directories under the OS temp directory and remove them in a `finally` block. A crash, a forced kill or an interrupted test run skips that block; nothing reclaimed the leftovers before, and accumulated residue on a development machine reached 6,306 entries and 5.1 GB.
+
+Reclamation is age-based only, which is what makes it safe next to a live process: an entry is reclaimed only once nothing has touched it for a retention window, and a running pipeline keeps writing inside its own directory, which keeps its timestamps current. Abandoned pipeline workspaces use a 6 hour window, test fixtures 2 hours, and a 10 minute protection period is never reclaimed regardless of the window.
+
+- `npm run temp:sweep` reclaims leftovers on demand. Add `--dry-run` to preview, `--older-than 30m` to change the window, or `--prefixes minitok-` to narrow the scan. The command is time-boxed and reports when a backlog remains.
+- `npm test` runs the same sweep first through `pretest`, so fixtures leaked by an interrupted or failing test run cannot accumulate indefinitely.
+- `minitok run` reclaims abandoned isolation workspaces before creating a new one.
+
+Each sweep inspects at most 20,000 entries and removes at most 200 by default, and it exits successfully even when the temp directory cannot be read, so housekeeping never blocks a run or a test.
+
 ## Privacy
 
 Telemetry is opt-in and remains disabled by default. User prompts, source code, file contents, LLM content, credentials, and repository metadata are not uploaded. See [POLICY.md](./POLICY.md) and [DATA_CLASSIFICATION.md](./DATA_CLASSIFICATION.md). Use is subject to the [EULA](./EULA.md).

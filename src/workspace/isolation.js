@@ -6,6 +6,12 @@ const path = require("path");
 const { execFileSync } = require("child_process");
 const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
 const { packageManagerCommand } = require("../core/package-manager");
+const { sweepTempEntries } = require("../utils/temp-cleanup");
+
+const ISOLATION_TMP_PREFIX = "minitok-isolation-";
+// Workspaces are removed in a `finally` block, so anything untouched for this
+// long belongs to a run that no longer exists.
+const ISOLATION_RETENTION_MS = 6 * 60 * 60 * 1000;
 
 const workspaceBaselines = new Map();
 
@@ -94,25 +100,18 @@ function installWorkspaceDependencies(workspace) {
 }
 
 function createIsolatedWorkspace(repoRoot, isolationRoot) {
-  // Clean up stale minitok-isolation-* directories left by crashed runs.
-  // Without this, repeated failures accumulate temp dirs that consume disk
-  // and interfere with Windows file locking during cleanup.
+  // Reclaim workspaces abandoned by crashed or killed runs. Only age is used as
+  // evidence, so a concurrent run is never disturbed: a live run keeps writing
+  // inside its own directory, which keeps its mtime and ctime current. The
+  // previous inline sweep had the age comparison inverted (it skipped entries
+  // older than the window and deleted recent ones), which preserved ancient
+  // leftovers forever while putting concurrent runs at risk.
   if (!isolationRoot) {
     try {
-      const tmp = os.tmpdir();
-      const MAX_STALE_AGE_MS = 24 * 60 * 60 * 1000; // 24 hours
-      for (const name of fs.readdirSync(tmp, { withFileTypes: true })) {
-        if (!name.isDirectory() || !name.name.startsWith("minitok-isolation-")) continue;
-        const full = path.join(tmp, name.name);
-        try {
-          const stat = fs.statSync(full, { throwIfNoEntry: false });
-          if (!stat || Date.now() - stat.ctimeMs > MAX_STALE_AGE_MS) continue;
-          fs.rmSync(full, { recursive: true, force: true });
-        } catch {}
-      }
+      sweepTempEntries({ prefixes: [ISOLATION_TMP_PREFIX], retentionMs: ISOLATION_RETENTION_MS });
     } catch {}
   }
-  const root = isolationRoot || fs.mkdtempSync(path.join(os.tmpdir(), "minitok-isolation-"));
+  const root = isolationRoot || fs.mkdtempSync(path.join(os.tmpdir(), ISOLATION_TMP_PREFIX));
   if (isolationRoot) fs.mkdirSync(root, { recursive: true });
   assertNoLinks(path.resolve(repoRoot));
   assertNoLinks(root);

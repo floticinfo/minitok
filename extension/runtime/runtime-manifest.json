@@ -62,6 +62,7 @@
     "state/contracts.js",
     "state/run-lock.js",
     "utils/file-permissions.js",
+    "utils/temp-cleanup.js",
     "workspace/isolation.js",
     "workspace/manager.js"
   ],
@@ -298,9 +299,13 @@
       "source": "fcd0d4408472476c9deed589ac8da80396a5fc538866cffe7530ec52b1794443",
       "embedded": "fcd0d4408472476c9deed589ac8da80396a5fc538866cffe7530ec52b1794443"
     },
+    "utils/temp-cleanup.js": {
+      "source": "5af5bf05d14b898c4823681c438fb4ccf6763d8f4466cb6b0104eca802b3fb36",
+      "embedded": "5af5bf05d14b898c4823681c438fb4ccf6763d8f4466cb6b0104eca802b3fb36"
+    },
     "workspace/isolation.js": {
-      "source": "7efebbfe26e24f8cd5cb28d478df66f5996c9764df984f135d2f190a0a5511d8",
-      "embedded": "7efebbfe26e24f8cd5cb28d478df66f5996c9764df984f135d2f190a0a5511d8"
+      "source": "d910b1b76bfa2da53ba1091a1c2b9bbb1cf455f1f65b447b61f338aa9542e7af",
+      "embedded": "d910b1b76bfa2da53ba1091a1c2b9bbb1cf455f1f65b447b61f338aa9542e7af"
     },
     "workspace/manager.js": {
       "source": "c554dcc5b4b0cbcf17cd66304ce35b4478fc52d400aaf06abc7e0582f4e4bc12",
