@@ -17,6 +17,11 @@ const crypto = require("crypto");
 
 const LOCK_FILE = path.join(".minitok", "run.lock");
 const STALE_MS = 24 * 60 * 60 * 1000;
+// An existing lock file that cannot be read yet may be mid-write by its owner:
+// ownership is written immediately after the exclusive create, but a reader can
+// observe the zero-byte window. Reclaiming such a file on sight let two runs own
+// the same workspace at once, which is the race this lock exists to prevent.
+const LOCK_GRACE_MS = 5 * 1000;
 
 function isPidAlive(pid) {
   if (!Number.isInteger(pid) || pid <= 0) return false;
@@ -30,7 +35,10 @@ function isPidAlive(pid) {
 
 function readLockInfo(lockPath) {
   try {
-    return JSON.parse(fs.readFileSync(lockPath, "utf-8"));
+    const info = JSON.parse(fs.readFileSync(lockPath, "utf-8"));
+    // A non-object payload is as unusable as a truncated one; treating it as
+    // "no owner" keeps the stale decision in one place.
+    return info && typeof info === "object" && !Array.isArray(info) ? info : null;
   } catch {
     return null;
   }
@@ -38,9 +46,22 @@ function readLockInfo(lockPath) {
 
 function lockIsStale(lockPath) {
   const info = readLockInfo(lockPath);
-  if (!info) return true;
+  if (!info) {
+    // Empty, truncated or otherwise unreadable. Old enough ⇒ the writer died
+    // between create and write; still fresh ⇒ the owner may be writing right now.
+    try {
+      return Date.now() - fs.statSync(lockPath).mtimeMs > LOCK_GRACE_MS;
+    } catch {
+      // The file vanished between EEXIST and this check: the owner released it.
+      return true;
+    }
+  }
   const sameHost = !info.host || info.host === os.hostname();
-  if (sameHost && !isPidAlive(info.pid)) return true;
+  const pidKnown = Number.isInteger(info.pid) && info.pid > 0;
+  // Only a lock that names a PID on this host can be judged by liveness, and an
+  // unknown PID must not be read as "dead" — that turned a foreign or corrupt
+  // record into an invitation to steal the lock.
+  if (sameHost && pidKnown && !isPidAlive(info.pid)) return true;
   const startedAt = info.started_at ? new Date(info.started_at).getTime() : NaN;
   if (!Number.isNaN(startedAt) && Date.now() - startedAt > STALE_MS) return true;
   return false;
@@ -101,4 +122,4 @@ function acquireRunLock(workspaceRoot, _attempts = 0) {
   };
 }
 
-module.exports = { acquireRunLock, LOCK_FILE, STALE_MS };
+module.exports = { acquireRunLock, LOCK_FILE, STALE_MS, LOCK_GRACE_MS };

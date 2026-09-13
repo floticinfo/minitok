@@ -33,6 +33,18 @@ describe("F1: Workspace", () => {
   it("resolve CWD", () => { const d = tmpDir(); const s = p.join(d, "src"); fs.mkdirSync(s); fs.writeFileSync(p.join(d, "a.txt"), ""); wm.add("cw", d); assert.equal(wm.resolve(null, s).name, "cw"); clean(d); });
   it("ambiguous", () => { const d = tmpDir(); fs.writeFileSync(p.join(d, "a.txt"), ""); wm.add("x", d); wm.add("y", d); assert.throws(() => wm.resolve(null, d), /Ambiguous/); clean(d); });
   it("persist", () => { const d = tmpDir(); fs.writeFileSync(p.join(d, "package.json"), "{}"); wm.add("p", d); const w2 = new (require("../src/workspace/manager").WorkspaceManager)(home); assert.ok(w2.listAll()["p"]); clean(d); });
+  it("fails closed on an unreadable registry lock", () => {
+    // The owner is between `open(..., "wx")` and its first write, or the lock was
+    // truncated. Reading that as "stale" deleted a live lock and let a second
+    // writer into the registry.
+    const lockPath = p.join(home, "workspaces.json.lock");
+    fs.mkdirSync(home, { recursive: true });
+    fs.writeFileSync(lockPath, "");
+    const d = tmpDir(); fs.writeFileSync(p.join(d, "a.txt"), "");
+    assert.throws(() => wm.add("busy", d), /busy/);
+    assert.equal(fs.existsSync(lockPath), true, "a fresh unreadable lock must survive");
+    clean(d);
+  });
   it("repoRoot", () => { assert.equal(wm.repositoryRoot, null); const d = tmpDir(); fs.writeFileSync(p.join(d, "a.txt"), ""); wm.add("r", d); wm.use("r"); assert.equal(wm.repositoryRoot, p.resolve(d)); clean(d); });
 });
 

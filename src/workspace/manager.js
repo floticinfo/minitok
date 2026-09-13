@@ -70,13 +70,25 @@ class WorkspaceManager {
     for (let attempt = 0; attempt < 100; attempt++) {
       try { lockFd = fs.openSync(lockPath, "wx", 0o600); fs.writeFileSync(lockFd, JSON.stringify({ pid: process.pid, host: os.hostname(), token, createdAt: Date.now() })); break; } catch (error) {
         if (error.code !== "EEXIST") throw error;
-        let stale = true;
-        try {
-          const lock = JSON.parse(fs.readFileSync(lockPath, "utf8"));
+        // Fail closed while the owner may still be alive. The old test defaulted
+        // to `stale = true`, so an empty or half-written lock file (the writer is
+        // between create and write) was deleted and two processes wrote the
+        // registry at once. An unreadable file is now only reclaimed by age, and a
+        // lock from another host only by age as well: liveness can be judged for
+        // this host's PIDs alone.
+        let stale = false;
+        let lock = null;
+        try { lock = JSON.parse(fs.readFileSync(lockPath, "utf8")); } catch {}
+        if (lock && typeof lock === "object" && !Array.isArray(lock)) {
+          const sameHost = !lock.host || lock.host === os.hostname();
+          const pidKnown = Number.isInteger(lock.pid) && lock.pid > 0;
           let alive = false;
-          if (lock.host === os.hostname() && Number.isInteger(lock.pid)) { try { process.kill(lock.pid, 0); alive = true; } catch {} }
-          stale = !lock || typeof lock.createdAt !== "number" || Date.now() - lock.createdAt > LOCK_STALE_MS || !alive;
-        } catch {}
+          if (sameHost && pidKnown) { try { process.kill(lock.pid, 0); alive = true; } catch {} }
+          if (typeof lock.createdAt === "number" && Date.now() - lock.createdAt > LOCK_STALE_MS) stale = true;
+          else if (sameHost && pidKnown && !alive) stale = true;
+        } else {
+          try { stale = Date.now() - fs.statSync(lockPath).mtimeMs > LOCK_STALE_MS; } catch { stale = true; }
+        }
         if (stale) { try { fs.unlinkSync(lockPath); } catch {} } else Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, 5);
       }
     }
