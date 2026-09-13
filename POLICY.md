@@ -1,11 +1,11 @@
 # minitok Privacy & Entitlement Policy
 
 > **Document type:** Technical policy — data processing, consent, and entitlement architecture
-> **Version:** 1.1.0
-> **Last updated:** 2026-09-04
+> **Version:** 1.2.0
+> **Last updated:** 2026-09-13
 > **Applies to:** the current `@flotic/minitok` package and compatible `minitok-server` v0.1.0 API
 
-This is a technical description of current implementation behavior. It is not a privacy notice, data-processing agreement, or legal advice. Legal review is required before publication as a legal policy.
+This is a technical description of current implementation behavior. It is not a legal notice, data-processing agreement, or legal advice; the published positions that govern the commercial service are recorded in section 10 and in the privacy notice at https://minitok.dev/privacy.
 
 ## 1. Scope
 
@@ -126,11 +126,18 @@ The telemetry upload boundary excludes user prompts, task descriptions, source c
 | Server schema and unknown-field rejection | `src/api/evolution-telemetry.js` |
 | Server telemetry storage | `evolution_telemetry` schema and database adapter |
 
-## 10. Operator and Legal Decisions Required
+## 10. Published Legal Positions
 
-- TODO: Legal owner must approve the public privacy notice, legal bases, jurisdictions, controller/processor roles, international-transfer wording, and rights-response process.
-- TODO: Operator must confirm production retention periods for account, billing, installation, audit, and backup data; the 90-day telemetry cleanup is an implementation setting, not a complete retention policy.
-- TODO: Operator must confirm the authoritative support/contact address and effective date for public legal documents.
+These are the positions published with the commercial service. They describe the same processing that sections 1 to 9 implement, and they are the statements the operator and the legal owner approved for publication.
+
+- **Controller.** Flotic LC. (유한회사 플로틱), 경기도 용인시 수지구 문인로 57, 3층 301 - 나025호(풍덕천동, 삼익상가), Republic of Korea, is the controller of account, authentication, billing, entitlement, and consented telemetry data. Representative: 박주성. Business registration number: 180-88-03655. The client, the account page, and the minitok server operate under that entity.
+- **Processor and provider roles.** The minitok client sends consented telemetry to the minitok server, which stores it for the purposes published in the privacy notice. Billing is processed by Dodo Payments, hosting is provided by Hetzner, and TLS certificates by Let's Encrypt. Configured LLM providers receive workflow requests under the customer's own provider relationship; Flotic is not a party to it and does not receive that content.
+- **Privacy officer.** 개인정보 보호책임자: 박주성, 대표 (Representative of Flotic LC.), reachable through the contact below.
+- **Legal bases.** Depending on the activity: performance of the subscription contract, compliance with a legal obligation, a legitimate interest in service security, or consent for optional telemetry. Entitlement never implies consent, and telemetry upload additionally requires a valid entitlement (sections 2.1, 2.4, and 6).
+- **Jurisdiction and international transfers.** The service is operated from the Republic of Korea. The providers named above may process data outside the customer's country, including payment, hosting, and certificate data. Where the Personal Information Protection Act (개인정보보호법) applies, the items transferred, the recipients, the purposes, and the retention periods are those listed in the privacy notice at https://minitok.dev/privacy, and any consent the Act requires is collected before the transfer.
+- **Rights.** Access, correction, export, deletion, and anonymization requests go to support@minitok.dev or to the export and deletion endpoints documented on the server. Requests are actioned as soon as practicable and within the period required by applicable law, after the requester is verified. Billing, security, support, and legal records may be retained where the law requires it.
+- **Retention and deletion.** Account and authentication records: while the account exists and for the period required by legal and security obligations. Open telemetry: 30 days. Select aggregate telemetry: 14 days. Private telemetry: not collected. Billing records: as needed to provide the service and to meet tax and accounting obligations. Support and security records: as needed to handle the request, prevent abuse, and resolve disputes. Data is deleted or anonymized when the applicable retention purpose ends, subject to legal retention exceptions. The 90-day telemetry cleanup described in this document is an implementation setting, not the client plan policy.
+- **Contact, version, and effective date.** The authoritative support and privacy contact is support@minitok.dev, and the privacy notice is published at https://minitok.dev/privacy. This document is technical policy version 1.2.0 and takes effect on 2026-09-13.
 
 ## 11. Future Changes
 

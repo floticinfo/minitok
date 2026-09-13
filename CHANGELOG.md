@@ -74,6 +74,12 @@
 
 
 
+### Documentation
+
+- `EULA.md` now publishes the approved commercial terms: the contracting entity **Flotic LC.** with its notice address, Republic of Korea governing law and venue, the Korean consumer-rights carve-out, email support within 24–48 hours Monday–Friday (UTC), the privacy notice URL, and the subscription model with no refunds — fees are charged in advance per period, cancelling stops the following period, the paid period stays usable, and no credit or pro-rated refund is given.
+- `POLICY.md` section 10 records the published legal positions (controller, provider roles, privacy officer, legal bases, international transfers, rights handling, retention) instead of asking for them, `DATA_CLASSIFICATION.md` section 9 points at that section, and `npm run commercial:readiness` no longer reports `BLOCKED` for `legal-owner-approval` or `privacy-owner-approval`.
+- `LEGAL_REVIEW_DRAFT.md` is the record of what was applied, which published page each value came from, and which minitok.dev pages still advertise the refund promise that `EULA.md` no longer offers.
+
 ## 1.3.12 - 2026-09-11
 
 ### Fixes

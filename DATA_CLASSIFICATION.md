@@ -61,8 +61,10 @@ Client -> minitok server: not D4 or D5 payload values
 
 Unknown classification, unknown consent, unknown entitlement, sanitizer failure, server validation failure, or missing credentials blocks telemetry transfer. This technical behavior does not determine whether a legal notice or consent mechanism is sufficient.
 
-## 9. Operator and Legal TODOs
+## 9. Published Positions and Open Items
 
-- TODO: Legal owner must approve personal-data categories, legal bases, controller/processor roles, international-transfer disclosures, and rights language.
-- TODO: Operator must document retention and deletion behavior for account, billing, installation, audit-log, and backup copies.
-- TODO: Operator must confirm whether hostnames, IP addresses, support messages, Sentry events, and infrastructure logs are included in the public data inventory.
+The legal positions for the categories above are recorded in [POLICY.md](./POLICY.md) section 10: controller and processor roles, privacy officer, legal bases, international-transfer disclosure, rights handling, and retention periods.
+
+- Account and authentication records are kept while the account exists and for the period required by legal and security obligations. Open telemetry records are kept for 30 days, Select aggregate telemetry for 14 days, and Private telemetry is not collected. Billing records are kept as needed to meet tax and accounting obligations, and support and security records as needed to handle the request, prevent abuse, and resolve disputes.
+- Support messages are processed under the support address published in POLICY.md section 10.
+- Open item for the operator: confirm whether hostnames, IP addresses, support messages, Sentry events, and infrastructure logs are part of the public inventory, and record the source that answers it. Until then this document classifies what the client and server implementations send, as described in sections 4 to 8.

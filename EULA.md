@@ -1,8 +1,8 @@
 # minitok Commercial End User License Agreement
 
-**Effective date:** 2026-08-31
+**Effective date:** 2026-09-13
 
-This Commercial End User License Agreement ("Agreement") is between Flotic LC ("Flotic") and the person or organization that purchases or uses minitok ("Customer").
+This Commercial End User License Agreement ("Agreement") is between Flotic LC. ("Flotic", 유한회사 플로틱) and the person or organization that purchases or uses minitok ("Customer").
 
 ## 1. License grant
 
@@ -18,15 +18,19 @@ Customer is responsible for repository backups, generated code review, provider 
 
 ## 4. Billing and entitlement
 
-Subscriptions, cancellation, refunds, and billing periods are governed by the purchase terms displayed at checkout and the applicable refund policy. Entitlements may be suspended or revoked for non-payment, refund, chargeback, abuse, or violation of this Agreement.
+Subscriptions are charged in advance for the billing period displayed at checkout and renew automatically for the same period until cancelled; there is no free plan or free trial. Cancellation can be made at any time through the Dodo customer portal linked from the account page, and takes effect at the end of the current billing period: the period already paid for stays available for its full term, and no further charge is made from the following period. Fees already paid are not refunded, and no credit or pro-rated refund is given for the unused part of a period. This does not limit any non-waivable right Customer has under Korean consumer law. Taxes, if applicable, are shown at checkout, and LLM provider usage is billed separately by the provider.
+
+Entitlements may be suspended or revoked for non-payment, chargeback, abuse, violation of this Agreement, or where required by law. Each activation is bound to one installation and subject to the plan's device limits. The plan determines which features are available; telemetry is always subject to Customer's consent, and the Private plan never uploads or stores telemetry.
 
 ## 5. Updates and support
 
-Flotic may provide updates, security fixes, and compatibility changes. Update notifications are optional and can be disabled with `minitok_no_update_check=1`. Support is provided according to the plan or purchase terms.
+Flotic may provide updates, security fixes, and compatibility changes. Update notifications are optional and can be disabled with `minitok_no_update_check=1`.
+
+Support is provided by email to support@minitok.dev. Flotic responds within 24–48 hours, Monday–Friday (UTC), and prioritises active subscribers' billing and account questions when possible; this is not a guaranteed response-time SLA. Provider outages, model behaviour, and Customer-authored verification commands are outside support scope.
 
 ## 6. Privacy
 
-Personal data handling is described in the minitok Privacy Policy. Customer can use the account export and deletion endpoints described in the server documentation.
+Personal data handling is described in the minitok privacy notice at https://minitok.dev/privacy, which forms part of this Agreement. Telemetry upload is disabled by default and happens only with Customer's explicit consent, as described in that notice. Customer can use the account export and deletion endpoints described in the server documentation, or write to support@minitok.dev.
 
 ## 7. Warranty disclaimer
 
@@ -44,6 +48,16 @@ This Agreement terminates automatically if Customer materially breaches it or th
 
 This Agreement is the complete agreement regarding the license granted here and may be updated for future releases. If any provision is unenforceable, the remaining provisions remain effective.
 
-For questions, contact support@minitok.dev.
+## 11. Contracting entity and notices
 
-> TODO: Legal owner must approve the contracting entity, governing law, venue, consumer-rights wording, billing/refund terms, privacy notice reference, and effective date before this agreement is presented as binding legal text.
+This Agreement is entered into with Flotic LC. (유한회사 플로틱), the licensor of minitok. Representative: 박주성. Business registration number: 180-88-03655. Notice address: 경기도 용인시 수지구 문인로 57, 3층 301 - 나025호(풍덕천동, 삼익상가), Republic of Korea. Notices to Flotic must be sent to that address or by email to support@minitok.dev.
+
+## 12. Governing law and venue
+
+This Agreement is governed by the laws of the Republic of Korea, without regard to its conflict-of-law rules. Disputes are subject to the courts of the Republic of Korea, and Customer may also bring proceedings at their place of residence as provided by Korean law.
+
+## 13. Consumer rights
+
+Nothing in this Agreement excludes or limits a right Customer has under mandatory Korean law, including the Act on the Regulation of Terms and Conditions (약관의 규제에 관한 법률) and the Act on Consumer Protection in Electronic Commerce (전자상거래 등에서의 소비자보호에 관한 법률). Where such law applies, it prevails over sections 7, 8, and 9.
+
+For questions, contact support@minitok.dev.

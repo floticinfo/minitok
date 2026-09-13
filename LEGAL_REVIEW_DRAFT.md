@@ -1,24 +1,30 @@
 # Legal review draft — EULA.md and POLICY.md review notes
 
-**Status: DRAFT for owner and legal review. This file is not an approval and not legal advice.**
-It does not change `EULA.md`, `POLICY.md`, or any gate state: while the review
-notes remain in those documents, `legal-owner-approval` and
-`privacy-owner-approval` stay `BLOCKED` in `npm run commercial:readiness`, and no
-approval manifest can clear them.
+**Status: APPLIED on 2026-09-13. The owner approved the text, so this is no longer a draft.**
+The review notes were replaced in `EULA.md`, `POLICY.md`, and
+`DATA_CLASSIFICATION.md`, so `legal-owner-approval`, `privacy-owner-approval`,
+`support-commitments`, and `production-operations` no longer carry document markers
+and report `UNVERIFIED` in `npm run commercial:readiness`. They still need the
+recorded owner decision in an approval manifest before they can pass.
 
-Use it as drop-in text for the owners named below. Every bracket value is a
-decision only they can make (`[CONTRACTING ENTITY]`, `[NOTICE ADDRESS]`,
-`[SUPPORT HOURS]`, `[PERIOD]`, ...).
+This file is now the record of what was applied, which published page each value
+came from, and which pages must change to stay consistent with it.
 
-## Decisions recorded so far
+## Decisions recorded
 
-| Decision | Value | Recorded |
-|---|---|---|
-| Governing law and venue | **Republic of Korea** (EULA §12, §13) | 2026-09-13 |
-| Refunds | **None.** Fees are charged in advance per period; cancelling stops the following period, the paid period stays usable, and no credit or pro-rated refund is given (EULA §4, review notes in §2.6) | 2026-09-13 |
-
-Every other bracket in sections 2 and 3 still needs an owner value; section 5 lists
-them with a suggested default.
+| Decision | Value | Applied in | Recorded |
+|---|---|---|---|
+| Contracting entity | **Flotic LC.** (the legal form includes the trailing period; 유한회사 플로틱), Representative 박주성, business registration number 180-88-03655 | EULA §11 | 2026-09-13 |
+| Notice address | 경기도 용인시 수지구 문인로 57, 3층 301 - 나025호(풍덕천동, 삼익상가), Republic of Korea | EULA §11 | 2026-09-13 |
+| Governing law and venue | **Republic of Korea**; the customer may also sue at their place of residence | EULA §12, §13 | 2026-09-13 |
+| Refunds | **None.** Fees are charged in advance per period, cancelling stops the following period, the paid period stays usable, no credit or pro-rated refund; one sentence preserves non-waivable Korean consumer rights | EULA §4 | 2026-09-13 |
+| Cancellation path | the Dodo customer portal linked from the account page | EULA §4 | 2026-09-13 |
+| Support channel and hours | email to support@minitok.dev, 24–48 hours, Monday–Friday (UTC), not a guaranteed SLA | EULA §5 | 2026-09-13 |
+| Privacy notice | https://minitok.dev/privacy | EULA §6, POLICY §10 | 2026-09-13 |
+| Rights, processor, and transfer contact | support@minitok.dev | POLICY §10 | 2026-09-13 |
+| Retention | Open telemetry 30 days, Select aggregate 14 days, Private none; account while the account exists; billing, support, and security as needed | POLICY §10, DATA_CLASSIFICATION §9 | 2026-09-13 |
+| Controller and privacy officer | Flotic LC. (유한회사 플로틱); 개인정보 보호책임자 박주성, 대표 | POLICY §10 | 2026-09-13 |
+| Effective date and version | EULA 2026-09-13; POLICY version 1.2.0 on 2026-09-13 | both | 2026-09-13 |
 
 Replacing the notes with approved wording clears the `BLOCKED` status but does
 **not** pass the gate on its own: the manifest prepared by
@@ -38,18 +44,20 @@ The markers are matched by `scripts/commercial-readiness.mjs`. After replacing
 them, run the readiness command in section 5 to confirm the two `BLOCKED` rows
 became `UNVERIFIED`.
 
-## 2. `EULA.md` — drop-in text
+## 2. `EULA.md` — what was applied
 
-### 2.1 Replace the final review blockquote
+### 2.1 Applied entity, governing law, and consumer-rights text
 
 Replace the trailing blockquote with the sections below and keep the support
 sentence that precedes it:
 
 ```markdown
-## 11. Contracting entity
+## 11. Contracting entity and notices
 
-This Agreement is entered into with [CONTRACTING ENTITY, e.g. "Flotic LC"], the
-licensor of minitok. Notices to Flotic must be sent to [NOTICE ADDRESS] or
+This Agreement is entered into with Flotic LC. (유한회사 플로틱), the licensor of
+minitok. Representative: 박주성. Business registration number: 180-88-03655. Notice
+address: 경기도 용인시 수지구 문인로 57, 3층 301 - 나025호(풍덕천동, 삼익상가), Republic of
+Korea. Notices to Flotic must be sent to that address or by email to
 support@minitok.dev.
 
 ## 12. Governing law and venue
@@ -57,10 +65,9 @@ support@minitok.dev.
 This Agreement is governed by the laws of the Republic of Korea, without regard to
 its conflict-of-law rules. Disputes are subject to the courts of the Republic of
 Korea, and Customer may also bring proceedings at their place of residence as
-provided by Korean law. [OPTIONAL: name a specific court, e.g. the Seoul Central
-District Court, if the reviewer confirms an exclusive-jurisdiction clause is
-enforceable against consumers under the Act on the Regulation of Terms and
-Conditions.]
+provided by Korean law. No specific court was named, because an
+exclusive-jurisdiction clause is constrained against consumers by the Act on the
+Regulation of Terms and Conditions.
 
 ## 13. Consumer rights
 
@@ -70,7 +77,8 @@ Korean law, including the Act on the Regulation of Terms and Conditions (약관�
 (전자상거래 등에서의 소비자보호에 관한 법률). Where such law applies, it prevails
 over sections 7, 8, and 9.
 
-Last reviewed: [REVIEW DATE] by [LEGAL OWNER NAME AND ROLE].
+No "last reviewed" line was added: the published agreement ends with the support
+contact line instead, and the approval record lives in the approval manifest.
 ```
 
 ### 2.2 Replace section 4 (billing and entitlement)
@@ -79,13 +87,15 @@ Last reviewed: [REVIEW DATE] by [LEGAL OWNER NAME AND ROLE].
 ## 4. Billing and entitlement
 
 Subscriptions are charged in advance for the billing period displayed at checkout
-and renew automatically for the same period until cancelled. Cancellation can be
-made at any time through [CANCELLATION PATH, e.g. the customer portal or
-billing@minitok.dev] and takes effect at the end of the current billing period: the
-period already paid for stays available for its full term, and no further charge is
-made from the following period. Fees already paid are not refunded, and no credit
-or pro-rated refund is given for the unused part of a period. This does not limit
-any non-waivable right Customer has under Korean consumer law.
+and renew automatically for the same period until cancelled; there is no free plan
+or free trial. Cancellation can be made at any time through the Dodo customer
+portal linked from the account page, and takes effect at the end of the current
+billing period: the period already paid for stays available for its full term, and
+no further charge is made from the following period. Fees already paid are not
+refunded, and no credit or pro-rated refund is given for the unused part of a
+period. This does not limit any non-waivable right Customer has under Korean
+consumer law. Taxes, if applicable, are shown at checkout, and LLM provider usage
+is billed separately by the provider.
 
 Entitlements may be suspended or revoked for non-payment, chargeback, abuse,
 violation of this Agreement, or where required by law. Each activation is bound to
@@ -94,19 +104,19 @@ features are available; telemetry is always subject to Customer's consent, and t
 Private plan never uploads or stores telemetry.
 ```
 
-### 2.3 Replace section 6 (privacy)
+### 2.3 Applied section 6 (privacy)
 
 ```markdown
 ## 6. Privacy
 
 Personal data handling is described in the minitok privacy notice at
-[PRIVACY NOTICE URL], which forms part of this Agreement. Telemetry upload is
-disabled by default and happens only with Customer's explicit consent, as
-described in that notice. Customer can use the account export and deletion
-endpoints described in the server documentation.
+https://minitok.dev/privacy, which forms part of this Agreement. Telemetry upload is
+disabled by default and happens only with Customer's explicit consent, as described
+in that notice. Customer can use the account export and deletion endpoints described
+in the server documentation, or write to support@minitok.dev.
 ```
 
-### 2.4 Replace the section 5 support wording (also the `support-commitments` signal)
+### 2.4 Applied section 5 support wording (also the `support-commitments` signal)
 
 ```markdown
 ## 5. Updates and support
@@ -114,32 +124,40 @@ endpoints described in the server documentation.
 Flotic may provide updates, security fixes, and compatibility changes. Update
 notifications are optional and can be disabled with `minitok_no_update_check=1`.
 
-Support is provided according to the plan or purchase terms: [SUPPORT CHANNEL,
-e.g. "email to support@minitok.dev"] during [SUPPORT HOURS, e.g. "business hours
-in [TIMEZONE]"], with security fixes prioritised over feature requests.
-[ESCALATION PATH, e.g. "unresolved issues escalate to [ROLE] within [N] business
-days"]. Provider outages, model behaviour, and Customer-authored verification
-commands are outside support scope.
+Support is provided by email to support@minitok.dev. Flotic responds within 24–48
+hours, Monday–Friday (UTC), and prioritises active subscribers' billing and account
+questions when possible; this is not a guaranteed response-time SLA. Provider
+outages, model behaviour, and Customer-authored verification commands are outside
+support scope.
 ```
+
+No internal escalation promise was added: the published support page does not state
+one, and the EULA should not promise more than the support page advertises.
 
 ### 2.5 Effective date
 
-Keep the existing `**Effective date:**` line and set it to the date the approved
-text is published. If the text changes later, add a "Last updated" line instead of
-reusing the original effective date.
+Applied: `**Effective date:** 2026-09-13`, the date the owner approved this text. If
+the text changes later, add a "Last updated" line instead of reusing the original
+effective date.
 
 ### 2.6 Review notes on the Korean subscription model
 
-- **No refunds.** The rule is stated the way other subscription services state it:
-  fees are charged in advance, cancelling stops the following period, the paid
-  period stays usable, and no credit or pro-rated refund is given. Korean consumer
-  law can still grant a withdrawal right for a first purchase of digital content
-  within a short statutory period, which is why section 4 keeps one sentence saying
-  it does not limit a non-waivable right. The reviewer decides whether to keep,
-  reword, or delete that sentence; if it is deleted, the operator must be ready to
-  handle first-purchase withdrawal requests. Note that refunds are also named in
-  the entitlement-revocation list of the published EULA — the text above drops it,
-  because a refund is no longer a contract term.
+- **No refunds, and the published refund page that now contradicts them.** The rule
+  is stated the way other subscription services state it: fees are charged in
+  advance, cancelling stops the following period, the paid period stays usable, and
+  no credit or pro-rated refund is given. The live minitok.dev pages still advertise
+  a different promise — "Request a full refund for the initial purchase within 7
+  days, subject to the Refund Policy" on the pricing page, the plan cards, and the
+  FAQ, plus a complete Refund & Cancellation Policy at `/refund` and a "Refund"
+  contact-form category. Section 6 lists the exact edits those pages need. Korean
+  consumer law can also grant a withdrawal right for a first purchase of digital
+  content within a short statutory period, which is why section 4 keeps one sentence
+  saying it does not limit a non-waivable right: removing the advertised window is a
+  commercial decision, not a removal of the underlying legal right, and if that
+  sentence is ever deleted the operator must handle first-purchase withdrawal
+  requests anyway. Refunds were also named in the entitlement-revocation list of the
+  published EULA; the applied text drops it because a refund is no longer a
+  contract term.
 - **Renewal handling.** Confirm the current advance-notice and cancellation-path
   requirements for automatic renewal under Korean e-commerce law, and make the
   portal and `minitok` CLI surface the cancellation path that section 4 promises.
@@ -149,7 +167,20 @@ reusing the original effective date.
   whether Korean law and venue are intended for all customers or only for customers
   in Korea.
 
-## 3. `POLICY.md` — drop-in text
+## 3. `POLICY.md` — what was applied
+
+`POLICY.md` no longer carries review sentences. The header now reads "It is not a
+legal notice, data-processing agreement, or legal advice; the published positions
+that govern the commercial service are recorded in section 10 and in the privacy
+notice at https://minitok.dev/privacy.", and section 10 was replaced by "Published
+Legal Positions" with the controller, provider roles, privacy officer, legal bases,
+jurisdiction and transfers, rights, retention, and the contact/version/effective
+date (version 1.2.0, 2026-09-13). `DATA_CLASSIFICATION.md` §9 points at those
+positions instead of carrying its own TODOs.
+
+The bracketed samples below are kept as the record of what was proposed; the applied
+text is the version inside `POLICY.md`, and the values behind it are listed in
+section 5.
 
 ### 3.1 Replace the review sentence in the header block
 
@@ -228,27 +259,27 @@ legal wording must not contradict.
 | Website `https://minitok.dev`, docs `https://minitok.dev/docs`, `support@minitok.dev` | `package.json` (`homepage`, `bugs`), `PROMOTION_KIT.md` (canonical links), `EULA.md` closing line | EULA §11 notice address, §6 privacy notice URL, POLICY contact block |
 | Publishing rules forbid guaranteed correctness, universal speedups, deployment proof, and AI-model status | `PROMOTION_KIT.md` (publishing rules) | Do not add uptime, accuracy, or outcome guarantees while approving sections 2 and 3 |
 
-## 5. Still to decide, and how to verify
+## 5. Values applied, and where each one came from
 
-| # | Bracket | Where | Suggested default |
+| # | Value | Source | Applied in |
 |---|---|---|---|
-| 1 | `[CONTRACTING ENTITY]` | EULA §11 | Confirm "Flotic LC", or the Korean entity that invoices |
-| 2 | `[NOTICE ADDRESS]` | EULA §11 | Registered address, or `support@minitok.dev` |
-| 3 | `[CANCELLATION PATH]` | EULA §4 | Customer portal, falling back to `billing@minitok.dev` |
-| 4 | optional specific court | EULA §12 | Omit unless the reviewer wants the Seoul Central District Court |
-| 5 | `[SUPPORT CHANNEL]`, `[SUPPORT HOURS]`, `[TIMEZONE]`, `[ROLE]`, `[N]` | EULA §5 | Business-hours email support with a named internal escalation role |
-| 6 | `[PRIVACY NOTICE URL]` | EULA §6 | The public path that serves this `POLICY.md` |
-| 7 | `[DPA CONTACT OR URL]` | POLICY §3.1 | `privacy@minitok.dev`, or a data-processing-agreement request page |
-| 8 | `[PRIVACY OWNER NAME AND ROLE]`, `[APPROVAL DATE]` | POLICY §3.1 | The reviewer who approves publication, and the date |
-| 9 | `[CONTROLLER LEGAL ENTITY AND ADDRESS]`, `[PROCESSOR ROLE]` | POLICY §10 | Same entity as EULA §11; state the processor role for customer-enabled telemetry |
-| 10 | `[PROCESSING REGIONS]`, `[REGION GROUP]`, `[TRANSFER MECHANISM]` | POLICY §10 | Republic of Korea; for any overseas transfer, confirm the requirements of the Personal Information Protection Act (개인정보보호법) |
-| 11 | `[RIGHTS CONTACT]`, `[RESPONSE PERIOD]` | POLICY §10 | `privacy@minitok.dev`, 30 days |
-| 12 | `[PERIOD]` (account, billing, telemetry, audit, backups) | POLICY §10 | Telemetry no longer than the published 30-day (Open) and 14-day (Select) client policies |
-| 13 | `[SUPPORT ADDRESS]`, `[EFFECTIVE DATE]`, `[VERSION]` | POLICY §10 | `support@minitok.dev`, publication date, document version |
-| 14 | `[REVIEW DATE]`, `[LEGAL OWNER NAME AND ROLE]` | EULA §11–§13 block | The reviewer names and the review date |
+| 1 | `Flotic LC.` (the legal form includes the trailing period) | owner decision, matching minitok.dev/terms §10 and floticinfo.com | EULA §11 |
+| 2 | 경기도 용인시 수지구 문인로 57, 3층 301 - 나025호(풍덕천동, 삼익상가) | floticinfo.com footer and privacy policy 제9조 | EULA §11 |
+| 3 | the Dodo customer portal linked from the account page | minitok.dev/terms §3 and /privacy §3 | EULA §4 |
+| 4 | no named court: the courts of the Republic of Korea, and the customer may also sue at their residence | owner decision (Republic of Korea) | EULA §12 |
+| 5 | email to support@minitok.dev, 24–48 hours, Monday–Friday (UTC), no guaranteed SLA | minitok.dev/support | EULA §5 |
+| 6 | https://minitok.dev/privacy | minitok.dev/privacy | EULA §6 |
+| 7 | support@minitok.dev ("contact support@minitok.dev for processor and transfer details") | minitok.dev/privacy §6 | POLICY §10 |
+| 8 | 박주성, 대표 (개인정보 보호책임자) | floticinfo.com privacy policy 제9조 | POLICY §10 |
+| 9 | Flotic LC. (유한회사 플로틱) as controller; the server stores consented telemetry; LLM providers are the customer's own relationship | minitok.dev/privacy §5, §6 | POLICY §10 |
+| 10 | operated from the Republic of Korea; Dodo Payments, Hetzner, and Let's Encrypt may process data outside the customer's country; the PIPA disclosures are those listed in the privacy notice | minitok.dev/privacy §6 | POLICY §10 |
+| 11 | support@minitok.dev; actioned as soon as practicable and within the period required by applicable law | minitok.dev/privacy §8 | POLICY §10 |
+| 12 | Open telemetry 30 days, Select aggregate 14 days, Private none, account while the account exists, billing/support/security as needed | minitok.dev/privacy §7 | POLICY §10, DATA_CLASSIFICATION §9 |
+| 13 | support@minitok.dev, effective 2026-09-13, technical policy version 1.2.0 | owner decision | POLICY §10 |
+| 14 | not used: the applied EULA ends with the support contact line instead of a "last reviewed" line, which a published agreement does not need | — | — |
 
-Recorded already: governing law and venue = Republic of Korea; refunds = none (see
-"Decisions recorded so far").
+Two items stay open: a named specific court for EULA §12, and the data-inventory
+question recorded in `DATA_CLASSIFICATION.md` §9.
 
 Verify after applying the text:
 
@@ -262,6 +293,34 @@ MINITOK_COMMERCIAL_APPROVAL_MANIFEST=../approvals.json npm run release:verify
 The document text itself is not machine-parsed beyond the review-note markers in
 `scripts/commercial-readiness.mjs`, so `npm start`-style behaviour, tests, and
 `npm run docs:check` are unaffected by the wording chosen here.
+
+## 6. Published pages that must change to stay consistent
+
+The applied text and the live pages disagree in one important place: **minitok.dev
+still advertises a refund that EULA §4 no longer offers.** These are live fetches
+from 2026-09-13, so each line below is the text to search for.
+
+| Page | Current published text | Required change |
+|---|---|---|
+| `https://minitok.dev/pricing` | "Request a full refund for the initial purchase within 7 days, subject to the Refund Policy." | Replace with the applied model: renews automatically until cancelled, cancel any time through the Dodo customer portal, the paid period stays usable, no refund for the unused part |
+| `https://minitok.dev` FAQ | "Each includes one installation; no free trial, cancel anytime, and an initial-purchase refund request within 7 days, subject to the Refund Policy." and the pricing-card copy "Request an initial-purchase refund within 7 days" | Drop the refund half-sentence from both; keep "no free trial" and "cancel anytime" |
+| `https://minitok.dev/refund` | The complete Refund & Cancellation Policy, including the 7-day initial-purchase refund, the post-initial-purchase exclusions, and the payment-failure and processing sections | Reduce it to the cancellation model of EULA §4, or unpublish the page |
+| Footer, every page | Legal → "Refund Policy" | Remove the link once the page changes |
+| `https://minitok.dev/support` | Contact-form category "Refund" | Remove the category, or fold it into billing questions |
+| `https://minitok.dev/terms` §3 | Already matches: "cancel at any time through the Dodo customer portal; access continues through the current paid billing period" | Keep as-is |
+| `https://minitok.dev/terms` §9 | "The registered address and any jurisdiction-specific governing-law or venue terms should be confirmed with support@minitok.dev before purchasing; this page does not invent a jurisdiction where one has not been confirmed." | Replace with the applied position: governed by the laws of the Republic of Korea, courts of the Republic of Korea, plus the notice address from EULA §11 |
+| `https://minitok.dev/terms` §10 | Company block without the address | Add the notice address from EULA §11 so the website and the EULA name the same entity and address |
+| `https://floticinfo.com` footer vs privacy policy | Footer says "경기도 용인시 수지구 문인로 57, 3층 301호"; the privacy policy 제9조 says "…3층 301 - 나025호(풍덕천동, 삼익상가)" | Use one form in both places, so the EULA notice address has a single published twin |
+| `https://minitok.dev/terms`, `/privacy`, `/refund` | "Last updated: August 2026" | Update the date when these pages change |
+
+Also re-read section 2.6: the live 7-day window is close to the statutory
+withdrawal period for a first purchase of digital content under Korean consumer law,
+so removing it is a commercial decision, not a removal of the underlying right. That
+is why the applied EULA §4 keeps the sentence preserving non-waivable rights.
+
+The website source is not part of this repository (`minitok-client-release` ships
+the CLI, the Extension, and the legal text only), so these edits have to be made
+wherever minitok.dev is deployed from.
 
 
 
