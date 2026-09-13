@@ -5,6 +5,23 @@ const path = require("path");
 const { runPipeline } = require("../pipeline/loop");
 
 const MCP_ERROR_CODES = Object.freeze({ INVALID_PARAMS: -32602, AUTH_REQUIRED: -32001, PERMISSION_DENIED: -32003, NOT_FOUND: -32004, RUN_LIMIT_REACHED: -32005, TOOL_ERROR: -32000 });
+
+/**
+ * Colour policy for the MCP surface.
+ *
+ * MCP is the one product surface that must stay colour-free. Every response is
+ * JSON-RPC that the host renders -- `content[].text` is inserted into the
+ * client's own transcript, often through a pager, a log file or a CI capture --
+ * so a sequence from `src/core/palette.js` would be displayed literally as
+ * `\x1b[38;2;...m` instead of being interpreted. Nothing here imports the
+ * palette module: brand identity reaches this surface through the tool names,
+ * the descriptions and the structured payload, and the host applies its own
+ * theme to the result.
+ *
+ * The same rule applies to the runtime resources and prompts in
+ * `src/runtime/stdio.js` (`minitok://status`, `minitok://runs`,
+ * `minitok_task`): they are data, not decoration.
+ */
 const TOOLS = [
   { name: "minitok_run_list", description: "List minitok runs", annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", properties: {}, additionalProperties: false } },
   { name: "minitok_run_get", description: "Get a minitok run by run_id", annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", properties: { run_id: { type: "string", minLength: 1, maxLength: 128 } }, required: ["run_id"], additionalProperties: false } },
