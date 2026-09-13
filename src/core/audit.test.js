@@ -52,14 +52,17 @@ describe("auditRead", () => {
     try {
       const lines = [];
       // ~250KB with 3-byte characters guarantees several 64KB chunks and a
-      // chunk boundary landing inside a character.
-      for (let n = 1; n <= 6000; n += 1) lines.push(JSON.stringify({ n, text: "한글테스트값" }));
+      // chunk boundary landing inside a character. The fixture is written as
+      // escapes so the source stays ASCII while the runtime string stays
+      // multi-byte (Korean Hangul, 3 bytes per character in UTF-8).
+      const multibyteText = "\uD55C\uAE00\uD14C\uC2A4\uD2B8\uAC12";
+      for (let n = 1; n <= 6000; n += 1) lines.push(JSON.stringify({ n, text: multibyteText }));
       fs.writeFileSync(file, `${lines.join("\n")}\n`);
       const entries = auditRead(file, 6000);
       assert.equal(entries.length, 6000);
       assert.equal(entries[0].n, 1);
       assert.equal(entries[5999].n, 6000);
-      for (const entry of entries) assert.equal(entry.text, "한글테스트값");
+      for (const entry of entries) assert.equal(entry.text, multibyteText);
     } finally { clean(dir); }
   });
 

@@ -29,8 +29,9 @@ function setOwnerOnlyPermissions(filePath) {
 /**
  * Principals that must never keep access to credential material.
  *
- * Well-known SIDs are used instead of localized names ("Everyone" is "모두" on
- * Korean Windows), so the removal works on every language.
+ * Well-known SIDs are used instead of localized principal names ("Everyone" is
+ * displayed under a translated name on non-English Windows), so the removal works
+ * on every language.
  */
 const BROAD_PRINCIPAL_SIDS = ["*S-1-1-0", "*S-1-5-11", "*S-1-5-32-545", "*S-1-5-4", "*S-1-5-32-546"];
 

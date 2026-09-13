@@ -2,7 +2,7 @@
 
 **Effective date:** 2026-09-13
 
-This Commercial End User License Agreement ("Agreement") is between Flotic LC. ("Flotic", 유한회사 플로틱) and the person or organization that purchases or uses minitok ("Customer").
+This Commercial End User License Agreement ("Agreement") is between Flotic LC. ("Flotic"), a limited company organized under the laws of the Republic of Korea, and the person or organization that purchases or uses minitok ("Customer").
 
 ## 1. License grant
 
@@ -50,7 +50,7 @@ This Agreement is the complete agreement regarding the license granted here and 
 
 ## 11. Contracting entity and notices
 
-This Agreement is entered into with Flotic LC. (유한회사 플로틱), the licensor of minitok. Representative: 박주성. Business registration number: 180-88-03655. Notice address: 경기도 용인시 수지구 문인로 57, 3층 301 - 나025호(풍덕천동, 삼익상가), Republic of Korea. Notices to Flotic must be sent to that address or by email to support@minitok.dev.
+This Agreement is entered into with Flotic LC., the licensor of minitok. Representative: Juseong Park. Business registration number: 180-88-03655. Notice address: 3F 301-Na025, Sangik Plaza, 57 Munin-ro, Suji-gu, Yongin-si, Gyeonggi-do, Republic of Korea. Notices to Flotic must be sent to that address or by email to support@minitok.dev.
 
 ## 12. Governing law and venue
 
@@ -58,6 +58,6 @@ This Agreement is governed by the laws of the Republic of Korea, without regard 
 
 ## 13. Consumer rights
 
-Nothing in this Agreement excludes or limits a right Customer has under mandatory Korean law, including the Act on the Regulation of Terms and Conditions (약관의 규제에 관한 법률) and the Act on Consumer Protection in Electronic Commerce (전자상거래 등에서의 소비자보호에 관한 법률). Where such law applies, it prevails over sections 7, 8, and 9.
+Nothing in this Agreement excludes or limits a right Customer has under mandatory Korean law, including the Act on the Regulation of Terms and Conditions and the Act on Consumer Protection in Electronic Commerce. Where such law applies, it prevails over sections 7, 8, and 9.
 
 For questions, contact support@minitok.dev.

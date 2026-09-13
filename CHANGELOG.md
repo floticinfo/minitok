@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.14 - 2026-09-13
+
+### Documentation
+
+- `EULA.md` now publishes the approved commercial terms: the contracting entity **Flotic LC.** with its notice address, Republic of Korea governing law and venue, the Korean consumer-rights carve-out, email support within 24–48 hours Monday–Friday (UTC), the privacy notice URL, and the subscription model with no refunds — fees are charged in advance per period, cancelling stops the following period, the paid period stays usable, and no credit or pro-rated refund is given.
+- `POLICY.md` section 10 records the published legal positions (controller, provider roles, privacy officer, legal bases, international transfers, rights handling, retention) instead of asking for them, `DATA_CLASSIFICATION.md` section 9 points at that section, and `npm run commercial:readiness` no longer reports `BLOCKED` for `legal-owner-approval` or `privacy-owner-approval`.
+- `LEGAL_REVIEW_DRAFT.md` is the record of what was applied, which published page each value came from, which minitok.dev pages still advertise the refund promise that `EULA.md` no longer offers, and the ready-to-paste English copy for those pages.
+- Every business and product string in the shipped package is English-only: the Korean legal-entity name, representative name, notice address, and statute names in `EULA.md` and `POLICY.md` are their English forms; the Windows localized-name comments in `src/utils/file-permissions.js` and the embedded runtime copy are English; and the multi-byte audit fixture in `src/core/audit.test.js` is written as escapes, so the source stays ASCII while the runtime string stays multi-byte.
+
 ## 1.3.13 - 2026-09-13
 
 ### Fixes
@@ -73,12 +82,6 @@
 - Added coverage for provider request headers, the reasoning-model request body, the Windows ACL cleanup (asserting the removed SIDs against a live ACL), the token read cache, and the OAuth browser policy.
 
 
-
-### Documentation
-
-- `EULA.md` now publishes the approved commercial terms: the contracting entity **Flotic LC.** with its notice address, Republic of Korea governing law and venue, the Korean consumer-rights carve-out, email support within 24–48 hours Monday–Friday (UTC), the privacy notice URL, and the subscription model with no refunds — fees are charged in advance per period, cancelling stops the following period, the paid period stays usable, and no credit or pro-rated refund is given.
-- `POLICY.md` section 10 records the published legal positions (controller, provider roles, privacy officer, legal bases, international transfers, rights handling, retention) instead of asking for them, `DATA_CLASSIFICATION.md` section 9 points at that section, and `npm run commercial:readiness` no longer reports `BLOCKED` for `legal-owner-approval` or `privacy-owner-approval`.
-- `LEGAL_REVIEW_DRAFT.md` is the record of what was applied, which published page each value came from, and which minitok.dev pages still advertise the refund promise that `EULA.md` no longer offers.
 
 ## 1.3.12 - 2026-09-11
 
