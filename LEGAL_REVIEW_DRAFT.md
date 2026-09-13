@@ -244,12 +244,14 @@ legal wording must not contradict.
 | 13 | support@minitok.dev, effective 2026-09-13, technical policy version 1.2.0 | owner decision | POLICY §10 |
 | 14 | not used: the applied EULA ends with the support contact line instead of a "last reviewed" line, which a published agreement does not need | — | — |
 
-One item stays open: a named specific court for EULA §12 (optional — the applied text
-uses the general courts of the Republic of Korea). The data-inventory question that was
-open in `DATA_CLASSIFICATION.md` §9 is answered in its §9.1, and the telemetry retention
-mismatch it recorded is closed: the server now applies the published 30-day (Open) and
-14-day (Select) periods, so the inventory, `POLICY.md` §10, the live privacy notice, and
-the policy the server itself serves all agree.
+One item was open and is now closed by decision: no specific court is named for EULA §12,
+because an exclusive-jurisdiction clause is constrained against consumers by the Act on
+the Regulation of Terms and Conditions (section 4 above records the same reasoning). No
+agreement text changed as a result, so the approved EULA text and its hashes stand. The
+data-inventory question that was open in `DATA_CLASSIFICATION.md` §9 is answered in its
+§9.1, and the telemetry retention mismatch it recorded is closed: the server now applies
+the published 30-day (Open) and 14-day (Select) periods, so the inventory, `POLICY.md`
+§10, the live privacy notice, and the policy the server itself serves all agree.
 
 Verify after applying the text:
 
@@ -285,6 +287,7 @@ remains, each line still being the text to search for.
 | `https://minitok.dev/terms` §10, `/refund`, `/privacy` | **Applied** (deployed 2026-09-13) | One English address form, matching EULA §11 word for word: "3F 301-Na025, Sangik Plaza, 57 Munin-ro, Suji-gu, Yongin-si, Gyeonggi-do, Republic of Korea" |
 | `https://floticinfo.com` footer and privacy policy | **Applied** (deployed 2026-09-13) | The footer now prints the same address as the site's own privacy policy and the EULA's Korean original: "경기도 용인시 수지구 문인로 57, 3층 301 - 나025호(풍덕천동, 삼익상가)" |
 | `https://minitok.dev/terms`, `/privacy`, `/refund` | **Applied** (deployed 2026-09-13) | "Last updated: August 2026" → "Last updated: September 2026" |
+| `https://api.minitok.dev/legal/terms`, `/legal/privacy`, `/legal/refund` | **Applied** (deployed 2026-09-13) | The pages the API serves now read like the public ones: the privacy page states the published 30/14 telemetry periods, the terms gained the governing-law and venue section, the refund page is named "Cancellation Policy", and all three print the EULA notice address and the September 2026 date |
 | `https://minitok.dev` install command | Pending (follows the publish) | "npm install -g @flotic/minitok@1.3.12" → the version published to npm; 1.3.19 is the version prepared here. The live command is correct until that publish happens |
 | `https://minitok.dev/privacy` §7 vs the server | **Resolved** (2026-09-13) | The page published 30 days for Open telemetry and 14 days for Select while the server retained 90 days and the policy it served said 90. The server now applies the published 30/14 periods (`src/services/evolution-telemetry.js`), its served policy says so, and `DATA_CLASSIFICATION.md` section 9.2 records the alignment |
 
@@ -360,9 +363,20 @@ credit or pro-rated refund is given for the unused part of a period. This does n
 limit any right you have that cannot legally be excluded.
 ```
 
-**If a specific court is ever named**, EULA §12 would read: "The Seoul Central
+**If a specific court were ever named**, EULA §12 would read: "The Seoul Central
 District Court has exclusive jurisdiction, except where mandatory consumer law lets
-Customer sue elsewhere." That is optional and it was not applied.
+Customer sue elsewhere." That option was considered and **not applied**: an
+exclusive-jurisdiction clause is constrained against consumers by the Act on the
+Regulation of Terms and Conditions, so the applied text keeps the general courts of the
+Republic of Korea and the customer's residence right. Change this only with advice that
+accounts for that statute.
+
+**A specific court is not named, and that is a decision, not a gap.** The applied EULA
+§12 points to the courts of the Republic of Korea and preserves the customer's right to
+sue at their residence, because an exclusive-jurisdiction clause is constrained against
+consumers by the Act on the Regulation of Terms and Conditions. Recording a named
+exclusive forum here would trade that protection for a clause that may not be
+enforceable, so the item is closed as decided instead of applied.
 
 The pages were fetched again on 2026-09-13 and re-checked while preparing 1.3.18: the
 refund promise is gone from the pricing page, the plan cards, the FAQ, and the refund
@@ -375,7 +389,12 @@ remains is the install command, which follows the npm publish.
 **Where the pages are edited.** The website is not part of this repository. Its
 production copy is the `website/` directory of the server repository
 (`floticinfo/minitok-server`), bind-mounted read-only into the Caddy container as
-`/opt/minitok/website`, so a page is changed by editing that directory on the VM. The
+`/opt/minitok/website`, so a page is changed by editing that directory on the VM and a
+push to that repository's master deploys it: the workflow in
+`.github/workflows/deploy.yml` runs its tests, builds the image, copies
+`deployment/website/*` and `deployment/config/*`, recreates the server, and reloads
+Caddy. The pages the API serves itself (`src/app.js`, `/legal/*`) are part of the same
+repository and ship with the image. The
 server repository's copies carry the same legal text and the cancellation naming (the
 address, section 9, and the dates were already aligned there, and the naming was applied
 to them on 2026-09-13); those edits are left uncommitted in its working tree, which also
