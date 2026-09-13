@@ -278,6 +278,13 @@ from 2026-09-13, so each line below is the text to search for.
 | `https://minitok.dev/terms` §10 | Company block without the address | Add the notice address from EULA §11 so the website and the EULA name the same entity and address |
 | `https://floticinfo.com` footer vs privacy policy | The footer prints the floor and unit only ("3F 301"); the privacy policy adds the unit suffix and the building and neighborhood names | Publish one English form in both places, so the EULA notice address has a single published twin |
 | `https://minitok.dev/terms`, `/privacy`, `/refund` | "Last updated: August 2026" | Update the date when these pages change |
+| `https://minitok.dev` install command | "npm install -g @flotic/minitok@1.3.12" | Point it at the version actually published to npm; 1.3.14 is the version prepared here |
+
+**Version strings.** The homepage still advertises the 1.3.12 install command while
+this repository prepares 1.3.14, so the command has to follow the publish. The
+Extension was repackaged so its embedded CLI runtime matches 1.3.14 and still
+reports 0.2.6: if 0.2.6 was ever published to the Marketplace, bump the Extension
+version before publishing again, because a published version cannot be replaced.
 
 Also re-read section 2.6: the live 7-day window is close to the statutory
 withdrawal period for a first purchase of digital content under Korean consumer law,
