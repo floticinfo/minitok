@@ -180,24 +180,24 @@
       "embedded": "acb975eff0efbe70c7270d8f12806bcebaefe0823e2040639882468c38aca962"
     },
     "llm/provider.js": {
-      "source": "afa11b65ab3c5190d6eb6faab76fcab5dc5c16365b029a3208fe5380ecb5d649",
-      "embedded": "afa11b65ab3c5190d6eb6faab76fcab5dc5c16365b029a3208fe5380ecb5d649"
+      "source": "5c97d12c605694f4aa15e0c581f232d356b21ae88ff21eeea47eb59df7fb1a7a",
+      "embedded": "5c97d12c605694f4aa15e0c581f232d356b21ae88ff21eeea47eb59df7fb1a7a"
     },
     "mcp/runtime-token.js": {
       "source": "f27f226a59a89b1118a36f007b233e92b3c94b7937162265888c15068af56def",
       "embedded": "f27f226a59a89b1118a36f007b233e92b3c94b7937162265888c15068af56def"
     },
     "mcp/tools.js": {
-      "source": "27612ee05d4b405807bd40e85b62c4f2fe50a8fd2e7019c79bf686e591176214",
-      "embedded": "27612ee05d4b405807bd40e85b62c4f2fe50a8fd2e7019c79bf686e591176214"
+      "source": "b562944824af853c5d5f31762379048ab618686520729e8ad04b379764ea46ec",
+      "embedded": "b562944824af853c5d5f31762379048ab618686520729e8ad04b379764ea46ec"
     },
     "pipeline/check.js": {
-      "source": "7c5d1be6ef3426a06b6ee82f1432dd39031705c244cdbced2e6892d0be64c158",
-      "embedded": "7c5d1be6ef3426a06b6ee82f1432dd39031705c244cdbced2e6892d0be64c158"
+      "source": "f89d579eb1ae31b38a74fd336abeed1cd7e815f9cbd4a48c9f843faf19dc3c04",
+      "embedded": "f89d579eb1ae31b38a74fd336abeed1cd7e815f9cbd4a48c9f843faf19dc3c04"
     },
     "pipeline/implementer.js": {
-      "source": "822a04d03bfc3188d9f0e3716d1da16a85901378f7fc9def0f875383a7f0dbd7",
-      "embedded": "822a04d03bfc3188d9f0e3716d1da16a85901378f7fc9def0f875383a7f0dbd7"
+      "source": "76a5030c770d13d3f56277602282df58f14867512123fcbed1bf39cae67b9682",
+      "embedded": "76a5030c770d13d3f56277602282df58f14867512123fcbed1bf39cae67b9682"
     },
     "pipeline/intel.js": {
       "source": "156f608704bbfde60702b53b83647612b49f28f98d7b2fc010986c27d517a442",
@@ -208,16 +208,16 @@
       "embedded": "d139507183711739b0829b47ff81b475b8f78f0d985ddc26e1d1ab187133976f"
     },
     "pipeline/loop.js": {
-      "source": "f9eb4f67d188b36bea4766073e60be2939eca769f6f0c4bac78f12eadd61bf29",
-      "embedded": "f9eb4f67d188b36bea4766073e60be2939eca769f6f0c4bac78f12eadd61bf29"
+      "source": "085a170d66132e1f4384ffb49d2fb476d9d0afa8cd4e215ca2b3604d56eda538",
+      "embedded": "085a170d66132e1f4384ffb49d2fb476d9d0afa8cd4e215ca2b3604d56eda538"
     },
     "pipeline/next_task.js": {
       "source": "d319a3b34dc5d80f4ce9e74e3e0805d2d4ee79aa4cfda8bc9be3dcaf8d9ce583",
       "embedded": "d319a3b34dc5d80f4ce9e74e3e0805d2d4ee79aa4cfda8bc9be3dcaf8d9ce583"
     },
     "pipeline/planner.js": {
-      "source": "7bab47a4926700e3485a171efeb3b968f1d8936e6180e1a5bd0367dc66ab8c6c",
-      "embedded": "7bab47a4926700e3485a171efeb3b968f1d8936e6180e1a5bd0367dc66ab8c6c"
+      "source": "cc1f16bff302e0fc0fac02239b6d1c8c6048c5aad7b9ec9e259c805f4467c1e0",
+      "embedded": "cc1f16bff302e0fc0fac02239b6d1c8c6048c5aad7b9ec9e259c805f4467c1e0"
     },
     "pipeline/repair.js": {
       "source": "5af8a747993fb9cbae9671ac978328f211352057d8ef950fd82eb52e44b7c39e",
@@ -228,8 +228,8 @@
       "embedded": "c138ad8f28c26703037fe14d7cd09b19637842fbf71b9f89150dcd38cfeaedb2"
     },
     "pipeline/verifier.js": {
-      "source": "0978939ae5d323e2df18a52b70ecf04cbf89562cd604ac9783c36c1285066296",
-      "embedded": "0978939ae5d323e2df18a52b70ecf04cbf89562cd604ac9783c36c1285066296"
+      "source": "c299e51592a4d48eb7658384d593926d40dbd1beb86e2a4c13a90d441c081e0b",
+      "embedded": "c299e51592a4d48eb7658384d593926d40dbd1beb86e2a4c13a90d441c081e0b"
     },
     "run-evidence.js": {
       "source": "f8fcf0a5d67ce15655b474cffff486823020b52a22763fabde63ee542453dfc2",
@@ -280,8 +280,8 @@
       "embedded": "4023e87bc6dd66a33cd8bbaaab20cc07af46584ced03e6093aaa762e097fef02"
     },
     "runtime/stdio.js": {
-      "source": "7b97937aea8dbd113ae5bd1601f4389a3b27dcffe5dc1815b00f4f7f00a11920",
-      "embedded": "7b97937aea8dbd113ae5bd1601f4389a3b27dcffe5dc1815b00f4f7f00a11920"
+      "source": "f3b2b8c8e6b7c0ca7e2cf1cc4cce56183bf0d60d45c865ac01f597ab5c39a2cf",
+      "embedded": "f3b2b8c8e6b7c0ca7e2cf1cc4cce56183bf0d60d45c865ac01f597ab5c39a2cf"
     },
     "runtime/workspace.js": {
       "source": "1ccbe48769fd72363230d4a914849ce6b5fc52f5db6496e0b35ce8ac655ff220",
@@ -292,8 +292,8 @@
       "embedded": "41f6db3f10b3a5e10b9d30586e4e9413ba71fcf22c94256aa6db3fe72b64b91e"
     },
     "state/run-lock.js": {
-      "source": "78dbcd2279a5deaa1655022b4bb323b3aeecf710639d1a6848e677550ff2caf9",
-      "embedded": "78dbcd2279a5deaa1655022b4bb323b3aeecf710639d1a6848e677550ff2caf9"
+      "source": "4448a116109c99ca023fefb3ea33edc6b65afe785b1a6dab858f18e99472cd9b",
+      "embedded": "4448a116109c99ca023fefb3ea33edc6b65afe785b1a6dab858f18e99472cd9b"
     },
     "utils/file-permissions.js": {
       "source": "857fdde926aae950cbfab73dd25adb0a415f958eb10d2cc44dd36c1d0a5eda57",
@@ -304,12 +304,12 @@
       "embedded": "849aedd9715de90f9187d31df677d3ae44ae682ae84aa86f1e5e6d6642d5dea6"
     },
     "workspace/isolation.js": {
-      "source": "e6c8291dc6a24ac6cfb0f9d0098362cea8a01e8ac88d6dfa7303c31997110e98",
-      "embedded": "e6c8291dc6a24ac6cfb0f9d0098362cea8a01e8ac88d6dfa7303c31997110e98"
+      "source": "206466229d69db9814744d7ceacd5629cea8290cc1d9144af1fe08bb406afb1c",
+      "embedded": "206466229d69db9814744d7ceacd5629cea8290cc1d9144af1fe08bb406afb1c"
     },
     "workspace/manager.js": {
-      "source": "46a45e4c0d5b6b521f60a876b6af0f5176176c9351f203a0a1e054005fdd65f6",
-      "embedded": "46a45e4c0d5b6b521f60a876b6af0f5176176c9351f203a0a1e054005fdd65f6"
+      "source": "f05c755fc21149e7325aec39422cc05d0e493da387189ed7602a0775feefc901",
+      "embedded": "f05c755fc21149e7325aec39422cc05d0e493da387189ed7602a0775feefc901"
     }
   }
 }
