@@ -6,9 +6,11 @@
  * Verifies that cmdRun returns the correct exit code based on
  * the actual pipeline outcome, not merely whether an exception occurred.
  *
- * Contract:
- *   SUCCESS / APPROVE -> 0
- *   FAILED / REJECTED / ERROR -> 1
+ * Contract (final-cycle semantics — keep in sync with summarizeRunOutcome in
+ * src/pipeline/loop.js):
+ *   last cycle APPROVE -> 0
+ *   anything else (REJECT, CHANGES_REQUESTED, failure, error, no cycles) -> 1
+ *   an earlier APPROVE does NOT rescue a run that ends on a rejection
  *
  * Uses require.cache manipulation to mock the runPipeline dependency.
  */
@@ -42,8 +44,17 @@ function makePipelineResult(statuses) {
     verify: { verdict: status, confidence: status === "APPROVE" ? 0.95 : 0.3, summary: "mock", findings: [] },
     status,
   }));
-  const success = cycles.some(c => c.status === "APPROVE");
-  return { cycles, goal: "test task", totalTokens: { input: 100, output: 50 }, evolution: { knowledge_size: 0 }, success };
+  const success = cycles.length > 0 && cycles[cycles.length - 1].status === "APPROVE";
+  const approved = cycles.some(c => c.status === "APPROVE");
+  return {
+    cycles,
+    goal: "test task",
+    totalTokens: { input: 100, output: 50 },
+    evolution: { knowledge_size: 0 },
+    success,
+    approved,
+    last_cycle_status: cycles.length > 0 ? cycles[cycles.length - 1].status : null,
+  };
 }
 
 // Mock state
@@ -142,6 +153,14 @@ describe("PD-1: Exit code reflects actual pipeline outcome", () => {
     const { cmdRun } = require("../src/cli/commands/run");
     const exitCode = await cmdRun("test task", { repo: repoDir, dryRun: true, autoAccept: true });
     assert.equal(exitCode, 1, "exception should return 1");
+    restoreMocks();
+  });
+
+  it("Case J -- approved, then the final cycle rejected -> exit code 1", async () => {
+    installMock(makePipelineResult(["APPROVE", "REJECT"]));
+    const { cmdRun } = require("../src/cli/commands/run");
+    const exitCode = await cmdRun("test task", { repo: repoDir, dryRun: true, autoAccept: true });
+    assert.equal(exitCode, 1, "a run that ends on a rejection must not exit 0 because an earlier cycle was approved");
     restoreMocks();
   });
 

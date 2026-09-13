@@ -11,7 +11,7 @@ const { plan } = require("./planner");
 const { implement } = require("./implementer");
 const { verify } = require("./verifier");
 const { buildRepairTask } = require("./repair");
-const { approvalRequest, validateApprovalResponse, writeApprovalRequest, buildRoleOptions } = require("./loop");
+const { approvalRequest, validateApprovalResponse, writeApprovalRequest, buildRoleOptions, summarizeRunOutcome } = require("./loop");
 
 describe("Pipeline stages", () => {
   it("propagates role provider options without mutating pipeline options", () => {
@@ -191,5 +191,26 @@ describe("Pipeline stages", () => {
     const repaired = await implement(flakyProvider, { plan: { steps: [] } }, "context");
     assert.equal(attempts, 2, "a malformed reply is still worth one retry");
     assert.deepEqual(repaired.changes.changes, []);
+  });
+
+  it("derives the run outcome from the final cycle, not from an earlier approval", () => {
+    // A goal-directed run can approve a change set and then fail the follow-up
+    // task it generated. The run is not a success, but the approved work has to
+    // stay distinguishable from "nothing ever passed" so it can be preserved.
+    assert.deepEqual(summarizeRunOutcome([{ status: "APPROVE" }, { status: "REJECT" }]), {
+      success: false,
+      approved: true,
+      last_cycle_status: "REJECT",
+    });
+    assert.deepEqual(summarizeRunOutcome([{ status: "REJECT" }, { status: "APPROVE" }]), { success: true, approved: true, last_cycle_status: "APPROVE" });
+    assert.deepEqual(summarizeRunOutcome([{ status: "APPROVE" }]), { success: true, approved: true, last_cycle_status: "APPROVE" });
+    assert.deepEqual(summarizeRunOutcome([{ status: "impl_failed" }, { status: "CHANGES_REQUESTED" }]), { success: false, approved: false, last_cycle_status: "CHANGES_REQUESTED" });
+  });
+
+  it("treats an empty, missing or status-less final cycle as a failure", () => {
+    for (const cycles of [[], null, undefined]) {
+      assert.deepEqual(summarizeRunOutcome(cycles), { success: false, approved: false, last_cycle_status: null });
+    }
+    assert.deepEqual(summarizeRunOutcome([{ status: "APPROVE" }, {}]), { success: false, approved: true, last_cycle_status: null });
   });
 });

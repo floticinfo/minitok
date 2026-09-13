@@ -328,5 +328,91 @@ test("an isolated run writes and honours the approval file in the real workspace
   }
 });
 
+/**
+ * Final-cycle success semantics, end to end.
+ *
+ * A goal-directed run approves a change set and then generates a follow-up task.
+ * When that follow-up fails, the run used to be reported as a success in the
+ * contract, the process exit code and the evolution record — while the rejected
+ * change set was never merged. The run now follows its final cycle, keeps the
+ * approved work salvageable instead of merging it, and mirrors the terminal state
+ * (including whether the merge happened) into the operator-visible contract.
+ */
+test("an isolated run that approves a cycle and then fails its follow-up is a failure", async () => {
+  const repo = tempRepo();
+  const providerPath = path.join(ROOT, "src", "llm", "provider.js");
+  const providerModule = require(providerPath);
+  const { runPipeline } = require(path.join(ROOT, "src", "pipeline", "loop.js"));
+  const { TEST_AUTHORIZATION } = require(path.join(ROOT, "src", "pipeline", "test-seam.js"));
+  const originalCreateProvider = providerModule.createProvider;
+  const knowledgePath = path.join(os.tmpdir(), `minitok-followup-knowledge-${process.pid}-${Date.now()}.json`);
+
+  // Cycle 1 is approved, which makes the pipeline generate a follow-up task; cycle
+  // 2 reviews the follow-up and rejects it.
+  class FollowUpProbe extends providerModule.LLMProvider {
+    constructor() { super("follow-up-probe"); this.reviews = 0; }
+    isAvailable() { return true; }
+    async complete(messages) {
+      const system = messages.find(message => message.role === "system")?.content || "";
+      const cycle = this.reviews + 1;
+      let text;
+      if (system.includes("determine the NEXT task")) text = JSON.stringify({ done: false, next_task: "Follow-up task", rationale: "the goal is only partly done", remaining_goals: ["follow-up"] });
+      else if (system.includes("architect")) text = JSON.stringify({ task_summary: `Cycle ${cycle}`, steps: [{ id: 1, action: "create", file: `cycle-${cycle}.txt`, description: "Create the cycle file", rationale: "test" }], estimated_files: 1, risk_level: "low" });
+      else if (system.includes("engineer")) text = JSON.stringify({ changes: [{ file: `cycle-${cycle}.txt`, action: "create", content: `cycle_${cycle}\n` }], summary: "Create the cycle file", files_changed: 1 });
+      else if ((system.includes("review") || system.includes("code reviewer")) && !system.includes("autonomous")) {
+        this.reviews += 1;
+        text = this.reviews === 1
+          ? JSON.stringify({ verdict: "APPROVE", confidence: 0.95, summary: "The first cycle is good", findings: [], security_findings: [], risk_level: "low", test_suggestions: [] })
+          : JSON.stringify({ verdict: "REJECT", confidence: 0.2, summary: "The follow-up is wrong", findings: [], security_findings: [], risk_level: "high", test_suggestions: [] });
+      } else text = JSON.stringify({ done: true, summary: "done" });
+      return { text, model: "mock", usage: {}, tokens: { input: 100, output: 50 } };
+    }
+  }
+
+  try {
+    execSync("git init", { cwd: repo, stdio: "pipe" });
+    execSync("git config user.email t@t.com", { cwd: repo, stdio: "pipe" });
+    execSync("git config user.name T", { cwd: repo, stdio: "pipe" });
+    // Both gates exist so the cycle verdict is decided by the provider on every
+    // platform: Windows without Git Bash falls back to the .mjs gate, Linux runs
+    // the shell one.
+    fs.writeFileSync(path.join(repo, "VERIFY_CMD.sh"), "#!/usr/bin/env bash\nexit 0\n");
+    fs.writeFileSync(path.join(repo, "VERIFY_CMD.mjs"), "process.exit(0);\n");
+    execSync("git add -A && git commit -m init", { cwd: repo, stdio: "pipe" });
+
+    providerModule.createProvider = name => name === "follow-up-probe" ? new FollowUpProbe() : originalCreateProvider(name);
+
+    const result = await runPipeline("Create cycle files", {
+      repoRoot: repo,
+      providerOverride: "follow-up-probe",
+      authorization: TEST_AUTHORIZATION,
+      knowledgePath,
+      autoAccept: true,
+      overrides: { budget: { max_cycles: 2 } },
+    });
+
+    assert.equal(result.cycles.length, 2, "the approved cycle must be followed by the goal-directed one");
+    assert.equal(result.cycles.at(-1).status, "REJECT");
+    assert.equal(result.success, false, "a run whose final cycle was rejected is not a success");
+    assert.equal(result.approved, true, "the approved change set stays visible for salvage");
+    assert.equal(result.last_cycle_status, "REJECT");
+    assert.equal(result.isolation.applied, false, "a change set the final review rejected must not be merged");
+    assert.equal(fs.existsSync(path.join(repo, "cycle-1.txt")), false, "nothing from the rejected run reaches the repository");
+    assert.equal(fs.existsSync(path.join(repo, ".minitok", "last-run.patch")), true, "the paid change set is preserved for the operator");
+
+    const contract = JSON.parse(fs.readFileSync(path.join(repo, ".minitok", "contracts", "task-contract.json"), "utf8"));
+    assert.equal(contract.status, "failed");
+    assert.equal(contract.success, false);
+    assert.equal(contract.approved, true);
+    assert.equal(contract.merged, false);
+    assert.equal(contract.last_cycle_status, "REJECT");
+    assert.equal(contract.isolated, true);
+    assert.equal(contract.cycles, 2);
+  } finally {
+    providerModule.createProvider = originalCreateProvider;
+    try { fs.rmSync(knowledgePath, { force: true }); } catch {}
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
 
 });

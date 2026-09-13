@@ -145,7 +145,10 @@ async function cmdRun(task, opts) {
       console.warn(`[warn] Could not save last-run.json: ${writeErr.message}`);
     }
 
-    // Check actual pipeline outcome — success requires at least one APPROVE
+    // Check the actual pipeline outcome — `success` follows the FINAL cycle (see
+    // summarizeRunOutcome in src/pipeline/loop.js): a run that ends on a rejection
+    // exits non-zero even when an earlier cycle was approved. `result.approved`
+    // says whether such a change set exists (it is preserved, not merged).
     const exitCode = result.success ? 0 : 1;
     return exitCode;
   } catch (e) {

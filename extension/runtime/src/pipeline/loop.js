@@ -254,6 +254,33 @@ async function promptConfirmation(changesResult, opts) {
   });
 }
 
+/**
+ * Derive a run's outcome from its cycles.
+ *
+ * `success` follows the FINAL cycle: a run whose last cycle was rejected is not a
+ * success, even when an earlier cycle was approved. Goal-directed runs keep going
+ * after an approval, so an APPROVE followed by a REJECT used to be reported as a
+ * success in the contract, the process exit code and the evolution record while
+ * the change set had not been delivered at all.
+ *
+ * `approved` records that at least one cycle reached APPROVE. It stays separate
+ * from `success` because it is what the caller needs to tell "nothing worked"
+ * from "paid work exists but the final review refused it" (the diff is preserved
+ * at `.minitok/last-run.patch` instead of being merged).
+ *
+ * @param {Array<{status?: string}>} cycles
+ * @returns {{ success: boolean, approved: boolean, last_cycle_status: string | null }}
+ */
+function summarizeRunOutcome(cycles) {
+  const list = Array.isArray(cycles) ? cycles : [];
+  const lastCycleStatus = list.length > 0 ? list[list.length - 1]?.status ?? null : null;
+  return {
+    success: lastCycleStatus === "APPROVE",
+    approved: list.some(cycle => cycle?.status === "APPROVE"),
+    last_cycle_status: lastCycleStatus,
+  };
+}
+
 async function runPipelineInWorkspace(task, opts = {}) {
   const startTime = Date.now();
   let rawRepoContext = null; // P1: computed once (see cycle loop below)
@@ -700,22 +727,33 @@ async function runPipelineInWorkspace(task, opts = {}) {
   }
 
   const elapsed = Date.now() - startTime;
-  const success = results.cycles.some(c => c.status === "APPROVE");
+  // Final-cycle semantics (see summarizeRunOutcome): a run that ends on a
+  // rejection is reported as a failure even when an earlier cycle was approved.
+  // `approved` is kept so the outcome stays distinguishable from "nothing ever
+  // passed" — the evolution record reports those runs as "partial" and the
+  // isolated runner preserves their diff instead of merging it.
+  const { success, approved, last_cycle_status: lastCycleStatus } = summarizeRunOutcome(results.cycles);
 
   // Self-evolution: record outcome
   const totalTokens = results.totalTokens.input + results.totalTokens.output;
   const uploadSafeCategory = lastFailureCategory && ALLOWED_FIELDS.failure_category.values.includes(lastFailureCategory) ? lastFailureCategory : undefined;
+  // "partial" is the documented third state (success|failure|partial): at least one
+  // cycle was approved but the run did not end approved, so the change set was not
+  // merged. Reporting it as "success" (old behaviour) or as plain "failure" both
+  // lost that distinction.
+  const runStatus = success ? "success" : approved ? "partial" : "failure";
+  const filesChanged = results.cycles.reduce((sum, c) => sum + (c.implement?.files_changed || 0), 0);
   knowledgeStore.record(/** @type {any} */ ({
     project: path.resolve(repoRoot),
     goal: originalGoal,
-    status: success ? "success" : "failure",
+    status: runStatus,
     cycles: results.cycles.length,
     total_tokens: totalTokens,
     total_cost: Math.round((results.totalCost || 0) * 10000) / 10000,
     duration_ms: elapsed,
-    files_changed: results.cycles.reduce((sum, c) => sum + (c.implement?.files_changed || 0), 0),
+    files_changed: filesChanged,
     failure_category: lastFailureCategory,
-     summary: `${results.cycles.length} cycles, ${success ? "success" : "failure"}`,
+     summary: `${results.cycles.length} cycles, ${runStatus} (last cycle: ${lastCycleStatus || "none"})`,
    }));
   results.evolution.knowledge_size = knowledgeStore.size;
 
@@ -724,10 +762,10 @@ async function runPipelineInWorkspace(task, opts = {}) {
   // uploadEvolutionOutcome enforces: entitlement → feature → opt-in → sanitize → network.
   // If ANY check fails, no network request is made. Upload failure never affects project execution.
   const uploadOutcome = {
-    status: success ? "success" : "failure",
+    status: runStatus,
     cycles: results.cycles.length,
     duration_ms: elapsed,
-    files_changed: results.cycles.reduce((sum, c) => sum + (c.implement?.files_changed || 0), 0),
+    files_changed: filesChanged,
     total_tokens: totalTokens,
     failure_category: uploadSafeCategory,
   };
@@ -749,11 +787,13 @@ async function runPipelineInWorkspace(task, opts = {}) {
   console.log(`🧬 Evolution: ${knowledgeStore.size} outcomes recorded`);
 
   results.success = success;
+  results.approved = approved;
+  results.last_cycle_status = lastCycleStatus;
   results.humanEscalation = humanEscalation;
   if (humanEscalation) {
     console.log(`\n🙋 Human escalation engaged: the token hard limit was reached. Manual review is required.`);
   }
-  writeContract(repoRoot, { status: success ? "completed" : "failed", goal: originalGoal, verify_command: config.validation?.script_path || "VERIFY_CMD.sh", cycles: results.cycles.length, success, human_escalation: humanEscalation });
+  writeContract(repoRoot, { status: success ? "completed" : "failed", goal: originalGoal, verify_command: config.validation?.script_path || "VERIFY_CMD.sh", cycles: results.cycles.length, success, approved, last_cycle_status: lastCycleStatus, human_escalation: humanEscalation });
   try {
     await recordRunEvidence({
       workspaceRoot: repoRoot,
@@ -770,7 +810,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
         exit_status: results.cycles.at(-1)?.check?.exit_code ?? null,
         passed: results.cycles.at(-1)?.check?.status === "passed",
       },
-      outcome: success ? "success" : "verification-failed",
+      outcome: success ? "success" : approved ? "approved-not-merged" : "verification-failed",
     });
   } catch (error) {
     console.warn(`⚠️  Could not save run evidence: ${error.message}`);
@@ -884,4 +924,4 @@ async function runPipeline(task, opts = {}) {
   }
 }
 
-module.exports = { runPipeline, runPipelineInWorkspace, getRepoContext, compactContext, buildRoleOptions, promptConfirmation, approvalRequest, validateApprovalResponse, writeApprovalRequest };
+module.exports = { runPipeline, runPipelineInWorkspace, summarizeRunOutcome, getRepoContext, compactContext, buildRoleOptions, promptConfirmation, approvalRequest, validateApprovalResponse, writeApprovalRequest };
