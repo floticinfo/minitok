@@ -5,7 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { TokenStore } = require("./token-store");
+const { TokenStore, LOAD_CACHE_TTL_MS } = require("./token-store");
 
 function tempStore() {
   return new TokenStore(fs.mkdtempSync(path.join(os.tmpdir(), "mt-token-store-")));
@@ -66,3 +66,48 @@ describe("token store: injection regression", () => {
     assert.equal(created, false, "a provider name from minitok.yml must not run as a command");
   });
 });
+describe("token store: read cache", () => {
+  function countingStore() {
+    const store = tempStore();
+    const reads = { count: 0 };
+    store._keychainLoad = () => { reads.count += 1; return { access_token: "token", expires_at: new Date(Date.now() + 600000).toISOString() }; };
+    return { store, reads };
+  }
+
+  it("reads the keychain once per token instead of once per request", () => {
+    const { store, reads } = countingStore();
+    assert.equal(store.isValid("anthropic"), true);
+    assert.equal(store.load("anthropic").access_token, "token");
+    store.load("anthropic");
+    // isValid() and load() both read; without the cache every auth resolve paid
+    // two PowerShell processes (~1s) on Windows.
+    assert.equal(reads.count, 1);
+  });
+
+  it("re-reads after a write so a rotated token is not served from cache", () => {
+    const { store, reads } = countingStore();
+    store.load("anthropic");
+    store.save("anthropic", { access_token: "rotated" });
+    store._keychainLoad = () => { reads.count += 1; return { access_token: "rotated" }; };
+    assert.equal(store.load("anthropic").access_token, "rotated");
+    assert.equal(reads.count, 2);
+  });
+
+  it("re-reads after a removal", () => {
+    const { store, reads } = countingStore();
+    store.load("anthropic");
+    store.remove("anthropic");
+    store._keychainLoad = () => { reads.count += 1; return null; };
+    assert.equal(store.load("anthropic"), null);
+    assert.equal(reads.count, 2);
+  });
+
+  it("expires cached reads", () => {
+    const { store, reads } = countingStore();
+    store.load("anthropic");
+    store._cache.set("anthropic", { at: Date.now() - LOAD_CACHE_TTL_MS - 1, record: { access_token: "stale" } });
+    assert.equal(store.load("anthropic").access_token, "token");
+    assert.equal(reads.count, 2);
+  });
+});
+

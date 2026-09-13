@@ -27,23 +27,55 @@ function setOwnerOnlyPermissions(filePath) {
 }
 
 /**
- * Windows ACL: grant only current user full control.
+ * Principals that must never keep access to credential material.
+ *
+ * Well-known SIDs are used instead of localized names ("Everyone" is "모두" on
+ * Korean Windows), so the removal works on every language.
+ */
+const BROAD_PRINCIPAL_SIDS = ["*S-1-1-0", "*S-1-5-11", "*S-1-5-32-545", "*S-1-5-4", "*S-1-5-32-546"];
+
+/**
+ * Build the icacls commands for owner-only access.
+ *
+ * `/grant:r <user>:F` only replaces the current user's explicit entries: an
+ * explicit grant to Everyone (which is how a copied or previously shared file
+ * arrives) survived it, leaving the credential readable by every local account.
+ *
+ * @param {string} filePath
+ * @param {string} username
+ * @returns {Array<[string, string[]]>}
+ */
+function _windowsPermissionCommands(filePath, username) {
+  return [
+    ["icacls", [filePath, "/inheritance:r"]],
+    ["icacls", [filePath, "/remove:g", ...BROAD_PRINCIPAL_SIDS]],
+    ["icacls", [filePath, "/grant:r", `${username}:F`]],
+  ];
+}
+
+/**
+ * Windows ACL: grant only the current user full control.
  *
  * Uses icacls to:
- * 1. Disable inheritance
- * 2. Remove all inherited ACEs
+ * 1. Disable inheritance and remove inherited ACEs
+ * 2. Remove explicit grants held by broad principals
  * 3. Grant only the current user Full Control
  *
  * This is the closest equivalent to POSIX 0o600 on Windows NTFS.
  */
 function _setWindowsPermissions(filePath) {
   const username = execFileSync("whoami", { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 5000 }).trim();
+  const [[, inheritArgs], [, removeArgs], [, grantArgs]] = _windowsPermissionCommands(filePath, username);
+  // Each step is independent: a missing principal to remove, or a lock held by
+  // another process, must not skip the grant that follows.
+  try { execFileSync("icacls", inheritArgs, { stdio: "ignore", timeout: 5000 }); } catch {}
+  try { execFileSync("icacls", removeArgs, { stdio: "ignore", timeout: 5000 }); } catch {}
   try {
-    execFileSync("icacls", [filePath, "/inheritance:r", "/grant:r", `${username}:F`], { stdio: "ignore", timeout: 5000 });
+    execFileSync("icacls", grantArgs, { stdio: "ignore", timeout: 5000 });
   } catch {
     try { fs.chmodSync(filePath, 0o600); } catch {}
   }
 }
 
-module.exports = { setOwnerOnlyPermissions };
+module.exports = { setOwnerOnlyPermissions, BROAD_PRINCIPAL_SIDS, _windowsPermissionCommands };
 

@@ -68,7 +68,11 @@ class OAuthFlow {
    */
   constructor(opts = {}) {
     this._port = opts.port || DEFAULT_PORT;
-    this._openBrowser = opts.openBrowser !== false;
+    // Only auto-launch a browser in an interactive terminal. In CI, a service, or
+    // an SSH session without a display the launch either fails silently or starts
+    // a browser nobody can see, while the flow still blocks until the callback
+    // times out. The URL is always printed, so a remote user can open it by hand.
+    this._openBrowser = opts.openBrowser === true ? true : opts.openBrowser === false ? false : Boolean(process.stdin.isTTY && process.stdout.isTTY);
   }
 
   /**
@@ -84,6 +88,7 @@ class OAuthFlow {
 
     const authUrl = this._buildAuthUrl(config, codeChallenge, state);
     if (this._openBrowser) this._openBrowserUrl(authUrl);
+    else console.log("\nNo interactive terminal detected; open the authorization URL below on any device.\n");
 
     console.log("\n\ud83d\udd10 Opening browser for " + config.name + " authorization...");
     console.log("   If the browser didn't open, visit:\n   " + authUrl + "\n");

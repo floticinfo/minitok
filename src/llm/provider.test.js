@@ -214,3 +214,116 @@ describe("provider error reporting", () => {
   });
 });
 
+describe("provider request headers", () => {
+  function stubFetch(body) {
+    const calls = [];
+    const original = global.fetch;
+    global.fetch = async (url, options) => {
+      calls.push({ url, options });
+      return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+    };
+    return { calls, restore: () => { global.fetch = original; } };
+  }
+
+  async function withStubbedDns(run) {
+    const originalLookup = dns.lookup;
+    dns.lookup = async () => [{ address: "93.184.216.34", family: 4 }];
+    try { return await run(); } finally { dns.lookup = originalLookup; }
+  }
+
+  it("honours an explicit auth header instead of the provider default", async () => {
+    const stub = stubFetch({ choices: [{ message: { content: "ok" } }] });
+    try {
+      await withStubbedDns(async () => {
+        const provider = createProvider("openai", { model: "gpt-4o", api_key: "key", auth: { type: "api_key", key: "key", header: "X-Token", scheme: "raw" } });
+        await provider.complete([{ role: "user", content: "hi" }]);
+      });
+      const headers = stub.calls[0].options.headers;
+      assert.equal(headers["X-Token"], "key");
+      assert.equal(headers.Authorization, undefined, "no second credential header");
+    } finally { stub.restore(); }
+  });
+
+  it("sends a bearer token once when the auth block resolves an OAuth style credential", async () => {
+    const stub = stubFetch({ content: [{ type: "text", text: "ok" }] });
+    try {
+      await withStubbedDns(async () => {
+        const provider = createProvider("anthropic", { model: "claude-sonnet-5", api_key: "key", auth: { type: "api_key", key: "key", scheme: "Bearer" } });
+        await provider.complete([{ role: "user", content: "hi" }]);
+      });
+      const headers = stub.calls[0].options.headers;
+      assert.equal(headers.Authorization, "Bearer key");
+      assert.equal(headers["x-api-key"], undefined, "the OAuth token is not also sent as x-api-key");
+      assert.equal(headers["anthropic-version"], "2023-06-01", "provider specific headers survive");
+    } finally { stub.restore(); }
+  });
+
+  it("keeps the provider default header for the legacy api_key path", async () => {
+    const stub = stubFetch({ choices: [{ message: { content: "ok" } }] });
+    try {
+      await withStubbedDns(async () => {
+        const provider = createProvider("openai", { model: "gpt-4o", api_key: "key" });
+        await provider.complete([{ role: "user", content: "hi" }]);
+      });
+      const headers = stub.calls[0].options.headers;
+      // The legacy resolver returns x-api-key for every provider; it must not
+      // replace the credential header OpenAI actually accepts.
+      assert.equal(headers.Authorization, "Bearer key");
+      assert.equal(headers["x-api-key"], undefined);
+    } finally { stub.restore(); }
+  });
+});
+
+describe("provider reasoning parameters", () => {
+  function stubFetch(body = { choices: [{ message: { content: "ok" } }] }) {
+    const calls = [];
+    const original = global.fetch;
+    global.fetch = async (url, options) => {
+      calls.push({ url, options });
+      return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+    };
+    return { calls, restore: () => { global.fetch = original; } };
+  }
+
+  async function bodyFor(model, config = {}) {
+    const originalLookup = dns.lookup;
+    dns.lookup = async () => [{ address: "93.184.216.34", family: 4 }];
+    const stub = stubFetch();
+    try {
+      const provider = createProvider("openai", { api_key: "key", ...config });
+      await provider.complete([{ role: "user", content: "hi" }], { model });
+      return JSON.parse(stub.calls[0].options.body);
+    } finally {
+      stub.restore();
+      dns.lookup = originalLookup;
+    }
+  }
+
+  it("uses max_completion_tokens for reasoning models on the official endpoint", async () => {
+    const body = await bodyFor("o3-mini");
+    assert.equal(body.max_completion_tokens, 4096);
+    assert.equal(body.max_tokens, undefined);
+    assert.equal(body.temperature, undefined);
+  });
+
+  it("keeps max_tokens and temperature for non-reasoning models", async () => {
+    const body = await bodyFor("gpt-4o");
+    assert.equal(body.max_tokens, 4096);
+    assert.equal(body.max_completion_tokens, undefined);
+    assert.equal(body.temperature, 0.7);
+  });
+
+  it("keeps max_tokens for reasoning models behind a compatible gateway", async () => {
+    const body = await bodyFor("o3-mini", { endpoint: "https://gateway.example" });
+    assert.equal(body.max_tokens, 4096);
+    assert.equal(body.max_completion_tokens, undefined);
+  });
+
+  it("sends reasoning_effort only for reasoning models", async () => {
+    const reasoning = await bodyFor("o3-mini", { reasoning_effort: "low" });
+    assert.equal(reasoning.reasoning_effort, "low");
+    const plain = await bodyFor("gpt-4o", { reasoning_effort: "low" });
+    assert.equal(plain.reasoning_effort, undefined);
+  });
+});
+

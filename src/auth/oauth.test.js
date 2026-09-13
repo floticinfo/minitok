@@ -8,6 +8,19 @@ const { ReadableStream } = require("node:stream/web");
 
 const emptyHeaders = { get: () => null };
 
+describe("OAuth browser launch safety", () => {
+  it("does not auto-launch a browser without an interactive terminal", () => {
+    const interactive = Boolean(process.stdin.isTTY && process.stdout.isTTY);
+    assert.equal(new OAuthFlow()._openBrowser, interactive);
+  });
+
+  it("honours an explicit choice for every environment", () => {
+    assert.equal(new OAuthFlow({ openBrowser: true })._openBrowser, true);
+    assert.equal(new OAuthFlow({ openBrowser: false })._openBrowser, false);
+  });
+});
+
+
 describe("OAuth response safety", () => {
   it("rejects unsafe Azure tenant identifiers before URL construction", () => {
     assert.throws(() => new OAuthFlow({ openBrowser: false })._getConfig("azure_ad", { client_id: "id", tenant_id: "tenant&evil" }), /Invalid Azure tenant_id/);

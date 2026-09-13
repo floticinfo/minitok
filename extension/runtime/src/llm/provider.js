@@ -204,6 +204,9 @@ function _retryAfterMs(res) {
   return Number.isNaN(at) ? null : Math.max(0, at - Date.now());
 }
 
+/** Header names that carry a provider credential (never sent twice). */
+const CREDENTIAL_HEADER_NAMES = new Set(["authorization", "x-api-key", "x-goog-api-key", "api-key"]);
+
 class LLMProvider {
   constructor(name, config = {}) {
     this.name = name;
@@ -219,6 +222,36 @@ class LLMProvider {
   /** Resolve auth headers using the auth module. */
   async _resolveAuth() {
     return this._authManager.resolve(this.name, this.config);
+  }
+  /**
+   * Build request headers from the resolved auth block.
+   *
+   * AuthManager resolves the configured header name and scheme (api_key with a
+   * custom header, `raw`, an OAuth bearer token, ...). The built-in providers
+   * used to ignore `auth.headers` completely and always send their own
+   * x-api-key/Authorization header, so an `auth:` block could not change how the
+   * credential is presented (an OAuth token was sent as `x-api-key`).
+   * `_probeProvider()` already merged the resolved headers; `complete()` now
+   * behaves the same way.
+   */
+  _requestHeaders(auth, apiKey, defaults = {}) {
+    // Only an explicit `auth:` block is authoritative for header layout. The
+    // legacy api_key path returns a generic x-api-key header for every provider,
+    // which must not replace e.g. OpenAI's Authorization header.
+    const explicitAuth = this.config && typeof this.config.auth === "object" && this.config.auth ? this.config.auth : null;
+    const configured = explicitAuth && auth && typeof auth.headers === "object" && auth.headers ? auth.headers : {};
+    const configuredNames = new Set(Object.keys(configured).map(name => name.toLowerCase()));
+    // A credential must be sent once: when the auth block already carries the
+    // token, the provider's own credential header is dropped.
+    const carriesCredential = Boolean(apiKey) && Object.values(configured).some(value => typeof value === "string" && value.includes(apiKey));
+    const headers = { "Content-Type": "application/json", ...configured };
+    for (const [name, value] of Object.entries(defaults)) {
+      const lower = name.toLowerCase();
+      if (configuredNames.has(lower)) continue;
+      if (carriesCredential && CREDENTIAL_HEADER_NAMES.has(lower)) continue;
+      headers[name] = value;
+    }
+    return headers;
   }
 }
 
@@ -356,7 +389,7 @@ class AnthropicProvider extends LLMProvider {
     }
 
     const endpointTransport = await resolvePublicEndpoint(this.baseUrl, "Anthropic endpoint");
-    const headers = { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" };
+    const headers = this._requestHeaders(auth, apiKey, { "x-api-key": apiKey, "anthropic-version": "2023-06-01" });
     const res = await fetchWithTimeout(`${endpointTransport.url}/v1/messages`, { method: "POST", headers, body: JSON.stringify(body), signal: options.signal, ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}) });
     if (!res.ok) throw providerError("Anthropic", res.status, await providerErrorDetail(res));
     const data = await res.json();
@@ -380,20 +413,29 @@ class OpenAIProvider extends LLMProvider {
     const apiKey = this.apiKey || auth.token || "";
     if (!apiKey) throw new Error("OpenAI: no credentials (set api_key or auth block)");
     const model = options.model || this.config.model || "gpt-5.6-terra";
-    const body = { model, messages, max_tokens: options.max_tokens || 4096, temperature: options.temperature ?? 0.7 };
+    // Reasoning models (o-series, and the GPT-5 family on the official API)
+    // reject `max_tokens` with "Unsupported parameter: max_tokens is not
+    // supported with this model. Use max_completion_tokens instead", and they
+    // only accept the default temperature. The previous body always sent
+    // max_tokens, so every o-series request failed before the request was made
+    // useful. Compatible gateways commonly implement max_tokens only, so the new
+    // parameter is restricted to the official endpoint.
+    const reasoningModel = /^(?:o\d|gpt-5)/.test(model);
+    const officialEndpoint = (() => { try { return /(^|\.)api\.openai\.com$/i.test(new URL(this.baseUrl).hostname); } catch { return false; } })();
+    const useCompletionTokens = reasoningModel && officialEndpoint;
+    const body = { model, messages };
+    body[useCompletionTokens ? "max_completion_tokens" : "max_tokens"] = options.max_tokens || 4096;
+    if (!reasoningModel) body.temperature = options.temperature ?? 0.7;
+    else if (options.temperature !== undefined) body.temperature = options.temperature;
 
     // 🧠 Reasoning effort support (o1, o3, o4-mini)
     const reasoningEffort = options.reasoning_effort || this.config.reasoning_effort;
-    if (reasoningEffort && /^(o1|o3|o4)/.test(model)) {
-      body.reasoning_effort = reasoningEffort;
-      // Reasoning models: omit temperature (not supported)
-      delete body.temperature;
-    }
+    if (reasoningEffort && reasoningModel) body.reasoning_effort = reasoningEffort;
 
     const endpointTransport = await resolvePublicEndpoint(this.baseUrl, "OpenAI endpoint");
     const res = await fetchWithTimeout(`${endpointTransport.url}/v1/chat/completions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + apiKey },
+      headers: this._requestHeaders(auth, apiKey, { Authorization: "Bearer " + apiKey }),
       body: JSON.stringify(body),
       signal: options.signal,
       ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}),
@@ -440,7 +482,7 @@ class GoogleProvider extends LLMProvider {
     const endpointTransport = await resolvePublicEndpoint(this.baseUrl, "Google endpoint");
     const res = await fetchWithTimeout(`${endpointTransport.url}/v1beta/models/${model}:generateContent`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+      headers: this._requestHeaders(auth, apiKey, { "x-goog-api-key": apiKey }),
       body: JSON.stringify(body),
       signal: options.signal,
       ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}),
@@ -498,9 +540,9 @@ class OpenRouterProvider extends LLMProvider {
     const effort = options.reasoning_effort || options.effort || this.config.effort;
     if (effort) body.reasoning_effort = effort;
     const endpointTransport = await resolvePublicEndpoint(this.baseUrl, "OpenRouter endpoint");
-    const headers = { "Content-Type": "application/json", Authorization: "Bearer " + apiKey, "HTTP-Referer": "https://github.com/minitok/minitok", "X-Title": "minitok" };
+    const headers = this._requestHeaders(auth, apiKey, { Authorization: "Bearer " + apiKey, "HTTP-Referer": "https://github.com/minitok/minitok", "X-Title": "minitok" });
     const res = await fetchWithTimeout(`${endpointTransport.url}/v1/chat/completions`, { method: "POST", headers, body: JSON.stringify(body), signal: options.signal, ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}) });
-    if (!res.ok) throw providerError("OpenRouter", res.status);
+    if (!res.ok) throw providerError("OpenRouter", res.status, await providerErrorDetail(res));
     const data = await res.json();
     return { text: data.choices?.[0]?.message?.content || "", model: data.model, usage: data.usage || {}, tokens: _countTokens(data.usage) };
   }
@@ -603,6 +645,11 @@ function createProvider(name, config = {}) {
   throw new Error(`Unknown LLM provider: ${name}. Set base_url for custom providers.`);
 }
 
+/**
+ * Providers whose credentials are present in the environment or configuration.
+ * @param {object} config resolved minitok configuration
+ * @returns {Promise<string[]>} provider names that can be used
+ */
 async function detectAvailableProviders(config) {
   const checks = new Map([
     ["anthropic", new AnthropicProvider(config.providers?.anthropic || {})],
@@ -614,10 +661,15 @@ async function detectAvailableProviders(config) {
     if (!cfg.base_url || checks.has(name)) continue;
     try { checks.set(name, new CustomProvider({ ...cfg, _name: name })); } catch {}
   }
-  const results = await Promise.all([...checks].map(async ([name, provider]) => {
-    try { return [name, await provider.isAvailable()]; } catch { return [name, false]; }
-  }));
-return results.filter(([, available]) => available).map(([name]) => name);
+  // isAvailable() only inspects configuration (no network), so a plain loop is
+  // both sufficient and easier to type than a Promise.all of pairs.
+  const available = [];
+  for (const [name, provider] of checks) {
+    let ok;
+    try { ok = Boolean(await provider.isAvailable()); } catch { ok = false; }
+    if (ok) available.push(name);
+  }
+  return available;
 }
 
 // ──────────────────────────────────────────────────────────────────────────

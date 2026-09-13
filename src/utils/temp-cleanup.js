@@ -45,6 +45,8 @@ function lastActivityMs(stat) {
  * @param {number} [options.maxEntries] upper bound on removals per sweep
  * @param {number} [options.now] clock override (tests use a synthetic time)
  * @param {number} [options.maxScan] upper bound on entries inspected
+ * @param {number} [options.timeBudgetMs] wall-clock budget for one sweep
+ * @param {boolean} [options.dryRun] report candidates without removing them
  * @param {object} [options.fsImpl] fs implementation override
  * @returns {{scanned: number, removed: number, kept: number, errors: number, drained: boolean}}
  */

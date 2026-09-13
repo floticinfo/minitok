@@ -72,16 +72,16 @@
       "embedded": "1b2bbe5d5d79b7cb579d953c22c376296167608ab6c3d6d841a98f5d16d9a7fb"
     },
     "auth/oauth.js": {
-      "source": "9e40504d0f978cc778a4261ecd1fb63ab01ba84d83c077e4d59da4deacceeac4",
-      "embedded": "9e40504d0f978cc778a4261ecd1fb63ab01ba84d83c077e4d59da4deacceeac4"
+      "source": "4605c348890a8daeb762b6e9c0caf7e49696a063d05071b63a81355d00670082",
+      "embedded": "4605c348890a8daeb762b6e9c0caf7e49696a063d05071b63a81355d00670082"
     },
     "auth/service-account.js": {
       "source": "a7325f28c1e5ec6f9d9e7261c4213582171d63f4fcd7cb528c92fc7afde8ef53",
       "embedded": "a7325f28c1e5ec6f9d9e7261c4213582171d63f4fcd7cb528c92fc7afde8ef53"
     },
     "auth/token-store.js": {
-      "source": "acbb3ee037a663fafef49f8b44b2c29d1afb7ff52ee51d13edc32c72492b0461",
-      "embedded": "acbb3ee037a663fafef49f8b44b2c29d1afb7ff52ee51d13edc32c72492b0461"
+      "source": "5b566e202c4de0e1f80b65457d12bcc5f2cb8b7216a42d4eeffe44ffaf479a70",
+      "embedded": "5b566e202c4de0e1f80b65457d12bcc5f2cb8b7216a42d4eeffe44ffaf479a70"
     },
     "cli/commands/server-config.js": {
       "source": "043c5f1bd9d5444e221068f946fe90b3914df730a37d8a0213ca52ced89eb5da",
@@ -180,8 +180,8 @@
       "embedded": "34f63b0632f2740a83c239536a69e1e72ee5230c1ce7b76598fe8408f638ce27"
     },
     "llm/provider.js": {
-      "source": "c7fe431ec1204f155f70c6eb93cdaf69ce240277c171e6994b0fcfc8830f4951",
-      "embedded": "c7fe431ec1204f155f70c6eb93cdaf69ce240277c171e6994b0fcfc8830f4951"
+      "source": "95c5a6513d5f898fb29c9e84dde7927ed7ce1347162611c1f374e0b6c23b6d19",
+      "embedded": "95c5a6513d5f898fb29c9e84dde7927ed7ce1347162611c1f374e0b6c23b6d19"
     },
     "mcp/runtime-token.js": {
       "source": "ff1d9e38f7e50104e849e7f4bf88d0e1b0c60433d2f3d946144047f2c49d1bc3",
@@ -296,12 +296,12 @@
       "embedded": "78dbcd2279a5deaa1655022b4bb323b3aeecf710639d1a6848e677550ff2caf9"
     },
     "utils/file-permissions.js": {
-      "source": "fcd0d4408472476c9deed589ac8da80396a5fc538866cffe7530ec52b1794443",
-      "embedded": "fcd0d4408472476c9deed589ac8da80396a5fc538866cffe7530ec52b1794443"
+      "source": "2e7116fd41f279b3b84453e64f471f224cd5423fe07178d2899c5f63ff6f8d99",
+      "embedded": "2e7116fd41f279b3b84453e64f471f224cd5423fe07178d2899c5f63ff6f8d99"
     },
     "utils/temp-cleanup.js": {
-      "source": "5af5bf05d14b898c4823681c438fb4ccf6763d8f4466cb6b0104eca802b3fb36",
-      "embedded": "5af5bf05d14b898c4823681c438fb4ccf6763d8f4466cb6b0104eca802b3fb36"
+      "source": "3ee3ebd555cfaa1b3fc1c03bc488b372a7b5757fa6bfeffccb5295d8953255bb",
+      "embedded": "3ee3ebd555cfaa1b3fc1c03bc488b372a7b5757fa6bfeffccb5295d8953255bb"
     },
     "workspace/isolation.js": {
       "source": "e6c8291dc6a24ac6cfb0f9d0098362cea8a01e8ac88d6dfa7303c31997110e98",

@@ -13,10 +13,15 @@ const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
 const { execFileSync } = require("child_process");
 
 const TOKENS_DIR = path.join(os.homedir(), ".minitok", "tokens");
+// Short enough that another process rotating a token is picked up almost
+// immediately, long enough to remove the repeated keychain process per request.
+const LOAD_CACHE_TTL_MS = 5000;
 
 class TokenStore {
   constructor(tokensDir) {
     this._dir = tokensDir || TOKENS_DIR;
+    /** @type {Map<string, { at: number, record: any }>} */
+    this._cache = new Map();
   }
 
   _ensureDir() {
@@ -87,7 +92,23 @@ class TokenStore {
     } catch {}
   }
 
+  /**
+   * Load stored token data for a provider.
+   *
+   * Reads are cached briefly: this shells out to the OS keychain (a PowerShell
+   * process on Windows, ~0.5s) and the auth resolver calls isValid() + load()
+   * for every provider request, so an uncached read added roughly a second to
+   * every LLM call. Writes invalidate the entry.
+   */
   load(provider) {
+    const cached = this._cache.get(provider);
+    if (cached && Date.now() - cached.at < LOAD_CACHE_TTL_MS) return cached.record;
+    const record = this._loadFromSource(provider);
+    this._cache.set(provider, { at: Date.now(), record });
+    return record;
+  }
+
+  _loadFromSource(provider) {
     const keychain = this._keychainLoad(provider);
     if (keychain) return keychain;
     const fp = this._filePath(provider);
@@ -104,6 +125,7 @@ class TokenStore {
    */
   save(provider, tokenData) {
     this._ensureDir();
+    this._cache.delete(provider);
     const fp = this._filePath(provider);
     const record = { provider, ...tokenData, saved_at: new Date().toISOString() };
     if (this._keychainSave(provider, record)) { try { fs.unlinkSync(this._filePath(provider)); } catch {} return; }
@@ -125,6 +147,7 @@ class TokenStore {
    * Delete stored token for a provider.
    */
   remove(provider) {
+    this._cache.delete(provider);
     this._keychainRemove(provider);
     const fp = this._filePath(provider);
     try {
@@ -173,4 +196,4 @@ class TokenStore {
   }
 }
 
-module.exports = { TokenStore, TOKENS_DIR };
+module.exports = { TokenStore, TOKENS_DIR, LOAD_CACHE_TTL_MS };

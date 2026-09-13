@@ -13,6 +13,12 @@
 - Fixed the Extension CLI version gate: it rejected `minitok 1.3.12` because the CLI prints a product prefix, and rejected every future major release because major and minor were compared independently.
 - Fixed arbitrary PowerShell execution through a provider name on Windows. `TokenStore` interpolated the provider name from `minitok.yml` into a `powershell.exe -Command` script, so a name such as `x') ; <payload> ; ('y` ran the payload while resolving OAuth credentials (reproduced: the injected statement created a file). Names are escaped for the single-quoted literal, and `validateConfig` rejects provider names containing shell or path metacharacters.
 - Fixed `minitok run` refusing a workspace whose path casing differs from the on-disk casing. `realpathSync.native()` returns the on-disk casing while `path.resolve()` keeps the caller's, so `--repo c:\src\app` failed the link check with `Unsafe workspace path` before the run started.
+- Fixed the built-in providers ignoring a configured `auth:` block. `_probeProvider()` merged the resolved headers but `complete()` did not, so `auth: { header: ..., scheme: ... }` had no effect on real requests and an OAuth bearer token was sent as Anthropic's `x-api-key`. Configured headers now win, and a credential is never sent twice.
+- Fixed reasoning models on the OpenAI-compatible path: `o1`/`o3`/`o4` (and the GPT-5 family on the official endpoint) reject `max_tokens` with "Unsupported parameter", so they now receive `max_completion_tokens` and only a temperature they were explicitly given. Compatible gateways keep `max_tokens`.
+- Fixed credential files that were copied or previously shared keeping an explicit grant for Everyone after `setOwnerOnlyPermissions()`. `/grant:r <user>:F` only replaces the current user's entries; the broad principals (Everyone, Users, Authenticated Users, INTERACTIVE, Guests) are now removed by well-known SID, which also works on non-English Windows.
+- Fixed browser auto-launch during `auth login` in a non-interactive session: the browser command is only spawned when stdin and stdout are a terminal. The authorization URL is always printed, so a remote session can still complete the flow.
+- Fixed roughly one second of avoidable latency per LLM call on Windows: `TokenStore.load()` started a PowerShell process for every `isValid()`/`load()` pair, which the auth resolver performs on each request. Reads are cached for 5 seconds and every write invalidates the entry.
+
 
 ### Hardening
 
@@ -38,6 +44,8 @@
 - Temporary and lock file names are now derived from `crypto.randomBytes()` instead of `Math.random()`/pid (isolation patch, `last-run.json.tmp`, change temporaries, keychain temporary, update-cache lock, workspace registry lock), so two runs inside one process can no longer unlink each other's in-flight file.
 - `applyChanges` records `overwrote: true` on the audit entry when a `create` replaces an existing file, instead of replacing it silently.
 - Provider failures include the API's own error message (invalid model, quota, oversized request) instead of only the HTTP status code.
+- The type checker is clean again: four pre-existing `tsc` errors in `src/cli/commands/run.js` (provider names inferred as `boolean`) and `src/utils/temp-cleanup.js` (undocumented options) are fixed, so `npm run typecheck` (part of `release:check`) passes.
+
 
 
 ### Added
@@ -62,6 +70,8 @@
 - Added extension coverage: Windows paths survive `parseMcpCommand`, the MCP handshake can refresh the runtime token, and `run`/`status` target the open folder.
 - Added `src/entitlement/model.test.js` (timestamp acceptance) and `tests/test-migrate-output.js` (generated configuration and `.gitignore` preservation).
 - Added regression coverage for the provider-name injection (a marker file that must not be created on Windows), provider-name validation, acceptance of a workspace whose path casing differs, the knowledge-store lock back-off (with a CPU assertion), idle-shutdown ordering, the create-overwrite audit entry, and provider error details.
+- Added coverage for provider request headers, the reasoning-model request body, the Windows ACL cleanup (asserting the removed SIDs against a live ACL), the token read cache, and the OAuth browser policy.
+
 
 
 ## 1.3.12 - 2026-09-11
