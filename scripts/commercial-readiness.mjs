@@ -5,6 +5,14 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const manifestEnvironmentVariable = "MINITOK_COMMERCIAL_APPROVAL_MANIFEST";
 const packageData = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
+// The Extension marketplace version is independent of the CLI version, so the
+// expected VSIX version comes from the Extension package itself. This used to
+// fall back to a hardcoded "0.1.4" because the root package.json has no
+// extensionVersion, which rejected any approval manifest that declared the real
+// current VSIX (0.2.6) as stale — the approval flow could never pass.
+const extensionPackageData = (() => {
+  try { return JSON.parse(fs.readFileSync(path.join(root, "extension", "package.json"), "utf8")); } catch { return {}; }
+})();
 const requiredApprovalFields = ["status", "owner", "decision", "evidenceRef", "approvedAt"];
 const placeholderPattern = /(?:PENDING|TODO|TBD|CHANGE_ME|REPLACE_ME|PLACEHOLDER|UNVERIFIED|NOT_GRANTED|<[^>]+>)/i;
 const requirements = [
@@ -65,7 +73,7 @@ export function validateApprovalManifest(manifest, { packageData: expectedPackag
   if (!manifest.release || typeof manifest.release !== "object" || manifest.release.package !== expectedPackage.name || manifest.release.version !== expectedPackage.version) errors.push("manifest package/version does not match package.json");
   if (!manifest.release?.artifacts || typeof manifest.release.artifacts !== "object") errors.push("release.artifacts must identify current local artifacts");
   else {
-    const expectedVersions = { cli: expectedPackage.version, vsix: expectedPackage.extensionVersion || "0.1.4" };
+    const expectedVersions = { cli: expectedPackage.version, vsix: expectedPackage.extensionVersion || extensionPackageData.version || "0.1.4" };
     for (const [id, artifact] of Object.entries(manifest.release.artifacts)) {
       if (!artifact || typeof artifact !== "object" || artifact.version !== expectedVersions[id] || typeof artifact.sha256 !== "string" || !/^[a-f0-9]{64}$/i.test(artifact.sha256)) errors.push(`release.artifacts.${id} must contain the current local artifact version and SHA-256`);
     }
