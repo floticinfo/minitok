@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const git = require("../../git/operations");
 const { WorkspaceManager } = require("../../workspace/manager");
 
@@ -27,28 +28,33 @@ project:
   name: "{{PROJECT_NAME}}"
   stack: generic
 
-# Configure at least one provider. It becomes the default for every role.
-# Set roles.<role>.provider to override one role.
-providers:
-  default:
-    base_url: ""
-    api_key: ""
-    models: []
+# Configure a provider. Keys are detected from the environment
+# (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY) or from
+# 'minitok auth login <provider>'.
+#
+# Note: with 'provider' left empty, every role resolves to its 'adapter'
+# (claude) for backwards compatibility. If your only key is for another
+# provider, set roles.<role>.provider, or run with --provider-override <name>.
+providers: {}
 
-default_provider: default
+default_provider: ""
 
 roles:
   plan:
     provider: ""
+    adapter: claude
     effort: medium
   review:
     provider: ""
+    adapter: claude
     effort: medium
   work:
     provider: ""
+    adapter: claude
     effort: medium
   intel:
     provider: ""
+    adapter: claude
     effort: medium
 
 budget:
@@ -117,12 +123,19 @@ async function cmdMigrate(repoPath, name) {
   const gitignorePath = path.join(resolved, ".gitignore");
   const entries = [".minitok/", "minitok-evidence/"];
   const existing = fs.existsSync(gitignorePath) ? fs.readFileSync(gitignorePath, "utf-8") : "";
+  // Preserve the file's own line endings and permissions. Rewriting a CRLF
+  // .gitignore as LF made every line look modified in the customer's repository.
+  const eol = existing.includes("\r\n") ? "\r\n" : "\n";
+  const previousMode = fs.existsSync(gitignorePath) ? fs.statSync(gitignorePath).mode : null;
   const lines = existing.split(/\r?\n/);
   for (const entry of entries) if (!lines.includes(entry)) lines.push(entry);
-  const gitignoreContent = lines.filter((line, index, all) => line !== "" || index < all.length - 1).join("\n").replace(/\n*$/, "\n");
-  const tempGitignore = `${gitignorePath}.tmp.${process.pid}`;
-  fs.writeFileSync(tempGitignore, gitignoreContent, { encoding: "utf-8", flag: "wx" });
-  try { fs.renameSync(tempGitignore, gitignorePath); } catch (error) { try { fs.unlinkSync(tempGitignore); } catch {} throw error; }
+  const gitignoreContent = `${lines.filter((line, index, all) => line !== "" || index < all.length - 1).join(eol).replace(/[\r\n]*$/, "")}${eol}`;
+  const tempGitignore = `${gitignorePath}.tmp.${process.pid}.${crypto.randomBytes(6).toString("hex")}`;
+  fs.writeFileSync(tempGitignore, gitignoreContent, { encoding: "utf-8", flag: "wx", mode: previousMode === null ? 0o644 : previousMode });
+  try {
+    fs.renameSync(tempGitignore, gitignorePath);
+    if (previousMode !== null) fs.chmodSync(gitignorePath, previousMode);
+  } catch (error) { try { fs.unlinkSync(tempGitignore); } catch {} throw error; }
 
   // Register workspace
   const wm = new WorkspaceManager();
@@ -144,7 +157,8 @@ async function cmdMigrate(repoPath, name) {
   console.log(`  repository:  ${ws.repository_root}`);
   console.log(`  project:     ${ws.project_type}`);
   console.log(`\nNext steps:`);
-  console.log(`  1. Configure one provider in minitok.yml or set ANTHROPIC_API_KEY, OPENAI_API_KEY, GOOGLE_API_KEY, or OPENROUTER_API_KEY`);
+  console.log(`  1. Set a provider key (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or OPENROUTER_API_KEY) or run: minitok auth login <provider>`);
+  console.log(`     Roles default to the 'claude' adapter; for another provider set roles.<role>.provider or pass --provider-override <provider>`);
   console.log(`  2. Run: minitok doctor`);
   console.log(`  3. Preview safely: minitok run --dry-run "your task description"`);
   console.log(`  4. Run a real task: minitok run "your task description"`);

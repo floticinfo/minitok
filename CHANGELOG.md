@@ -12,6 +12,31 @@
 - Fixed an unknown command reaching the default CLI action, which opened the terminal interface on a TTY and printed the bare-invocation hint on a pipe.
 - Fixed the Extension CLI version gate: it rejected `minitok 1.3.12` because the CLI prints a product prefix, and rejected every future major release because major and minor were compared independently.
 
+### Hardening
+
+- Fixed signal handlers doubling on every pipeline run. The pipeline snapshotted the existing SIGINT/SIGTERM listeners and re-added them without removing them first, so the count doubled per run (2, 4, 8, 16, ...). The default terminal interface installs both handlers, which produced `MaxListenersExceededWarning` on the fourth task and ran each handler 2^N times on Ctrl+C.
+- Fixed an approval wait ignoring cancellation. Cancelling a run (`:cancel`, `minitok_run_cancel`, Ctrl+C) now ends the wait immediately instead of blocking for the full approval timeout (30 minutes by default) while holding the MCP run slot and the diverted stdout.
+- Fixed `execution.research_enabled` being ignored. The setting is accepted, env-mapped and written by `minitok migrate`, but the intelligence phase ran every cycle regardless and required the `intel` provider credentials; disabling research now skips both.
+- Fixed the MCP runtime token expiring after 15 minutes with no way to refresh it, because only `minitok mcp connect` rotated it. The new `minitok mcp token` command rotates it on demand, and the VS Code extension calls it before a handshake when the recorded token is unusable.
+- Fixed `parseMcpCommand` consuming Windows backslashes: a `minitok.mcpCommand` value such as `"C:\Program Files\nodejs\node.exe"` was silently parsed into an invalid path. A backslash now escapes only a quote, a backslash or whitespace, and single quotes are literal.
+- Fixed an expired cached OAuth token permanently blocking remote MCP. The client presented the stale token and the 401 handler only re-authorized when no token existed, so it never refreshed; expired entries are no longer used, are discarded on 401, and `TokenStore.isValid()` is consulted.
+- Fixed the Extension `minitok.run` command ignoring the workspace folder that is open in the editor and running against the globally registered workspace, which could modify a different repository.
+- Fixed the localhost runtime stopping itself after 30 minutes with no documented control: `minitok runtime start --idle-timeout <minutes>` (0 disables) is now available and the default is documented.
+- Fixed MCP session eviction dropping the oldest created session instead of the least recently used one, which could evict the session in active use.
+- Fixed `initialize` accepting any token. A value the server would refuse later now fails the handshake instead of succeeding and failing every subsequent call.
+- Fixed the GUI approval watcher polling a deleted path forever (one leaked 150 ms timer per task).
+- Fixed `minitok migrate` writing a `providers.default` placeholder that could never work plus a `default_provider` pointing at it, and its next-steps text implying any provider key works out of the box.
+- Fixed `minitok migrate` rewriting `.gitignore` as LF, which marked every line as modified in a CRLF repository, and resetting the file mode; line endings and permissions are preserved.
+- Fixed entitlement persistence deleting the target before renaming on Windows, which left a window with no entitlement on disk; `rename()` already replaces atomically.
+- Fixed the global configuration being read only from the hardcoded `~/.config/minitok/config.yml`, which ignored Windows (`%APPDATA%`) and `$XDG_CONFIG_HOME`; the platform path, the legacy path and `~/.minitok/config.yml` are all honored.
+- Fixed entitlement timestamps requiring milliseconds: an issuer signing a valid instant such as `2026-01-01T00:00:00Z` would have made every entitlement MALFORMED.
+- Fixed the Extension probing the CLI synchronously on every call (up to three 10 second `execFileSync` probes); the result is cached per setting and the probe is capped at 3 seconds.
+
+### Added
+
+- `minitok mcp token` ensures the local MCP runtime token is valid, rotating it when missing or expired. It never prints the token itself.
+- `minitok runtime start --idle-timeout <minutes>` configures the idle shutdown; 0 disables it.
+
 ### Extension
 
 - Moved the CLI compatibility check to `extension/src/version.ts` so it can be exercised under Node, with a test that asserts the gate accepts the exact string `minitok --version` prints.
@@ -20,6 +45,11 @@
 
 - Added transport-level coverage for the MCP tool surface (`tests/test-mcp-tool-transport.js`), which previously only tested unauthenticated requests and therefore never reached the entitlement, scope, or run_id paths.
 - Corrected stdio test names that claimed to verify the paid entitlement gate while asserting pre-authentication rejection.
+- Added pipeline hardening coverage: signal listener counts across repeated runs, cancellation during an approval wait, and `execution.research_enabled`.
+- Added runtime coverage: least-recently-used session eviction and the configurable idle shutdown.
+- Added remote MCP coverage: an expired cached OAuth token is never reused and a 401 starts the OAuth refresh path.
+- Added extension coverage: Windows paths survive `parseMcpCommand`, the MCP handshake can refresh the runtime token, and `run`/`status` target the open folder.
+- Added `src/entitlement/model.test.js` (timestamp acceptance) and `tests/test-migrate-output.js` (generated configuration and `.gitignore` preservation).
 
 ## 1.3.12 - 2026-09-11
 

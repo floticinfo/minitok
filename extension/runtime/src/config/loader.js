@@ -184,12 +184,29 @@ function validateConfig(config) {
   return config;
 }
 
+function globalConfigPaths() {
+  const candidates = [];
+  const xdg = String(process.env.XDG_CONFIG_HOME || "").trim();
+  // Platform convention first. The previous hardcoded ~/.config path ignored
+  // Windows (%APPDATA%) and $XDG_CONFIG_HOME entirely, so a "global" config was
+  // silently not loaded there.
+  if (xdg) candidates.push(path.join(xdg, "minitok", "config.yml"));
+  else if (process.platform === "win32" && process.env.APPDATA) candidates.push(path.join(process.env.APPDATA, "minitok", "config.yml"));
+  else candidates.push(path.join(os.homedir(), ".config", "minitok", "config.yml"));
+  // Keep the legacy location working, and honour the product directory that
+  // every other minitok path already uses. Later entries win.
+  candidates.push(path.join(os.homedir(), ".config", "minitok", "config.yml"));
+  candidates.push(path.join(os.homedir(), ".minitok", "config.yml"));
+  return [...new Set(candidates)].filter(candidate => {
+    try { return fs.statSync(candidate).isFile(); } catch { return false; }
+  });
+}
+
 function loadConfig(configPath, overrides) {
   let raw = {};
 
-  // 2. User global config
-  const globalPath = path.join(os.homedir(), ".config", "minitok", "config.yml");
-  raw = deepMerge(raw, loadYaml(globalPath));
+  // 2. User global config (platform path, legacy path, then ~/.minitok)
+  for (const globalPath of globalConfigPaths()) raw = deepMerge(raw, loadYaml(globalPath));
 
   // 3. Project local config — resolve from explicit path, then repoRoot, then CWD
   const candidates = [

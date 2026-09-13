@@ -97,6 +97,7 @@ async function cmdRuntimeStart(opts) {
     const port = String(opts.port ?? 4578);
     const args = [bin, "runtime", "start", "--port", port];
     if (scopes) args.push("--scopes", scopes);
+    if (opts.idleTimeoutMs !== undefined) args.push("--idle-timeout", String(Math.round(opts.idleTimeoutMs / 60000)));
     spawn(process.execPath, args, { stdio: "ignore", detached: true, windowsHide: true });
     for (let attempt = 0; attempt < 15; attempt++) {
       await new Promise((resolve) => setTimeout(resolve, 100));
@@ -113,6 +114,7 @@ async function cmdRuntimeStart(opts) {
   const { RuntimeServer } = require("../../runtime/server");
   const server = new RuntimeServer({
     port: opts.port ?? 4578,
+    idleTimeoutMs: opts.idleTimeoutMs,
     knowledgePath: opts.knowledgePath,
     entitlementDir: opts.entitlementDir,
     auditPath: opts.auditPath,

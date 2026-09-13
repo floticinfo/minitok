@@ -63,10 +63,19 @@ class EntitlementStore {
     const tmp = `${this._filePath}.tmp.${process.pid}.${Date.now()}.${require("node:crypto").randomBytes(8).toString("hex")}`;
     try {
       fs.writeFileSync(tmp, JSON.stringify(record, null, 2), { encoding: "utf-8", flag: "wx", mode: 0o600 });
-      if (process.platform === "win32") {
-        try { fs.unlinkSync(this._filePath); } catch (error) { if (error.code !== "ENOENT") throw error; }
+      try {
+        // rename() replaces the destination atomically on every platform,
+        // including Windows (MOVEFILE_REPLACE_EXISTING). Deleting the target
+        // first — as this used to do on win32 — opened a window in which a crash
+        // left the customer with no entitlement on disk at all.
+        fs.renameSync(tmp, this._filePath);
+      } catch (error) {
+        if (process.platform !== "win32") throw error;
+        // Windows can refuse to replace a file another handle has open; fall
+        // back to clearing the target instead of failing the activation.
+        try { fs.unlinkSync(this._filePath); } catch (unlinkError) { if (unlinkError.code !== "ENOENT") throw unlinkError; }
+        fs.renameSync(tmp, this._filePath);
       }
-      fs.renameSync(tmp, this._filePath);
       setOwnerOnlyPermissions(this._filePath);
     } catch (error) {
       try { fs.unlinkSync(tmp); } catch {}

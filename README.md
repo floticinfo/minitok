@@ -156,8 +156,8 @@ minitok activation-key                    # Legacy activation-key command
 minitok billing checkout                 # Alias for checkout
 minitok billing portal                   # Alias for portal
 minitok billing activation-key           # Alias for activation-key
-minitok runtime <start|stop|status>       # Manage the local runtime service
-minitok mcp <status|connect|disconnect>   # Manage MCP integrations
+minitok runtime <start|stop|status>       # Local runtime (start --idle-timeout <minutes>; 0 disables)
+minitok mcp <status|connect|disconnect|token>   # Manage MCP integrations
 minitok --help                            # Show all commands
 ```
 
@@ -182,9 +182,12 @@ execution:
   max_retries: 5
   retry_backoff_sec: 1
   retry_max_sec: 30
+  research_enabled: true
 validation:
   script_path: VERIFY_CMD.mjs
 ```
+
+`execution.research_enabled: false` (or `MINITOK_EXECUTION_RESEARCH_ENABLED=0`) skips the repository-intelligence phase that otherwise runs before planning on every cycle; the `intel` provider credentials are not required in that case. When `roles.<role>.provider` is empty, the role resolves through its legacy `adapter` (default `claude`), so a repository whose only key is for another provider must set `roles.<role>.provider` or run with `--provider-override <provider>`.
 
 After purchasing, run `minitok activate <activation-key>` once. The key is bound to the current installation; use `minitok doctor` to diagnose missing, expired, or server-rejected entitlements.
 
@@ -225,6 +228,8 @@ minitok exposes the same MCP JSON-RPC methods over two transports:
 Both transports support protocol version `2024-11-05`, tools, resources, prompts, cancellation notifications, and the same paid entitlement gate. Local MCP defaults to `read` permission and no transport ever grants more than the recorded scope. Grant additional scopes explicitly with `minitok mcp connect <host> --scopes read,write` for the stdio transport, or `minitok runtime start --scopes read,write` for the localhost HTTP runtime; `auto_accept` must be listed separately and is only accepted when an explicit policy intends it. The `read` scope is read-only in effect: every tool that writes anything is rejected with `PERMISSION_DENIED` unless `write` is granted, and the requirement comes from an explicit per-tool table rather than from the MCP annotations, so the additive writers `minitok_knowledge_record` and `minitok_observe` also need `write`. An unknown scope is rejected before any configuration file is written or the runtime starts. Remote MCP exposes only `minitok_status` and `minitok_compact`. Authentication and entitlement enforcement are mandatory for production MCP constructors and cannot be disabled through options, environment variables, or configuration. Health and readiness endpoints remain available without those checks. After transport authentication, initialize returns negotiated protocol information without checking entitlement; paid methods return a JSON-RPC `PERMISSION_DENIED` error with `data.type` `ENTITLEMENT_REQUIRED` and the policy `data.state` when the local entitlement is missing, expired, malformed, or rejected by the server. HTTP therefore returns `200` with a JSON-RPC entitlement error for an authenticated initialize-then-paid-method sequence, while non-MCP HTTP routes continue to enforce entitlement before route handling. These states mean the client cannot authorize paid MCP functionality; they are not transport or authentication failures.
 
 Notifications omit the JSON-RPC response. Over stdio they produce no output; over HTTP a notification-only request returns `202 Accepted` with an empty body. JSON-RPC batches return one response per request or error item with an id; notifications are omitted, and an empty batch is invalid. The HTTP transport returns the responses as a JSON array, while stdio emits each response as a newline-delimited JSON value.
+
+The stdio runtime token recorded by `minitok mcp connect` is short lived (15 minutes). Refresh it with `minitok mcp token`, which rotates the token file without rewriting any client configuration; the VS Code extension runs it automatically before a handshake when the recorded token is missing, expired, or revoked. The localhost runtime also stops itself after 30 minutes without requests by default: pass `minitok runtime start --idle-timeout <minutes>` to change that, or `--idle-timeout 0` to keep it running until `minitok runtime stop`.
 
 `minitok_run` can create a file-backed approval request under the workspace `.minitok` directory. The client or operator approves or rejects it through `minitok_approve_run` or `minitok_reject_run`, which writes a response bound to the request nonce and run id. Responses are rejected when the request is expired, malformed, mismatched, or already unsafe to update; the pipeline then continues or stops according to the decision. Cancellation is separate and uses `notifications/cancelled` or `minitok_run_cancel`.
 

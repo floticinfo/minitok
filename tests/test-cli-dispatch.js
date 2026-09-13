@@ -48,3 +48,18 @@ test("a typo in a valid command name is still rejected", () => {
   assert.match(`${result.stdout}${result.stderr}`, /unknown command 'runx'/);
 });
 
+test("runtime start exposes an idle shutdown control", () => {
+  // The fixed 30 minute idle shutdown silently stopped a runtime a client had
+  // configured, so it has to be visible and adjustable.
+  const result = spawnSync(process.execPath, [bin, "runtime", "start", "--help"], { encoding: "utf8" });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /--idle-timeout <minutes>/);
+  assert.match(result.stdout, /0 disables/);
+});
+
+test("mcp exposes a runtime token refresh command", () => {
+  const result = spawnSync(process.execPath, [bin, "mcp", "--help"], { encoding: "utf8" });
+  assert.equal(result.status, 0);
+  assert.match(result.stdout, /token/);
+});
+

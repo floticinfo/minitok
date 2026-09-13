@@ -68,10 +68,14 @@ test("MCP stdio transport contract", () => {
   assert.match(workspace, /packagedMcpCommand/);
   assert.doesNotMatch(workspace, /runtime start/);
   assert.match(workspace, /MINITOK_MCP_AUTH_TOKEN_FILE/);
-  assert.match(extension, /mcpAuthToken\(\)/);
+  assert.match(extension, /ensureMcpAuthToken\(\)/);
   assert.match(extension, /method: "initialize"/);
   assert.match(extension, /method: "tools\/list"/);
-  assert.match(sidebar, /mcpAuthToken\(\)/);
+  assert.match(sidebar, /ensureMcpAuthToken\(\)/);
+  // The runtime token expires after 15 minutes, so the handshake has to be able
+  // to refresh it through the CLI instead of failing until `mcp connect` is rerun.
+  assert.match(workspace, /export async function ensureMcpAuthToken/);
+  assert.match(workspace, /\["mcp", "token"\]/);
   assert.match(sidebar, /mcpEnvironment\(\)/);
   assert.match(sidebar, /configuredMcp\[0\]/);
   assert.match(sidebar, /MINITOK_MCP_AUTH_TOKEN_FILE/);
@@ -91,4 +95,11 @@ test("sidebar process lifecycle contract", () => {
   assert.match(sidebar, /taskkill/);
   assert.match(sidebar, /this\.mcpProcess/);
   assert.match(sidebar, /Unsupported command/);
+});
+
+test("extension commands target the folder that is open in the editor", () => {
+  // Without --repo the CLI falls back to the globally registered workspace, so
+  // `minitok.run` could modify a different repository than the open folder.
+  assert.match(extension, /\["run", task, "--repo", cwd/);
+  assert.match(extension, /\["status", "--repo", statusCwd\]/);
 });

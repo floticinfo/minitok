@@ -28,14 +28,17 @@
 const VALID_PLAN_IDS = ["open", "select", "private"];
 
 /**
- * Check whether a value is a valid ISO 8601 UTC timestamp.
- * @param {*} v
- * @returns {boolean}
+ * Check whether a value is a valid ISO 8601 instant.
+ *
+ * The previous implementation required `d.toISOString() === v`, which also
+ * demanded milliseconds: an issuer that signed `2026-01-01T00:00:00Z` (a valid
+ * ISO instant) would have turned every customer's entitlement into MALFORMED.
+ * Accept the canonical forms while still rejecting anything unparseable.
  */
 function isValidTimestamp(v) {
   if (typeof v !== "string") return false;
-  const d = new Date(v);
-  return !isNaN(d.getTime()) && d.toISOString() === v;
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/.test(v)) return false;
+  return !isNaN(new Date(v).getTime());
 }
 
 /**

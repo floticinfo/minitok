@@ -5,7 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { rotateRuntimeToken, readRuntimeToken, revokeRuntimeToken } = require("./runtime-token");
+const { rotateRuntimeToken, readRuntimeToken, revokeRuntimeToken, ensureRuntimeToken } = require("./runtime-token");
 
 test("runtime tokens rotate independently and bind to installation", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-runtime-token-"));
@@ -34,6 +34,30 @@ test("runtime token generation fails without an installation", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-runtime-token-missing-"));
   try {
     assert.throws(() => rotateRuntimeToken({ entitlementDir: root, filePath: path.join(root, "runtime-token.json") }), /active installation/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("ensureRuntimeToken reuses a valid token and rotates an expired one", () => {
+  // `minitok mcp token` relies on this: the 15 minute runtime token used to be
+  // rotated only by `mcp connect`, so an editor lost MCP access after 15 minutes.
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-runtime-token-ensure-"));
+  const entitlementDir = path.join(root, "entitlement");
+  const filePath = path.join(root, "mcp", "runtime-token.json");
+  fs.mkdirSync(entitlementDir, { recursive: true });
+  fs.writeFileSync(path.join(entitlementDir, "installation-token.json"), JSON.stringify({ token: "installation-jwt", installation_id: "installation-a" }));
+  try {
+    const first = ensureRuntimeToken({ entitlementDir, filePath, now: 1000, ttlMs: 1000 });
+    assert.equal(typeof first.token, "string");
+    assert.equal(ensureRuntimeToken({ entitlementDir, filePath, now: 1500, ttlMs: 1000 }).token, first.token, "a still valid token must be reused");
+
+    const rotated = ensureRuntimeToken({ entitlementDir, filePath, now: 5000, ttlMs: 1000 });
+    assert.notEqual(rotated.token, first.token, "an expired token must be rotated");
+    assert.equal(readRuntimeToken(filePath, 5500).token, rotated.token);
+
+    fs.rmSync(filePath, { force: true });
+    assert.equal(ensureRuntimeToken({ entitlementDir, filePath, rotate: false }), null, "rotate:false must report absence instead of writing");
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

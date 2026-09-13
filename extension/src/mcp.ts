@@ -1,5 +1,7 @@
 import * as path from "node:path";
 
+export const QUOTED_ESCAPES = "\"'\\";
+
 export function parseMcpCommand(value: string) {
   const result: string[] = [];
   let token = "";
@@ -7,9 +9,13 @@ export function parseMcpCommand(value: string) {
   let escaped = false;
   for (const character of value.trim()) {
     if (escaped) {
-      token += character;
+      // Only a quote, a backslash or whitespace is escapable. A backslash before
+      // anything else is a literal path separator: treating every backslash as an
+      // escape silently turned "C:\Program Files\node.exe" into
+      // "C:Program Filesnodejsnode.exe". Single quotes never escape, as in a shell.
+      token += QUOTED_ESCAPES.includes(character) || /\s/.test(character) ? character : `\\${character}`;
       escaped = false;
-    } else if (character === "\\") {
+    } else if (character === "\\" && quote !== "'") {
       escaped = true;
     } else if (quote) {
       if (character === quote) quote = undefined;

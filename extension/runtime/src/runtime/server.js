@@ -54,6 +54,9 @@ class RuntimeServer {
     this._lockNonce = crypto.randomBytes(16).toString("hex");
     this._lockOwned = false;
     this._maxMcpSessions = Math.max(1, Number(options.maxMcpSessions || MAX_MCP_SESSIONS));
+    // Idle shutdown is configurable: the fixed 30 minute default silently killed
+    // a detached runtime that a client had configured. 0 disables it.
+    this._idleTimeoutMs = options.idleTimeoutMs === 0 ? 0 : Math.max(0, Number(options.idleTimeoutMs ?? IDLE_TIMEOUT_MS) || IDLE_TIMEOUT_MS);
     this._metrics = { requests_total: 0, requests_failed: 0, mcp_requests_total: 0, mcp_sessions_created: 0, mcp_sessions_evicted: 0, last_error: null, started_at: null };
   }
 
@@ -154,6 +157,13 @@ class RuntimeServer {
     if (requestedId !== undefined && (typeof requestedId !== "string" || !MCP_SESSION_PATTERN.test(requestedId))) return this._sendJson(res, 400, { error: "Invalid MCP session identifier" });
     let sessionId = requestedId || this._mcpSocketSessions.get(req.socket);
     let session = sessionId ? this._mcpSessions.get(sessionId) : null;
+    if (session && sessionId) {
+      // Map iteration order is insertion order, so refresh recency here: the
+      // eviction below then drops the least recently used session instead of the
+      // oldest created one, which could be the session in active use.
+      this._mcpSessions.delete(sessionId);
+      this._mcpSessions.set(sessionId, session);
+    }
     if (!session) {
       if (sessionId) return this._sendJson(res, 404, { error: "MCP session not found" });
       sessionId = crypto.randomBytes(16).toString("hex");
@@ -234,8 +244,8 @@ class RuntimeServer {
 
   _resetIdleTimer() {
     if (this._idleTimer) clearTimeout(this._idleTimer);
-    if (this._activeRequests === 0) {
-      this._idleTimer = setTimeout(() => { this.stop().catch(() => {}); process.exit(0); }, IDLE_TIMEOUT_MS);
+    if (this._activeRequests === 0 && this._idleTimeoutMs > 0) {
+      this._idleTimer = setTimeout(() => { this.stop().catch(() => {}); process.exit(0); }, this._idleTimeoutMs);
       if (this._idleTimer.unref) this._idleTimer.unref();
     }
   }

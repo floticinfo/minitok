@@ -212,6 +212,13 @@ class RuntimeStdio {
       const requested = Array.isArray(params.protocolVersions) ? params.protocolVersions : [params.protocolVersion];
       const protocolVersion = requested.find(version => SUPPORTED_PROTOCOLS.includes(version));
       if (!protocolVersion) return this._error(id, -32602, "Unsupported protocol version", "PROTOCOL_VERSION_UNSUPPORTED", correlationId, { supported: SUPPORTED_PROTOCOLS }, reply);
+      // Reject a token the server would refuse later. initialize used to accept
+      // any value, so a bogus token produced a successful handshake followed by
+      // AUTH_REQUIRED on every subsequent call.
+      const suppliedToken = this._authValue(params);
+      if (this._authRequired && suppliedToken && !this._authValid(suppliedToken)) {
+        return this._error(id, MCP_ERROR_CODES.AUTH_REQUIRED, "Authentication required", "AUTH_REQUIRED", correlationId, {}, reply);
+      }
        this._clientInfo = params.clientInfo && typeof params.clientInfo === "object" ? { name: String(params.clientInfo.name || "unknown").slice(0, 128), version: String(params.clientInfo.version || "").slice(0, 64) } : null;
        this._sessionToken = this._authValue(params) || this._authToken || this._nextAuthToken;
         this._initialized = true;

@@ -84,3 +84,55 @@ test("local MCP default remains the existing stdio configuration", () => {
   assert.match(plan.data.mcpServers.minitok.args[0], /stdio-entry\.js$/);
   assert.match(plan.data.mcpServers.minitok.env.MINITOK_MCP_AUTH_TOKEN_FILE, /runtime-token\.json$/);
 });
+
+test("an expired cached OAuth token is not reused", () => {
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const path = require("node:path");
+  const { TokenStore } = require("../src/auth/token-store");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-remote-token-"));
+  try {
+    const store = new TokenStore(path.join(root, "tokens"));
+    // The client used to load `access_token` without consulting expires_at, and
+    // the 401 handler only re-authorized when no token was present at all, so an
+    // expired cache entry blocked refresh permanently.
+    store.save("mcp-service.example", { resource: "https://service.example/mcp", access_token: "expired-token", expires_at: new Date(Date.now() - 60000).toISOString() });
+    const stale = new RemoteMcpClient({ url: "https://service.example/mcp", tokenStore: store });
+    assert.equal(stale.token, null, "an expired cached token must not be presented");
+    assert.equal(stale._cachedTokenExpired, true);
+
+    store.save("mcp-service.example", { resource: "https://service.example/mcp", access_token: "fresh-token", expires_at: new Date(Date.now() + 3600000).toISOString() });
+    const fresh = new RemoteMcpClient({ url: "https://service.example/mcp", tokenStore: store });
+    assert.equal(fresh.token, "fresh-token", "a valid cached token is still reused");
+    assert.equal(fresh._cachedTokenExpired, false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("a 401 with an expired cached token enters the OAuth refresh path", async () => {
+  const fs = require("node:fs");
+  const os = require("node:os");
+  const path = require("node:path");
+  const { TokenStore } = require("../src/auth/token-store");
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-remote-refresh-"));
+  const originalFetch = global.fetch;
+  try {
+    const store = new TokenStore(path.join(root, "tokens"));
+    store.save("mcp-service.example", { resource: "https://service.example/mcp", access_token: "expired-token", expires_at: new Date(Date.now() - 60000).toISOString() });
+    const client = new RemoteMcpClient({ url: "https://service.example/mcp", tokenStore: store });
+    const seen = [];
+    global.fetch = async (url) => {
+      seen.push(String(url));
+      if (seen.length === 1) return response(401, { jsonrpc: "2.0", id: 1, error: { code: -32001, message: "unauthorized" } }, { "www-authenticate": 'Bearer resource_metadata="https://service.example/.well-known/oauth-protected-resource"' });
+      // Deliberately invalid discovery metadata: the point is that discovery starts.
+      return response(200, { authorization_servers: [] });
+    };
+    await assert.rejects(() => client.request("tools/list"), error => error.code === "REMOTE_OAUTH_DISCOVERY_FAILED");
+    assert.ok(seen.some(url => url.includes(".well-known")), "the client must attempt discovery instead of retrying the expired token");
+    assert.equal(store.load("mcp-service.example"), null, "the unusable credential must be discarded");
+  } finally {
+    global.fetch = originalFetch;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

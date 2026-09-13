@@ -217,3 +217,18 @@ test("every tool declares the scope it actually needs", () => {
   assert.equal(requiredScopeFor("minitok_compact_context"), "read");
 });
 
+test("initialize rejects a token the server would not accept", async () => {
+  const box = sandbox("read,write");
+  try {
+    // Previously initialize accepted any value, so a bogus token produced a
+    // successful handshake followed by AUTH_REQUIRED on every later call.
+    const rejected = await box.send({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", clientInfo: { name: "probe" }, authToken: "not-the-token" } });
+    assert.equal(box.errorType(rejected), "AUTH_REQUIRED");
+
+    const accepted = await box.send({ jsonrpc: "2.0", id: 2, method: "initialize", params: { protocolVersion: "2024-11-05", clientInfo: { name: "probe" }, authToken: TOKEN } });
+    assert.equal(accepted.error, undefined);
+    const listed = await box.send({ jsonrpc: "2.0", id: 3, method: "tools/list", params: { authToken: TOKEN } });
+    assert.ok(listed.result.tools.length >= 1, "a valid handshake must lead to a usable session");
+  } finally { box.cleanup(); }
+});
+

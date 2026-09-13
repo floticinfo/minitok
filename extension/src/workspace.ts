@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import * as path from "node:path";
 import * as fs from "node:fs";
 import * as os from "node:os";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { packagedMcpCommand, parseMcpCommand } from "./mcp";
 import { isCliCompatible as cliVersionCompatible } from "./version";
 
@@ -22,9 +22,13 @@ export function requireTrustedWorkspace(cwd?: string) {
   if (!vscode.workspace.isTrusted) throw new Error("Trust this workspace before running minitok");
 }
 
+// Probing the CLI runs synchronously on the extension host thread, so keep the
+// cap short: a responsive CLI answers `--version` in well under a second.
+const CLI_PROBE_TIMEOUT_MS = 3000;
+
 function isNodeCli(candidate: string) {
   try {
-    const version = execFileSync(candidate, ["--version"], { stdio: ["ignore", "pipe", "ignore"], timeout: 10000, windowsHide: true }).toString();
+    const version = execFileSync(candidate, ["--version"], { stdio: ["ignore", "pipe", "ignore"], timeout: CLI_PROBE_TIMEOUT_MS, windowsHide: true }).toString();
     return /^minitok\s+\d+\.\d+\.\d+/i.test(version) || /^\d+\.\d+\.\d+/.test(version.trim());
   } catch { return false; }
 }
@@ -38,10 +42,16 @@ function defaultCliPath() {
   return candidates[0];
 }
 
+let cachedCliPath: { configured: string; resolved: string } | undefined;
+
 export function cliPath() {
   const configured = vscode.workspace.getConfiguration("minitok").get<string>("cliPath", "").trim();
-  if (configured && isNodeCli(configured)) return configured;
-  return defaultCliPath();
+  // isNodeCli blocks the extension host, so probe at most once per setting
+  // instead of up to three synchronous probes on every call.
+  if (cachedCliPath && cachedCliPath.configured === configured) return cachedCliPath.resolved;
+  const resolved = configured && isNodeCli(configured) ? configured : defaultCliPath();
+  cachedCliPath = { configured, resolved };
+  return resolved;
 }
 
 function quoteCmdArg(value: string) { return `"${value.replace(/"/g, '\\"')}"`; }
@@ -80,6 +90,36 @@ export function mcpAuthToken() {
 
 export function autoApprove() {
   return vscode.workspace.getConfiguration("minitok").get<boolean>("autoApprove", false);
+}
+
+/**
+ * A usable MCP auth token for a handshake.
+ *
+ * The runtime token expires after 15 minutes and only `minitok mcp connect` used
+ * to rotate it, so MCP access silently stopped working 15 minutes after setup.
+ * Refresh through the CLI (which owns the installation binding) when the file is
+ * missing, expired or revoked. Uses spawn rather than execFileSync so the
+ * extension host is never blocked while the CLI runs.
+ */
+export async function ensureMcpAuthToken() {
+  const current = mcpAuthToken();
+  if (current) return current;
+  await refreshRuntimeToken();
+  return mcpAuthToken();
+}
+
+function refreshRuntimeToken(): Promise<void> {
+  return new Promise<void>(resolve => {
+    const spec = spawnSpec(cliPath(), ["mcp", "token"]);
+    let settled = false;
+    const done = () => { if (!settled) { settled = true; resolve(); } };
+    try {
+      const child = spawn(spec.command, spec.args, { cwd: workspacePath(), shell: spec.shell, windowsHide: true, stdio: "ignore" });
+      const timer = setTimeout(() => { child.kill(); done(); }, 30000);
+      child.on("error", () => { clearTimeout(timer); done(); });
+      child.on("close", () => { clearTimeout(timer); done(); });
+    } catch { done(); }
+  });
 }
 
 export function isCliCompatible(version: string) {

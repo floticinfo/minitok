@@ -88,8 +88,8 @@
       "embedded": "043c5f1bd9d5444e221068f946fe90b3914df730a37d8a0213ca52ced89eb5da"
     },
     "config/loader.js": {
-      "source": "add59fc1f6160f02001992db6caf1e1e4fa4a1a19cb5f87eccc5767b06fd82e7",
-      "embedded": "add59fc1f6160f02001992db6caf1e1e4fa4a1a19cb5f87eccc5767b06fd82e7"
+      "source": "da63abb36467f36944dbb13c17e5b55929ba27de038d664c222bc84747bbc035",
+      "embedded": "da63abb36467f36944dbb13c17e5b55929ba27de038d664c222bc84747bbc035"
     },
     "context/compaction.js": {
       "source": "0475f4c5ed57462603366a047689064c136cf596822394fff72f0c456bb27cdf",
@@ -116,8 +116,8 @@
       "embedded": "92b5c2d48aa5a9f9ee1d0f828f577cb9e413f5bd40c802bea9be11e60c2f032a"
     },
     "entitlement/model.js": {
-      "source": "c0407040270c18f87f79fb07cf4dd537f2702729da9ff13238b26c1129c60f3d",
-      "embedded": "c0407040270c18f87f79fb07cf4dd537f2702729da9ff13238b26c1129c60f3d"
+      "source": "8e29a43e04b30e5e05f141ea7b8349c421d652c00414299f9c65dd58e8ba4c92",
+      "embedded": "8e29a43e04b30e5e05f141ea7b8349c421d652c00414299f9c65dd58e8ba4c92"
     },
     "entitlement/online.js": {
       "source": "9f8c1a3392a11f74db588ad1b854958855f4d7f01410f8c5c6d680876242e723",
@@ -132,8 +132,8 @@
       "embedded": "1f5052a5de285358f7583c3e5b85b14e37d35a55eedfc7cd234bbbdaeaaccaef"
     },
     "entitlement/store.js": {
-      "source": "4bebf816e4d72c6f096a46891f264e4f73e96d8b0560c4c713ea7b65b34ed6c1",
-      "embedded": "4bebf816e4d72c6f096a46891f264e4f73e96d8b0560c4c713ea7b65b34ed6c1"
+      "source": "ee9f695b4d125bba2aa3129adba640d58a57f05c742966e7f53f142489772efa",
+      "embedded": "ee9f695b4d125bba2aa3129adba640d58a57f05c742966e7f53f142489772efa"
     },
     "entitlement/verify.js": {
       "source": "eb12f269cb9e11584a589104b6835274910a2c069c3db36cb234aa2554a9913f",
@@ -208,8 +208,8 @@
       "embedded": "d139507183711739b0829b47ff81b475b8f78f0d985ddc26e1d1ab187133976f"
     },
     "pipeline/loop.js": {
-      "source": "4d24f47dbd05d451a8f5f7137a7ec40461aed42d7cf9bf7192e0f6482cb2df14",
-      "embedded": "4d24f47dbd05d451a8f5f7137a7ec40461aed42d7cf9bf7192e0f6482cb2df14"
+      "source": "6c4780d61c6bd5eb72a1850e8ba8f3959c4267c91f810abf7b037edbe94a8eba",
+      "embedded": "6c4780d61c6bd5eb72a1850e8ba8f3959c4267c91f810abf7b037edbe94a8eba"
     },
     "pipeline/next_task.js": {
       "source": "d319a3b34dc5d80f4ce9e74e3e0805d2d4ee79aa4cfda8bc9be3dcaf8d9ce583",
@@ -272,16 +272,16 @@
       "embedded": "4af7b96185ee48e397a768d4cbff53a6dfc925f3019d655646959c8a56e676c3"
     },
     "runtime/server.js": {
-      "source": "36c9f3c6aad29aa52716359e4144fa40fd147d3e9257439082ac7b47667a6afa",
-      "embedded": "36c9f3c6aad29aa52716359e4144fa40fd147d3e9257439082ac7b47667a6afa"
+      "source": "ead5c7db916805deec9c60506d4f58f0d4aedf423c687b21997f30e3e8e702bb",
+      "embedded": "ead5c7db916805deec9c60506d4f58f0d4aedf423c687b21997f30e3e8e702bb"
     },
     "runtime/stdio-entry.js": {
       "source": "4023e87bc6dd66a33cd8bbaaab20cc07af46584ced03e6093aaa762e097fef02",
       "embedded": "4023e87bc6dd66a33cd8bbaaab20cc07af46584ced03e6093aaa762e097fef02"
     },
     "runtime/stdio.js": {
-      "source": "5f94bbd6ab681499aa67a2144c900c9fa738dfa08ac0574056372429167cfd97",
-      "embedded": "5f94bbd6ab681499aa67a2144c900c9fa738dfa08ac0574056372429167cfd97"
+      "source": "b4dd6dca95e7d2a1bed07148fd5464669a84fb474577d7e91ed3adb32af5427f",
+      "embedded": "b4dd6dca95e7d2a1bed07148fd5464669a84fb474577d7e91ed3adb32af5427f"
     },
     "runtime/workspace.js": {
       "source": "1ccbe48769fd72363230d4a914849ce6b5fc52f5db6496e0b35ce8ac655ff220",

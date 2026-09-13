@@ -51,6 +51,29 @@ function _loadUploadCredentials() {
   }
 }
 
+/**
+ * Restore the signal listeners that existed before a run.
+ *
+ * The handlers registered by the caller (both GUIs install SIGINT/SIGTERM
+ * handlers before calling into the pipeline) were never removed, so re-adding
+ * the snapshot produced a duplicate of every existing handler. Worse, each run
+ * snapshotted the duplicates of the previous run, so the listener count doubled
+ * per run (2, 4, 8, 16, ...): MaxListenersExceededWarning at the fourth task and
+ * every handler running 2^N times on Ctrl+C. Normalize to the original multiset
+ * instead of appending.
+ */
+function restoreSignalListeners(event, original, added) {
+  process.removeListener(event, added);
+  const pending = new Map();
+  for (const handler of original) pending.set(handler, (pending.get(handler) || 0) + 1);
+  for (const handler of process.listeners(event)) {
+    const remaining = pending.get(handler) || 0;
+    if (remaining === 0) process.removeListener(event, handler);
+    else pending.set(handler, remaining - 1);
+  }
+  for (const [handler, missing] of pending) for (let i = 0; i < missing; i += 1) process.on(event, handler);
+}
+
 function getRepoContext(repoRoot, maxFiles = 50) {
   const lines = [];
   lines.push(`Repository: ${repoRoot}`);
@@ -161,6 +184,13 @@ async function promptConfirmation(changesResult, opts) {
     console.log(`MINITOK_APPROVAL_REQUEST ${JSON.stringify(request)}`);
     const deadline = Date.now() + (Number(opts.approvalTimeoutMs) || 30 * 60 * 1000);
     while (Date.now() < deadline) {
+      // Honour cancellation. Without this the poll ignored :cancel / run_cancel /
+      // SIGINT and kept the run (plus its MCP slot and diverted stdout) alive for
+      // the whole timeout — 30 minutes by default.
+      if (opts.signal?.aborted) {
+        try { fs.rmSync(approvalPath, { force: true }); } catch {}
+        return false;
+      }
       try {
         const response = JSON.parse(fs.readFileSync(responsePath, "utf8"));
         if (!validateApprovalResponse(response, request)) {
@@ -210,6 +240,10 @@ async function runPipelineInWorkspace(task, opts = {}) {
   const repoRoot = opts.repoRoot || process.cwd();
   const configPath = opts.configPath || path.join(repoRoot, "minitok.yml");
   const config = loadConfig(configPath, opts.overrides);
+  // execution.research_enabled was accepted, env-mapped and written by `migrate`
+  // but never read, so disabling research still ran the intel phase every cycle
+  // (paid tokens) and still demanded intel provider credentials.
+  const researchEnabled = config.execution?.research_enabled !== false;
 
   if (!git.isGitRepo(repoRoot)) {
     throw new Error(`Not a git repository: ${repoRoot}`);
@@ -265,6 +299,9 @@ async function runPipelineInWorkspace(task, opts = {}) {
   };
   const roleProviders = {};
   for (const role of ["plan", "work", "review", "intel"]) {
+    // The intel role is only needed when research is enabled; requiring its
+    // credentials unconditionally made an unrelated missing key fatal.
+    if (role === "intel" && !researchEnabled) continue;
     roleProviders[role] = createRoleProvider(role);
     if (!(await roleProviders[role].provider.isAvailable())) {
       throw new Error(`Provider '${roleProviders[role].name}' for role '${role}' is not available. Configure its credentials or choose another provider.`);
@@ -400,12 +437,18 @@ async function runPipelineInWorkspace(task, opts = {}) {
     const roleOpts = (role) => buildRoleOptions(config.roles[role], opts.signal);
 
     opts.onProgress?.({ phase: "intel", state: "started", cycle });
-    console.log("  🧭 Gathering repository intelligence...");
-    const intelResult = await intel(roleProviders.intel.provider, task, repoContext, roleOpts("intel"));
-    results.totalTokens.input += intelResult.tokens?.input || 0;
-    results.totalTokens.output += intelResult.tokens?.output || 0;
-    addCost("intel", intelResult.tokens);
-    opts.onProgress?.({ phase: "intel", state: "completed", cycle, tokens: intelResult.tokens, total_tokens: results.totalTokens, total_cost: results.totalCost });
+    let intelResult = { intelligence: undefined, tokens: { input: 0, output: 0 } };
+    if (researchEnabled) {
+      console.log("  🧭 Gathering repository intelligence...");
+      intelResult = await intel(roleProviders.intel.provider, task, repoContext, roleOpts("intel"));
+      results.totalTokens.input += intelResult.tokens?.input || 0;
+      results.totalTokens.output += intelResult.tokens?.output || 0;
+      addCost("intel", intelResult.tokens);
+      opts.onProgress?.({ phase: "intel", state: "completed", cycle, tokens: intelResult.tokens, total_tokens: results.totalTokens, total_cost: results.totalCost });
+    } else {
+      console.log("  🧭 Repository intelligence disabled (execution.research_enabled: false)");
+      opts.onProgress?.({ phase: "intel", state: "skipped", cycle });
+    }
 
     // Phase 2: Plan
     opts.onProgress?.({ phase: "plan", state: "started", cycle });
@@ -558,11 +601,8 @@ async function runPipelineInWorkspace(task, opts = {}) {
     writeContract(repoRoot, { status: "failed", goal: originalGoal, verify_command: config.validation?.script_path || "VERIFY_CMD.sh", error: error.message });
     throw error;
   } finally {
-    // Restore original signal handlers
-    process.removeListener("SIGINT", _onSignal);
-    process.removeListener("SIGTERM", _onSignal);
-    _originalSigint.forEach(h => process.on("SIGINT", h));
-    _originalSigterm.forEach(h => process.on("SIGTERM", h));
+    restoreSignalListeners("SIGINT", _originalSigint, _onSignal);
+    restoreSignalListeners("SIGTERM", _originalSigterm, _onSignal);
   }
 
   const elapsed = Date.now() - startTime;

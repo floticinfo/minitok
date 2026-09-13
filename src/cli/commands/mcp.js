@@ -277,5 +277,22 @@ function register(program) {
         console.log(`${action === "connect" ? "Connected" : "Disconnected"} minitok ${action === "connect" ? "to" : "from"} ${host}`);
       });
   }
+
+  // The runtime token is short lived (15 minutes) and used to be rotated only by
+  // `mcp connect`, so a configured MCP client lost access 15 minutes after setup
+  // with no way to refresh. This command makes rotation an explicit, idempotent
+  // step that the editor can call before a handshake.
+  mcp.command("token")
+    .description("Ensure the local MCP runtime token is valid, rotating it when missing or expired")
+    .action(async () => {
+      const { authorizeEntitlement } = require("../../entitlement/policy");
+      const entitlement = await authorizeEntitlement();
+      if (!entitlement.allowed) throw new Error(entitlement.message || "An active paid entitlement is required");
+      const { ensureRuntimeToken } = require("../../mcp/runtime-token");
+      const record = ensureRuntimeToken({});
+      // Never print the token itself: it is a bearer credential. Report the
+      // rotation so the caller can authenticate from the token file.
+      console.log(JSON.stringify({ status: "ok", path: record.path, expires_at: new Date(record.expires_at).toISOString() }));
+    });
 }
 module.exports = { register, detect, readConfig, writeConfig, configs, serverContainer, planChange, readLock, processIsRunning };

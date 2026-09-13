@@ -4,7 +4,7 @@ import * as path from "node:path";
 import { spawn, ChildProcessWithoutNullStreams, execFile, execFileSync } from "node:child_process";
 import * as os from "node:os";
 import { randomBytes, randomUUID } from "node:crypto";
-import { cliPath, mcpCommand, mcpEnvironment, mcpAuthToken, workspacePath, requireTrustedWorkspace, autoApprove, spawnSpec } from "./workspace";
+import { cliPath, mcpCommand, mcpEnvironment, ensureMcpAuthToken, workspacePath, requireTrustedWorkspace, autoApprove, spawnSpec } from "./workspace";
 import { checkEntitlement, requireEntitlement } from "./entitlement";
 import { authErrorText, deviceLogin, logoutExtension, refreshExtensionSession, readExtensionSession } from "./device-auth";
 
@@ -287,6 +287,9 @@ private async discoverModels(cwd?: string, provider?: string) {
     const configured = mcpCommand();
     if (!configured.length || !configured[0]) { this.view?.webview.postMessage({ type: "mcp", ok: false, text: "minitok MCP command is not configured" }); return; }
     const processSpec = spawnSpec(configured[0], configured.slice(1));
+    // Refresh the short lived runtime token before spawning the server, so both
+    // sides use the same credential instead of failing 15 minutes after setup.
+    const authToken = await ensureMcpAuthToken();
     this.output.appendLine(`[spawn] mcp command=${JSON.stringify(processSpec.command)} args=${JSON.stringify(processSpec.args)} cwd=${JSON.stringify(workspacePath())}`);
     let mcp: ChildProcessWithoutNullStreams;
     try { mcp = spawn(processSpec.command, processSpec.args, { cwd: workspacePath(), env: mcpEnvironment(), shell: processSpec.shell, windowsHide: true }); } catch (error) { this.output.appendLine(`[spawn] synchronous error=${String(error)}`); this.view?.webview.postMessage({ type: "mcp", ok: false, text: `MCP spawn failed: ${String(error)}` }); return; }
@@ -294,11 +297,11 @@ private async discoverModels(cwd?: string, provider?: string) {
     let buffer = "";
     let nextId = 1;
     const timeout = setTimeout(() => { mcp.kill(); this.view?.webview.postMessage({ type: "mcp", ok: false, text: "MCP offline: handshake timed out" }); }, 5000);
-    const send = (method: string, params: Record<string, unknown> = {}) => mcp.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: nextId++, method, params: { ...params, authToken: mcpAuthToken() } })}\n`);
+    const send = (method: string, params: Record<string, unknown> = {}) => mcp.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: nextId++, method, params: { ...params, authToken } })}\n`);
     const finish = (ok: boolean, text: string) => { clearTimeout(timeout); if (this.mcpProcess === mcp) this.mcpProcess = undefined; this.stopChild(mcp); this.view?.webview.postMessage({ type: "mcp", ok, text }); };
     mcp.stdout.on("data", chunk => { buffer += chunk.toString(); const lines = buffer.split(/\r?\n/); buffer = lines.pop() || ""; for (const line of lines) { try { const message = JSON.parse(line); if (message.error) finish(false, `MCP handshake error: ${message.error.message}`); else if (message.id === 1) send("tools/list"); else if (message.id === 2) finish(true, `MCP online: ${message.result?.tools?.length || 0} tools`); } catch (error) { this.output.appendLine(`MCP invalid response: ${error instanceof Error ? error.message : String(error)}`); } } });
     mcp.on("error", error => finish(false, `MCP offline: ${error.message}`));
-     send("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "minitok-sidebar", version: String(this.context.extension.packageJSON.version) }, authToken: mcpAuthToken() });
+     send("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "minitok-sidebar", version: String(this.context.extension.packageJSON.version) } });
 
   }
   private execGit(cwd: string, args: string[]): Promise<string> {
