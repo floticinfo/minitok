@@ -75,6 +75,30 @@ function isValidJsonRpcRequest(msg) {
   return isObject && msg.jsonrpc === "2.0" && typeof msg.method === "string" && msg.method.length > 0 && validId && validParams;
 }
 
+/**
+ * Upper bound for one newline-delimited JSON-RPC request over stdio.
+ *
+ * The HTTP transport already caps a request body at 1 MB; stdio buffered an
+ * unbounded line, so a client that never sent a newline could grow the buffer
+ * until the process ran out of memory.
+ */
+const MAX_REQUEST_BYTES = 4 * 1024 * 1024;
+
+/**
+ * Split incoming stdio data into complete lines while keeping the remainder.
+ * Extracted so the framing and its size guard can be unit tested.
+ * @param {string} buffer text already held back
+ * @param {string} chunk newly received text
+ * @param {number} maxBytes maximum length of an incomplete line
+ * @returns {{ lines: string[], rest: string, oversized: boolean }}
+ */
+function drainStdioLines(buffer, chunk, maxBytes = MAX_REQUEST_BYTES) {
+  const segments = `${buffer}${chunk}`.split("\n");
+  const rest = segments.pop() || "";
+  if (rest.length > maxBytes) return { lines: segments, rest: "", oversized: true };
+  return { lines: segments, rest, oversized: false };
+}
+
 class RuntimeStdio {
   constructor(options = {}) {
     this._services = options.services || createRuntimeServices(options);
@@ -183,7 +207,22 @@ class RuntimeStdio {
       return supplied.length === target.length && crypto.timingSafeEqual(supplied, target);
     });
   }
-  start() { process.stdin.setEncoding("utf-8"); let buffer = ""; process.stdin.on("data", chunk => { buffer += chunk; const lines = buffer.split("\n"); buffer = lines.pop(); for (const line of lines) this._handleLine(line.trim()); }); process.stdin.on("end", () => { if (buffer.trim()) this._handleLine(buffer.trim()); }); }
+  start() {
+    process.stdin.setEncoding("utf-8");
+    let buffer = "";
+    process.stdin.on("data", chunk => {
+      const { lines, rest, oversized } = drainStdioLines(buffer, chunk);
+      buffer = rest;
+      for (const line of lines) this._handleLine(line.trim());
+      if (oversized) {
+        // A single line longer than any legitimate request: report it and drop the
+        // buffer instead of growing it until the process runs out of memory. The
+        // HTTP transport already caps a request body at 1 MB.
+        this._respond({ jsonrpc: "2.0", id: null, error: { code: -32600, message: `Request exceeds the maximum line length (${MAX_REQUEST_BYTES} bytes)`, data: { type: "INVALID_REQUEST" } } });
+      }
+    });
+    process.stdin.on("end", () => { if (buffer.trim()) this._handleLine(buffer.trim()); });
+  }
   async _handleLine(line, respond = this._respond.bind(this)) {
      if (!line) return;
      let msg;
@@ -270,4 +309,4 @@ class RuntimeStdio {
   _errorCode(code) { return code === "INVALID_PARAMS" || code === "INVALID_PATH" || code === "PATH_OUTSIDE_WORKSPACE" ? -32602 : code === "RUN_NOT_FOUND" || code === "TOOL_NOT_FOUND" ? MCP_ERROR_CODES.NOT_FOUND : MCP_ERROR_CODES.TOOL_ERROR; }
   _respond(msg) { process.stdout.write(`${JSON.stringify(msg)}\n`); }
 }
-module.exports = { RuntimeStdio, SUPPORTED_PROTOCOLS, isValidJsonRpcRequest, loadAuthTokenFile, parseLocalMcpScopes, LOCAL_MCP_SCOPES };
+module.exports = { RuntimeStdio, SUPPORTED_PROTOCOLS, isValidJsonRpcRequest, loadAuthTokenFile, parseLocalMcpScopes, LOCAL_MCP_SCOPES, drainStdioLines, MAX_REQUEST_BYTES };

@@ -71,6 +71,40 @@ test("the pipeline consumes the options the CLI and configuration expose", () =>
   assert.match(providerSource, /const requestedTimeout = Number\.isFinite\(Number\(opts\.timeout_ms\)\)/);
 });
 
+test("configuration no longer advertises role options without a consumer", () => {
+  for (const role of ["plan", "review", "work", "intel"]) {
+    for (const key of ["tools", "variant", "mode"]) {
+      assert.equal(Object.prototype.hasOwnProperty.call(DEFAULTS.roles[role], key), false, `roles.${role}.${key} had no reader`);
+    }
+    assert.equal(typeof DEFAULTS.roles[role].timeout_sec, "number", "the keys that are enforced stay");
+  }
+  assert.equal(Object.prototype.hasOwnProperty.call(DEFAULTS.execution, "search"), false, "the web/GitHub search subsystem does not exist");
+  assert.equal(DEFAULTS.project.name, "unknown");
+  assert.equal(DEFAULTS.project.stack, "generic");
+});
+
+test("project.name and project.stack label the prompts", () => {
+  assert.match(loopSource, /const projectLabel = \[config\.project\?\.name, config\.project\?\.stack\]/);
+  assert.match(loopSource, /const promptContext = projectLabel \? `Project: \$\{projectLabel\}\\n\$\{repoContext\}` : repoContext;/);
+  assert.match(loopSource, /intel\(roleProviders\.intel\.provider, task, promptContext,/);
+  assert.match(loopSource, /plan\(roleProviders\.plan\.provider, task, promptContext,/);
+  assert.match(loopSource, /implement\(roleProviders\.work\.provider, planResult, promptContext,/);
+});
+
+test("the project label reaches the planner and implementer prompts", async () => {
+  const { plan } = require(path.join(ROOT, "src", "pipeline", "planner.js"));
+  const { implement } = require(path.join(ROOT, "src", "pipeline", "implementer.js"));
+  const context = "Project: test · node\nREPOSITORY CONTEXT";
+  const captured = [];
+  const planProvider = { complete: async messages => { captured.push(messages.map(message => message.content).join("\n")); return { text: JSON.stringify({ steps: [{ id: 1, description: "step" }], files: [] }), tokens: { input: 1, output: 1 }, model: "mock" }; } };
+  const workProvider = { complete: async messages => { captured.push(messages.map(message => message.content).join("\n")); return { text: JSON.stringify({ changes: [{ file: "src/a.js", action: "create", content: "module.exports = 1;\n" }], summary: "s", files_changed: 1 }), tokens: { input: 1, output: 1 }, model: "mock" }; } };
+
+  const planResult = await plan(planProvider, "task", context, {});
+  await implement(workProvider, planResult, context, {});
+  assert.equal(captured.length, 2);
+  for (const prompt of captured) assert.match(prompt, /Project: test · node/, "the project label must reach the model");
+});
+
 test("a role timeout cannot exceed the configured hard ceiling", () => {
   // The ceiling is execution.timeout_hard_limit_sec (default 86400s), and it is
   // applied with Math.min over the role value.

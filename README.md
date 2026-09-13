@@ -140,6 +140,7 @@ minitok runs list                        # Alias for run list
 minitok runs show <run-id>               # Alias for run show
 minitok status                           # Entitlement, providers, roles, recent run
 minitok doctor                           # Environment and entitlement diagnostics
+minitok doctor --verify                  # The full provider audit: probes every configured key
 minitok models                           # List available provider models
 minitok workspace <add|list|use|current|remove> # Manage repository workspaces
 minitok auth login <provider>            # Provider authentication; unchanged semantics
@@ -187,11 +188,15 @@ validation:
   script_path: VERIFY_CMD.mjs
 ```
 
-`execution.research_enabled: false` (or `MINITOK_EXECUTION_RESEARCH_ENABLED=0`) skips the repository-intelligence phase that otherwise runs before planning on every cycle; the `intel` provider credentials are not required in that case. When `roles.<role>.provider` is empty, the role resolves through its legacy `adapter` (default `claude`), so a repository whose only key is for another provider must set `roles.<role>.provider` or run with `--provider-override <provider>`.
+`execution.research_enabled: false` (or `MINITOK_EXECUTION_RESEARCH_ENABLED=0`) skips the repository-intelligence phase that otherwise runs before planning on every cycle; the `intel` provider credentials are not required in that case. When `roles.<role>.provider` is empty, the role resolves through its legacy `adapter` (default `claude`), so a repository whose only key is for another provider must set `roles.<role>.provider` or run with `--provider-override <provider>`. `minitok run` live-checks only the providers the configured roles resolve to — a stale key for a provider no role uses no longer delays or blocks the run — and `minitok doctor --verify` probes every configured key when a full audit is wanted.
 
 After purchasing, run `minitok activate <activation-key>` once. The key is bound to the current installation; use `minitok doctor` to diagnose missing, expired, or server-rejected entitlements.
 
 Every non-dry-run pipeline execution requires entitlement authorization before provider work. The legacy `skipEntitlementCheck` option is rejected; it is not a supported public or production control. Every non-dry-run pipeline execution also requires the portable deterministic verification gate `VERIFY_CMD.mjs`. The command must exit with status 0 for the gate to pass; the LLM review is supplementary and cannot replace this gate. `VERIFY_CMD.sh` is retained only as a compatibility wrapper where a POSIX shell is available. `minitok migrate` creates a portable npm/pytest template.
+
+**Configuration errors are reported, not ignored.** If `minitok.yml` cannot be parsed (or cannot be read), the command fails with the file path and the YAML error instead of continuing with defaults; a missing file is the only case that silently falls back. `minitok run` stops at that point, before any provider request, so a typo never turns into a run with settings you did not write. A `project.name`/`project.stack` pair is passed to the planner and implementer prompts as a `Project:` line.
+
+**Autonomous writes are name-checked.** A change is refused when its file name would mean something different after the operating system normalizes it: a trailing dot or space, a `:` (an NTFS alternate data stream), an invalid or control character, a Windows device name (`NUL`, `COM1`), or — on Windows — an 8.3 short name such as `MINITO~1.YML`. Such a name used to pass the protected-path and blocked-extension checks as a near-miss (`minitok.yml.`, `evil.ps1 `) and could land on the real file on a volume where that normalization applies. A change set that contains one is refused as a whole, and nothing is written.
 
 **Windows notes:** the npm-based `VERIFY_CMD.mjs` gate works out of the box. A POSIX `VERIFY_CMD.sh` gate requires Git Bash on PATH; if it is unavailable but `VERIFY_CMD.mjs` exists, minitok automatically falls back to it. Ctrl+C aborts a run; external termination (SIGTERM) is not delivered by Windows, so prefer Ctrl+C for stopping.
 

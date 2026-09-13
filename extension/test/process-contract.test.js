@@ -93,6 +93,27 @@ test("all extension process paths require trusted workspaces", () => {
   assert.match(sidebar, /private async checkMcpHealth[\s\S]*?requireTrustedWorkspace\(workspacePath\(\)\)/);
 });
 
+test("interactive consent is forwarded to the spawned CLI", () => {
+  // A run spawned from the extension has no TTY: the CLI refuses every file
+  // change without --auto-accept, so each consent path must forward it. The
+  // command palette used to collect consent and drop it.
+  assert.match(extension, /approved = true;[\s\S]{0,500}\["--auto-accept"\]/);
+  assert.match(panel, /args\.push\("--auto-accept"\)/);
+  assert.match(sidebar, /"--approval-file"/);
+  assert.match(sidebar, /"--approval-timeout-ms"/);
+});
+
+test("the entitlement decision is cached and dropped after an auth change", () => {
+  // Every check spawns the CLI, so the same answer must not be paid for once per
+  // command; a login, logout, or manual refresh drops the cached decision.
+  assert.match(entitlement, /const ALLOWED_CACHE_MS/);
+  assert.match(entitlement, /const DENIED_CACHE_MS/);
+  assert.match(entitlement, /export function invalidateEntitlementCache/);
+  assert.match(entitlement, /cachedDecision = \{ at: Date\.now\(\), state \}/);
+  assert.match(sidebar, /invalidateEntitlementCache/);
+  assert.equal((sidebar.match(/invalidateEntitlementCache\(\)/g) || []).length >= 4, true, "login, logout, manual refresh, and the credential form");
+});
+
 test("sidebar process lifecycle contract", () => {
   assert.match(sidebar, /approval-timeout-ms/);
   assert.match(sidebar, /taskkill/);

@@ -32,7 +32,15 @@ async function cmdRun(task, opts) {
   try {
     const { loadConfig, resolveProviderName } = require("../../config/loader");
     const { detectAvailableProviders, verifyCredentials } = require("../../llm/provider");
-    const preflightConfig = loadConfig(require("path").join(repoRoot, "minitok.yml"));
+    let preflightConfig;
+    try {
+      preflightConfig = loadConfig(require("path").join(repoRoot, "minitok.yml"));
+    } catch (configError) {
+      // A malformed minitok.yml must stop the run before any provider probe: the
+      // pipeline would otherwise proceed with defaults the user never wrote.
+      console.error(`Error: ${configError.message}`);
+      return 1;
+    }
     const available = await detectAvailableProviders(preflightConfig);
     if (available.length === 0) {
       console.error("Error: No LLM provider is configured.\n");
@@ -51,7 +59,9 @@ async function cmdRun(task, opts) {
     // resolve to. Scope matters: a stale unrelated token (e.g. an old
     // ~/.minitok/tokens/anthropic.json) must not abort an OpenAI-only run — the
     // earlier "any rejected provider is fatal" rule made that configuration
-    // completely unrunnable. Unrelated rejected keys are reported as a warning.
+    // completely unrunnable. Only the resolved providers are probed: verifying
+    // every available key cost up to 8 seconds per unused provider, and
+    // `minitok doctor --verify` is the command that audits all of them.
     const aliasOf = { claude: "anthropic", gpt: "openai", gemini: "google" };
     const canonical = (name) => aliasOf[String(name || "").toLowerCase()] || String(name || "").toLowerCase();
     const override = canonical(opts.providerOverride);
@@ -63,15 +73,16 @@ async function cmdRun(task, opts) {
     if (needed.length === 0) needed = available.slice();
 
     const health = new Map();
-    for (const name of available) {
+    for (const name of needed) {
       health.set(name, await verifyCredentials(name, preflightConfig.providers?.[name] || {}));
     }
     const statusOf = (name) => {
       if (!available.includes(name)) return "absent";
+      if (!health.has(name)) return "unprobed";
       return (health.get(name) || {}).status === "invalid" ? "dead" : "ok";
     };
     const neededOk = needed.filter(name => statusOf(name) === "ok");
-    const alternatives = available.filter(name => statusOf(name) === "ok" && !needed.includes(name));
+    const alternatives = available.filter(name => !needed.includes(name));
 
     if (neededOk.length === 0) {
       console.error("Error: no usable LLM provider for the configured roles (401/403 on every candidate):\n");
@@ -81,8 +92,8 @@ async function cmdRun(task, opts) {
         console.error(`  ${name}: ${detail}`);
       }
       if (alternatives.length > 0) {
-        console.error(`\nWorking providers detected: ${alternatives.join(", ")}`);
-        console.error(`Run with:  minitok run "<task>" --provider-override ${alternatives[0]}`);
+        console.error(`\nOther configured providers: ${alternatives.join(", ")} (not probed)`);
+        console.error(`Try:  minitok run "<task>" --provider-override ${alternatives[0]}`);
         console.error(`Or set it permanently: change roles.*.provider / default_provider in minitok.yml`);
       }
       console.error("\nRenew the rejected key:  minitok auth login <provider>   (or set the provider environment variable)");
@@ -90,10 +101,6 @@ async function cmdRun(task, opts) {
       return 1;
     }
 
-    const deadUnrelated = available.filter(name => statusOf(name) === "dead" && !needed.includes(name));
-    if (deadUnrelated.length > 0) {
-      console.warn(`[warn] rejected provider(s) not used by the resolved roles: ${deadUnrelated.join(", ")} — continuing with ${neededOk.join(", ")}`);
-    }
     const deadNeeded = needed.filter(name => statusOf(name) === "dead");
     if (deadNeeded.length > 0) {
       console.warn(`[warn] some roles point at a rejected provider (${deadNeeded.join(", ")}); they will fail unless failover is configured.`);

@@ -17,7 +17,8 @@ const os = require("node:os");
 const path = require("node:path");
 
 const ROOT = path.join(__dirname, "..");
-const { promptConfirmation } = require(path.join(ROOT, "src", "pipeline", "loop.js"));
+const { promptConfirmation, approvalRequest, validateApprovalResponse } = require(path.join(ROOT, "src", "pipeline", "loop.js"));
+const { writeApprovalResponse } = require(path.join(ROOT, "src", "cli", "gui-run.js"));
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -121,6 +122,39 @@ test("an approval file outside .minitok is rejected before any write", async () 
   } finally {
     fs.rmSync(repo, { recursive: true, force: true });
   }
+});
+
+test("the GUI approval helper writes the payload the pipeline accepts", async () => {
+  const repo = tempRepo();
+  const approvalFile = path.join(repo, ".minitok", "approval.json");
+  try {
+    const { value: accepted } = await captureStdout(async () => {
+      const pending = promptConfirmation(CHANGES, { repoRoot: repo, approvalFile, approvalTimeoutMs: 15000 });
+      await waitForFile(approvalFile);
+      const written = writeApprovalResponse(approvalFile, "approve");
+      assert.equal(written.ok, true, written.reason);
+      return pending;
+    });
+    assert.equal(accepted, true, "an interactive approval must be honoured instead of waiting for the timeout");
+
+    // The request file is consumed with the decision, so the helper has to report
+    // a clear failure rather than writing a response the pipeline would discard.
+    const missing = writeApprovalResponse(approvalFile, "approve");
+    assert.equal(missing.ok, false);
+    assert.match(missing.reason, /unreadable|malformed/);
+  } finally {
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("a decision-only payload is rejected by the approval contract", () => {
+  const request = approvalRequest(CHANGES, { approvalTimeoutMs: 1000 });
+  // The TUI GUI wrote exactly this shape, so every answer was discarded as
+  // invalid and the run waited out the whole approval timeout.
+  assert.equal(validateApprovalResponse({ decision: "approve" }, request), false);
+  assert.equal(validateApprovalResponse({ decision: "approve", nonce: request.nonce, run_id: request.run_id }, request), true);
+  assert.equal(validateApprovalResponse({ decision: "approve", nonce: request.nonce, run_id: request.run_id, files: [] }, request), false, "extra keys are rejected");
+  assert.equal(validateApprovalResponse({ decision: "maybe", nonce: request.nonce, run_id: request.run_id }, request), false);
 });
 
 

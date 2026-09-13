@@ -87,7 +87,9 @@ function writeCacheAtomic(cachePath, data) {
   const lockPath = `${cachePath}.lock`;
   let lockFd;
   const token = crypto.randomBytes(8).toString("hex");
-  for (let attempt = 0; attempt < 100; attempt++) {
+  // 40 attempts of ~5 ms bound the wait at roughly 200 ms: update-check runs on
+  // every CLI invocation, so a slower writer must not delay the command.
+  for (let attempt = 0; attempt < 40; attempt++) {
     try {
       lockFd = fs.openSync(lockPath, "wx", 0o600);
       fs.writeFileSync(lockFd, JSON.stringify({ pid: process.pid, host: os.hostname(), token, createdAt: Date.now() }));
@@ -102,6 +104,11 @@ function writeCacheAtomic(cachePath, data) {
         let alive = false;
         if (lock.host === os.hostname() && Number.isInteger(lock.pid)) {
           try { process.kill(lock.pid, 0); alive = true; } catch {}
+        } else {
+          // A lock written by another machine that shares this home directory
+          // (a roaming profile, a network mount) cannot be probed for liveness:
+          // only its age may decide, so a live remote writer is not overridden.
+          alive = true;
         }
         stale = !lock || typeof lock.createdAt !== "number" || Date.now() - lock.createdAt > 30000 || !alive;
       } catch { stale = true; }

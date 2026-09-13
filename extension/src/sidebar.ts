@@ -5,7 +5,7 @@ import { spawn, ChildProcessWithoutNullStreams, execFile, execFileSync } from "n
 import * as os from "node:os";
 import { randomBytes, randomUUID } from "node:crypto";
 import { cliPath, mcpCommand, mcpEnvironment, ensureMcpAuthToken, workspacePath, requireTrustedWorkspace, autoApprove, spawnSpec, spawnOptionsFor, npmSpawnSpec } from "./workspace";
-import { checkEntitlement, requireEntitlement } from "./entitlement";
+import { checkEntitlement, invalidateEntitlementCache, requireEntitlement } from "./entitlement";
 import { authErrorText, deviceLogin, logoutExtension, refreshExtensionSession, readExtensionSession } from "./device-auth";
 
 function cliRelease(context: vscode.ExtensionContext) {
@@ -125,9 +125,9 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
     if (summary) this.view?.webview.postMessage({ type: "summary", cycles: summary[1], tokens: summary[2], cost: summary[3] || "0" });
   }
   private async handle(message: { command: string; task?: string; email?: string; password?: string; provider?: string; target?: string; checkpoint?: string; key?: string; settings?: Record<string, unknown>; secrets?: Record<string, string> }) {
-    if (message?.command === "auth-status") { const session = await refreshExtensionSession(this.context); if (!session) { this.view?.webview.postMessage({ type: "auth-state", ok: false, text: "Sign in with browser to continue." }); return; } const result = await checkEntitlement(); this.view?.webview.postMessage({ type: "auth-state", ok: result.allowed, text: result.allowed ? `Signed in with ${result.plan} plan.` : `Entitlement error: ${result.message || "An active paid plan is required."}` }); return; }
-    if (message?.command === "device-login") { try { await deviceLogin(this.context, text => this.view?.webview.postMessage({ type: "auth-state", ok: false, text })); const result = await checkEntitlement(); if (!result.allowed) { this.view?.webview.postMessage({ type: "auth-state", ok: false, text: `Entitlement error: ${result.message || "An active paid plan is required."}` }); return; } this.view?.webview.postMessage({ type: "auth-state", ok: true, text: `Signed in with ${result.plan} plan.` }); } catch (error) { this.view?.webview.postMessage({ type: "auth-state", ok: false, text: authErrorText(error) }); } return; }
-    if (message?.command === "device-logout") { await logoutExtension(this.context); this.view?.webview.postMessage({ type: "auth-state", ok: false, text: "Signed out." }); return; }
+    if (message?.command === "auth-status") { const session = await refreshExtensionSession(this.context); if (!session) { invalidateEntitlementCache(); this.view?.webview.postMessage({ type: "auth-state", ok: false, text: "Sign in with browser to continue." }); return; } invalidateEntitlementCache(); const result = await checkEntitlement(); this.view?.webview.postMessage({ type: "auth-state", ok: result.allowed, text: result.allowed ? `Signed in with ${result.plan} plan.` : `Entitlement error: ${result.message || "An active paid plan is required."}` }); return; }
+    if (message?.command === "device-login") { try { await deviceLogin(this.context, text => this.view?.webview.postMessage({ type: "auth-state", ok: false, text })); invalidateEntitlementCache(); const result = await checkEntitlement(); if (!result.allowed) { this.view?.webview.postMessage({ type: "auth-state", ok: false, text: `Entitlement error: ${result.message || "An active paid plan is required."}` }); return; } this.view?.webview.postMessage({ type: "auth-state", ok: true, text: `Signed in with ${result.plan} plan.` }); } catch (error) { this.view?.webview.postMessage({ type: "auth-state", ok: false, text: authErrorText(error) }); } return; }
+    if (message?.command === "device-logout") { await logoutExtension(this.context); invalidateEntitlementCache(); this.view?.webview.postMessage({ type: "auth-state", ok: false, text: "Signed out." }); return; }
     if (message?.command === "customer-login") { await this.customerLogin(message.email, message.password); return; }
     const entitlementCommands = new Set(["run", "dry-run", "mcp-status", "mcp-connect", "mcp-list", "discover-models", "info", "open-evidence", "open-diff", "restore-session", "update"]);
     if (entitlementCommands.has(message?.command)) {
@@ -213,6 +213,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
     execFile(spec.command, spec.args, { ...spawnOptionsFor(spec, { cwd, env }), timeout: 30000 }, async (error, stdout, stderr) => {
       delete env.MINITOK_CUSTOMER_EMAIL; delete env.MINITOK_CUSTOMER_PASSWORD;
       if (error) { this.view?.webview.postMessage({ type: "auth-state", ok: false, text: stderr || error.message }); return; }
+      invalidateEntitlementCache();
       const result = await checkEntitlement();
       this.view?.webview.postMessage({ type: "auth-state", ok: result.allowed, text: result.allowed ? `Signed in with ${result.plan} plan.` : result.message || stdout });
     });

@@ -459,6 +459,14 @@ async function runPipelineInWorkspace(task, opts = {}) {
     const repoContext = compactContext(rawRepoContext, budgetChars);
     writeContextManifest(repoRoot, { goal: task, source: "pipeline", budget_chars: budgetChars, original_chars: rawRepoContext.length, final_chars: repoContext.length, files: ["package.json", "README.md", "minitok.yml"].filter(file => fs.existsSync(path.join(repoRoot, file))) });
 
+    // project.name and project.stack are written by `minitok migrate` and mapped
+    // from MINITOK_PROJECT_*, but no consumer read them. They label the prompts
+    // the model sees, so a renamed or re-detected project reaches the planner.
+    const projectLabel = [config.project?.name, config.project?.stack]
+      .filter(value => typeof value === "string" && value.trim() && !["unknown", "generic"].includes(value.trim().toLowerCase()))
+      .join(" · ");
+    const promptContext = projectLabel ? `Project: ${projectLabel}\n${repoContext}` : repoContext;
+
     // roles.<role>.timeout_sec is the documented per-request budget;
     // execution.timeout_hard_limit_sec bounds it (a role may not exceed the
     // ceiling). Both keys were previously unused: every request inherited the
@@ -474,7 +482,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
     let intelResult = { intelligence: undefined, tokens: { input: 0, output: 0 } };
     if (researchEnabled) {
       console.log("  🧭 Gathering repository intelligence...");
-      intelResult = await intel(roleProviders.intel.provider, task, repoContext, roleOpts("intel"));
+      intelResult = await intel(roleProviders.intel.provider, task, promptContext, roleOpts("intel"));
       results.totalTokens.input += intelResult.tokens?.input || 0;
       results.totalTokens.output += intelResult.tokens?.output || 0;
       addCost("intel", intelResult.tokens);
@@ -487,7 +495,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
     // Phase 2: Plan
     opts.onProgress?.({ phase: "plan", state: "started", cycle });
     console.log("  📋 Planning...");
-    const planResult = await plan(roleProviders.plan.provider, task, repoContext, { ...roleOpts("plan"), intelligence: intelResult.intelligence });
+    const planResult = await plan(roleProviders.plan.provider, task, promptContext, { ...roleOpts("plan"), intelligence: intelResult.intelligence });
     results.totalTokens.input += planResult.tokens?.input || 0;
     results.totalTokens.output += planResult.tokens?.output || 0;
     addCost("plan", planResult.tokens);
@@ -507,7 +515,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
     // Phase 3: Implement
     opts.onProgress?.({ phase: "work", state: "started", cycle });
     console.log("  🔧 Implementing...");
-    const implResult = await implement(roleProviders.work.provider, planResult, repoContext, roleOpts("work"));
+    const implResult = await implement(roleProviders.work.provider, planResult, promptContext, roleOpts("work"));
     results.totalTokens.input += implResult.tokens?.input || 0;
     results.totalTokens.output += implResult.tokens?.output || 0;
     addCost("work", implResult.tokens);

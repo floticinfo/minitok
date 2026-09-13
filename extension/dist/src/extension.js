@@ -144,17 +144,22 @@ function activate(context) {
             vscode.window.showErrorMessage("Trust this workspace before running minitok");
             return;
         }
-        const autoApproveSetting = (0, workspace_2.autoApprove)();
-        if (!autoApproveSetting) {
+        // The spawned CLI has no TTY, so it refuses every file change unless
+        // --auto-accept is passed. The modal below collects the same consent the
+        // setting encodes; without forwarding it the run rejected every change after
+        // the cycle had already been paid for.
+        let approved = (0, workspace_2.autoApprove)();
+        if (!approved) {
             const answer = await vscode.window.showWarningMessage("Allow minitok to modify this workspace?", "Approve", "Cancel");
             if (answer !== "Approve")
                 return;
+            approved = true;
         }
         output.show(true);
         try {
             // Pass --repo explicitly: without it cmdRun targets the globally registered
             // workspace, which may be a different repository than the open folder.
-            output.appendLine(await runCli((0, workspace_2.cliPath)(), ["run", task, "--repo", cwd, ...(autoApproveSetting ? ["--auto-accept"] : [])]));
+            output.appendLine(await runCli((0, workspace_2.cliPath)(), ["run", task, "--repo", cwd, ...(approved ? ["--auto-accept"] : [])]));
         }
         catch (error) {
             output.appendLine(String(error));

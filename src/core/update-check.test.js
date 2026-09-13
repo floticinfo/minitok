@@ -57,6 +57,31 @@ describe("update cache writes", () => {
     writeCacheAtomic(cachePath, { lastCheck: 2, latest: "10.0.0" });
     assert.deepEqual(JSON.parse(fs.readFileSync(cachePath, "utf8")), { lastCheck: 2, latest: "10.0.0", notifiedVersion: "9.9.9" });
   });
+
+  it("reclaims a lock whose owner process is gone", () => {
+    const cachePath = tmpCachePath();
+    fs.writeFileSync(`${cachePath}.lock`, JSON.stringify({ pid: 0x7ffffffe, host: os.hostname(), token: "dead", createdAt: Date.now() }), "utf8");
+    writeCacheAtomic(cachePath, { lastCheck: 3, latest: "11.0.0" });
+    assert.deepEqual(JSON.parse(fs.readFileSync(cachePath, "utf8")), { lastCheck: 3, latest: "11.0.0" });
+    assert.equal(fs.existsSync(`${cachePath}.lock`), false, "the lock is released after the write");
+  });
+
+  it("does not steal a fresh lock written by another host", () => {
+    const cachePath = tmpCachePath();
+    // A shared home directory (roaming profile, network mount) cannot be probed
+    // for liveness, so only age may decide: a live remote writer keeps its lock.
+    fs.writeFileSync(`${cachePath}.lock`, JSON.stringify({ pid: 1, host: "another-host", token: "remote", createdAt: Date.now() }), "utf8");
+    assert.throws(() => writeCacheAtomic(cachePath, { lastCheck: 4, latest: "12.0.0" }), /Unable to acquire update cache lock/);
+    assert.equal(fs.existsSync(`${cachePath}.lock`), true, "the remote lock is left alone");
+    assert.equal(fs.existsSync(cachePath), false, "nothing is written while another host holds the lock");
+  });
+
+  it("reclaims a lock that is older than the stale window", () => {
+    const cachePath = tmpCachePath();
+    fs.writeFileSync(`${cachePath}.lock`, JSON.stringify({ pid: 1, host: "another-host", token: "ancient", createdAt: Date.now() - 60000 }), "utf8");
+    writeCacheAtomic(cachePath, { lastCheck: 5, latest: "13.0.0" });
+    assert.deepEqual(JSON.parse(fs.readFileSync(cachePath, "utf8")), { lastCheck: 5, latest: "13.0.0" });
+  });
 });
 
 describe("notifyIfOutdated", () => {

@@ -28,10 +28,10 @@ const DEFAULTS = {
   default_provider: "",
   project: { name: "unknown", stack: "generic" },
   roles: {
-    plan: { provider: "", adapter: "claude", model: "", effort: "medium", reasoning: null, thinking_budget: 0, tools: ["Read", "Write", "Edit"], fallback_model: "", fallback: [], variant: null, mode: "tui", timeout_sec: 300 },
-    review: { provider: "", adapter: "claude", model: "", effort: "medium", reasoning: null, thinking_budget: 0, tools: ["Read", "Write", "Edit"], fallback_model: "", fallback: [], variant: null, mode: "tui", timeout_sec: 300 },
-    work: { provider: "", adapter: "claude", model: "", effort: "medium", reasoning: null, thinking_budget: 0, tools: ["Read", "Write", "Edit"], fallback_model: "", fallback: [], variant: null, mode: "tui", timeout_sec: 300 },
-    intel: { provider: "", adapter: "claude", model: "", effort: "medium", reasoning: null, thinking_budget: 0, tools: ["Read", "Write", "Edit"], fallback_model: "", fallback: [], variant: null, mode: "tui", timeout_sec: 300 },
+    plan: { provider: "", adapter: "claude", model: "", effort: "medium", reasoning: null, thinking_budget: 0, fallback_model: "", fallback: [], timeout_sec: 300 },
+    review: { provider: "", adapter: "claude", model: "", effort: "medium", reasoning: null, thinking_budget: 0, fallback_model: "", fallback: [], timeout_sec: 300 },
+    work: { provider: "", adapter: "claude", model: "", effort: "medium", reasoning: null, thinking_budget: 0, fallback_model: "", fallback: [], timeout_sec: 300 },
+    intel: { provider: "", adapter: "claude", model: "", effort: "medium", reasoning: null, thinking_budget: 0, fallback_model: "", fallback: [], timeout_sec: 300 },
   },
   budget: {
     max_cycles: "unlimited",
@@ -48,7 +48,6 @@ const DEFAULTS = {
     retry_backoff_sec: 90.0,
     retry_max_sec: 1800.0,
     research_enabled: true,
-    search: { web: { endpoint: "", api_key: "" }, github: { token: "", base: "" } },
   },
   validation: { enabled: true, script_path: "VERIFY_CMD.mjs", timeout_ms: 120000, confidence_threshold: 0.8, max_changed_files: 20 },
   security: { blocked_extensions: [".env", ".pem", ".key", ".p12", ".pfx"] },
@@ -217,7 +216,9 @@ function globalConfigPaths() {
 function loadConfig(configPath, overrides) {
   let raw = {};
 
-  // 2. User global config (platform path, legacy path, then ~/.minitok)
+  // 2. User global config (platform path, legacy path, then ~/.minitok).
+  // A malformed global file is reported rather than ignored: silently dropping it
+  // replaces every setting the user wrote with defaults and says nothing.
   for (const globalPath of globalConfigPaths()) raw = deepMerge(raw, loadYaml(globalPath));
 
   // 3. Project local config — resolve from explicit path, then repoRoot, then CWD
@@ -229,13 +230,20 @@ function loadConfig(configPath, overrides) {
   let resolved = false;
   for (const candidate of candidates) {
     if (resolved) break;
+    let stat;
     try {
-      const stat = fs.statSync(candidate);
-      if (stat.isFile()) {
-        raw = deepMerge(raw, loadYaml(candidate));
-        resolved = true;
-      }
-    } catch {}
+      stat = fs.statSync(candidate);
+    } catch (error) {
+      // A missing candidate is the normal case (no project config yet). Anything
+      // else — a permission failure, a path component that is a file — used to be
+      // swallowed together with it and must be reported now.
+      if (error.code === "ENOENT" || error.code === "ENOTDIR") continue;
+      throw new ConfigError(`Unable to read configuration ${candidate}: ${error.message}`);
+    }
+    if (!stat.isFile()) continue;
+    // loadYaml already names the file and the parse failure in its ConfigError.
+    raw = deepMerge(raw, loadYaml(candidate));
+    resolved = true;
   }
 
   // 4. Environment variables

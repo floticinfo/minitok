@@ -2,7 +2,46 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { validateConfig } = require("./loader");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { validateConfig, loadConfig, DEFAULTS } = require("./loader");
+
+describe("config: malformed configuration files", () => {
+  const sandbox = () => fs.mkdtempSync(path.join(os.tmpdir(), "mt-cfg-"));
+
+  it("reports a malformed project config instead of silently using the defaults", () => {
+    const dir = sandbox();
+    const file = path.join(dir, "minitok.yml");
+    try {
+      fs.writeFileSync(file, "roles: [\n");
+      let error;
+      try { loadConfig(file); } catch (caught) { error = caught; }
+      assert.ok(error, "a malformed config must fail loudly");
+      assert.equal(error.name, "ConfigError");
+      assert.match(error.message, /Invalid YAML/);
+      assert.match(error.message, /minitok\.yml/, "the error must name the file to fix");
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("uses the defaults when the configuration file simply does not exist", () => {
+    const dir = sandbox();
+    try {
+      const config = loadConfig(path.join(dir, "missing.yml"));
+      assert.equal(config.validation.enabled, true);
+      assert.equal(config.budget.max_cycles, DEFAULTS.budget.max_cycles);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("ignores a directory that happens to be named minitok.yml", () => {
+    const dir = sandbox();
+    const candidate = path.join(dir, "minitok.yml");
+    try {
+      fs.mkdirSync(candidate);
+      assert.doesNotThrow(() => loadConfig(candidate));
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+});
 
 describe("config: provider name validation", () => {
   it("rejects provider names that could break out of a shell or path context", () => {

@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.3.16 - 2026-09-13
+
+### Fixes
+
+- Fixed the interactive TUI approval prompt (`minitok gui`). The answer was written as `{ decision }` alone, while the pipeline only accepts a response that repeats the request nonce and run id, so every approval was discarded as invalid and the run waited out the full approval timeout (30 minutes by default) before failing closed. The response is now built from the request file and written atomically.
+- Fixed the VS Code `minitok: Run Task` command for the default configuration. The consent dialog was collected and then not forwarded, so the CLI (which has no TTY) refused every file change with `No TTY detected` after the cycle had already been paid for. Consent now passes `--auto-accept`, matching the panel's behaviour.
+- Fixed a malformed `minitok.yml` being silently ignored. Unparseable or unreadable project and global configuration files now raise a `ConfigError` that names the file, so the run no longer proceeds with defaults the user never wrote; a missing file is still the only silent fallback, and a directory that happens to be named `minitok.yml` is skipped as before. `minitok run` reports the error before any provider probe.
+- Fixed the file-name policy being bypassable with names the operating system normalizes: `minitok.yml.`, `minitok.yml `, `evil.ps1.`, `evil.ps1 `, `evil.ps1:hidden`, and `MINITO~1.YML` all passed the protected-path and blocked-extension checks and were written as near-miss files (the alternate-data-stream case also left a 0-byte `evil.ps1` behind). Names that end with a dot or space, contain `:`, an invalid or control character, or a Windows device name, or (on Windows) look like an 8.3 short name are now refused; the protected-path and blocked-extension checks also normalize before comparing. A change set containing such a name is refused as a whole.
+- Fixed the VS Code extension spawning the CLI for every entitlement question. Activation, each sidebar command, and the panel each started a separate process for the same answer; a granted decision is now reused for 60 seconds and a denial for 10 seconds, and a login, logout, or manual refresh drops the cached decision.
+- Fixed `minitok run` live-checking every configured provider before starting. Only the providers the roles resolve to are probed now (up to 8 seconds per unused key before, plus a warning about keys that could not affect the run); `minitok doctor --verify` remains the command that audits all of them.
+- Fixed the MCP stdio transport buffering an unbounded line: a client that never sent a newline could grow the buffer until the process ran out of memory. A line above 4 MB is now rejected with an `INVALID_REQUEST` error instead (the HTTP transport already capped a body at 1 MB).
+- Fixed the update-check lock overriding a live writer on another machine that shares the home directory; only the stale age decides for a foreign host, and the wait is bounded at roughly 200 ms so it cannot delay a command.
+
+### Changed
+
+- Removed the role options `tools`, `variant`, and `mode` and the `execution.search` block from the defaults, where nothing read them. A `minitok.yml` that still contains them is ignored; `minitok doctor --verify` and the role `provider`, `adapter`, `model`, `effort`, `reasoning`, `thinking_budget`, `fallback_model`, `fallback`, and `timeout_sec` options are unaffected.
+- `project.name` and `project.stack` now reach the model: they are added to the planner and implementer prompts as a `Project:` line instead of being written and never read.
+
 ## 1.3.15 - 2026-09-13
 
 ### Fixes

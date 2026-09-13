@@ -26,5 +26,5 @@ test("version check is clean and extension marketplace version remains independe
   const result = JSON.parse(run(["--check"]));
   const extension = JSON.parse(fs.readFileSync(path.join(root, "extension", "package.json"), "utf8"));
   assert.equal(result.status, "in_sync");
-  assert.equal(extension.version, "0.2.7");
+  assert.equal(extension.version, "0.2.8");
 });

@@ -23,6 +23,44 @@ const VERIFICATION_PROTECTED_PATHS = ["tests", "scripts", "VERIFY_CMD.mjs", "VER
  */
 const DEFAULT_BLOCKED_EXTENSIONS = [".sh", ".bat", ".cmd", ".ps1", ".exe", ".dll", ".so"];
 
+/** Characters that cannot appear in a portable file name. `:` opens an NTFS alternate data stream. */
+const INVALID_FILE_NAME_CHARS = /[<>:"|?*]/;
+/** Windows device names, which address a device instead of a file in the repository. */
+const RESERVED_DEVICE_NAME = /^(?:con|prn|aux|nul|com[1-9]|lpt[1-9])(?:\..*)?$/i;
+/** A Windows 8.3 short name such as `MINITO~1.YML`, which can alias another file. */
+const SHORT_NAME_PATTERN = /^[^.]{1,8}~\d+(?:\.[^.]{0,3})?$/i;
+
+/**
+ * Reject a file name whose meaning changes once the operating system normalizes
+ * it.
+ *
+ * The path policy in this module compares names as strings, so a name that only
+ * differs by characters Windows strips (`minitok.yml.`, `evil.ps1 `) passed both
+ * the protected-path and blocked-extension checks and was written as a near-miss
+ * file. On a volume where 8.3 aliases or trailing-dot normalization is active the
+ * same input lands on the real `minitok.yml`, `VERIFY_CMD.mjs`, or `evil.ps1`
+ * instead. An NTFS alternate data stream (`evil.ps1:hidden`) additionally creates
+ * the base file as a side effect, which left an unexpected 0-byte `evil.ps1`
+ * behind when the rename failed.
+ *
+ * @param {string} filePath repository-relative or absolute path from the model
+ * @returns {string|null} a rejection reason, or null when the name is usable
+ */
+function unsafeFileNameReason(filePath) {
+  const name = path.basename(String(filePath).replace(/\\/g, "/"));
+  if (!name) return `Change 'file' must name a file: ${JSON.stringify(filePath)}`;
+  const invalid = name.match(INVALID_FILE_NAME_CHARS);
+  if (invalid) return `Change 'file' must not contain ${JSON.stringify(invalid[0])} in a file name: ${name}`;
+  // Control characters are written with a code-point test so the pattern above
+  // stays free of a literal control range.
+  if ([...name].some(character => character.charCodeAt(0) < 32)) return `Change 'file' must not contain control characters in a file name: ${JSON.stringify(name)}`;
+  if (name !== name.replace(/[. ]+$/, "")) return `Change 'file' must not end with a dot or a space, which the operating system strips: ${JSON.stringify(name)}`;
+  if (RESERVED_DEVICE_NAME.test(name)) return `Change 'file' uses a reserved device name: ${name}`;
+  // On POSIX a name like `FOO~1.TXT` is an ordinary file, so only Windows rejects it.
+  if (process.platform === "win32" && SHORT_NAME_PATTERN.test(name)) return `Change 'file' looks like a Windows 8.3 short name, which can alias another file: ${name}`;
+  return null;
+}
+
 const IMPLEMENT_SYSTEM_PROMPT = `You are an expert software engineer. Given an implementation plan and repository context, produce the exact code changes needed.
 
 Output format (strict JSON):
@@ -82,6 +120,10 @@ function isWithinLexical(child, parent) {
 
 function safePath(repoRoot, filePath) {
   const resolved = path.resolve(repoRoot, filePath);
+  // Reject a name the filesystem would normalize into a different file before
+  // any policy comparison runs.
+  const unsafeName = unsafeFileNameReason(filePath);
+  if (unsafeName) return { resolved, safe: false, reason: unsafeName };
   let root;
   try { root = fs.realpathSync.native(path.resolve(repoRoot)); } catch (error) { return { resolved, safe: false, reason: `Path check failed: ${repoRoot}: ${error.message}` }; }
   if (!isWithinLexical(resolved, path.resolve(repoRoot))) {
@@ -119,6 +161,9 @@ function isCanonicalReleaseRepository(repoRoot) {
 function isProtectedPath(repoRoot, filePath) {
   const root = path.resolve(repoRoot);
   let rel = path.relative(root, filePath).replace(/\\/g, "/");
+  // The same file can be named with a trailing dot or space, which Windows strips
+  // before it opens the path. Normalize so a near-miss name is still protected.
+  rel = rel.replace(/[. ]+$/, "");
   // On Windows/NTFS the filesystem is case-insensitive, normalize for comparison
   if (process.platform === "win32") {
     rel = rel.toLowerCase();
@@ -141,7 +186,9 @@ function isProtectedPath(repoRoot, filePath) {
  * @returns {{ blocked: boolean, reason?: string }}
  */
 function isBlockedExtension(filePath, blockedExtensions) {
-  const ext = path.extname(filePath).toLowerCase();
+  // Strip a trailing dot or space first: the operating system opens
+  // `evil.ps1.` as `evil.ps1`, so the extension check has to see the same name.
+  const ext = path.extname(String(filePath).replace(/[. ]+$/, "")).toLowerCase();
   if (blockedExtensions.includes(ext)) {
     return { blocked: true, reason: `Blocked extension: ${ext}` };
   }
@@ -262,6 +309,11 @@ function validateChange(change) {
   if (typeof change.file !== "string" || change.file.trim() === "") {
     return { valid: false, reason: "Change 'file' must be a non-empty string" };
   }
+  // A name the filesystem would normalize into a different file must never reach
+  // the write path, or the protected-path and blocked-extension checks can be
+  // bypassed with a trailing dot, a trailing space, or a short name.
+  const unsafeName = unsafeFileNameReason(change.file);
+  if (unsafeName) return { valid: false, reason: unsafeName };
   const validActions = ["create", "modify", "delete"];
   if (!validActions.includes(change.action)) {
     return { valid: false, reason: `Change 'action' must be one of: ${validActions.join(", ")}` };
@@ -308,4 +360,4 @@ function validateChanges(changesResult) {
   return { valid: errors.length === 0, errors, validatedChanges: validated };
 }
 
-module.exports = { implement, applyChanges, safePath, isProtectedPath, isBlockedExtension, validateChange, validateChanges, temporaryWritePath, PROTECTED_PATHS, RELEASE_PROTECTED_PATHS, VERIFICATION_PROTECTED_PATHS, DEFAULT_BLOCKED_EXTENSIONS, IMPLEMENT_SYSTEM_PROMPT };
+module.exports = { implement, applyChanges, safePath, isProtectedPath, isBlockedExtension, unsafeFileNameReason, validateChange, validateChanges, temporaryWritePath, PROTECTED_PATHS, RELEASE_PROTECTED_PATHS, VERIFICATION_PROTECTED_PATHS, DEFAULT_BLOCKED_EXTENSIONS, IMPLEMENT_SYSTEM_PROMPT };

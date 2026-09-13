@@ -1,7 +1,7 @@
 {
   "source": "canonical-root-src",
   "cliPackage": "@flotic/minitok",
-  "cliVersion": "1.3.15",
+  "cliVersion": "1.3.16",
   "entry": "src/runtime/stdio-entry.js",
   "files": [
     "auth/index.js",
@@ -88,8 +88,8 @@
       "embedded": "043c5f1bd9d5444e221068f946fe90b3914df730a37d8a0213ca52ced89eb5da"
     },
     "config/loader.js": {
-      "source": "e9eccc6bfa27b659b379114701f7b7ff08843d49f74815dad34a8b7cb089cf43",
-      "embedded": "e9eccc6bfa27b659b379114701f7b7ff08843d49f74815dad34a8b7cb089cf43"
+      "source": "9cf60aa8a1660e6b3c274c4f4e95dc2aeb9b091bb80b6254eba5552b396b089d",
+      "embedded": "9cf60aa8a1660e6b3c274c4f4e95dc2aeb9b091bb80b6254eba5552b396b089d"
     },
     "context/compaction.js": {
       "source": "0475f4c5ed57462603366a047689064c136cf596822394fff72f0c456bb27cdf",
@@ -196,8 +196,8 @@
       "embedded": "0c16bda31cfcf6135cda59d54b1bc630e84f6ecb222b51a2758a18dc5f389889"
     },
     "pipeline/implementer.js": {
-      "source": "14afa410288ba512176088f69e4fb1a0a19e4801c1e53ff48c2a89751e888806",
-      "embedded": "14afa410288ba512176088f69e4fb1a0a19e4801c1e53ff48c2a89751e888806"
+      "source": "822a04d03bfc3188d9f0e3716d1da16a85901378f7fc9def0f875383a7f0dbd7",
+      "embedded": "822a04d03bfc3188d9f0e3716d1da16a85901378f7fc9def0f875383a7f0dbd7"
     },
     "pipeline/intel.js": {
       "source": "156f608704bbfde60702b53b83647612b49f28f98d7b2fc010986c27d517a442",
@@ -208,8 +208,8 @@
       "embedded": "d139507183711739b0829b47ff81b475b8f78f0d985ddc26e1d1ab187133976f"
     },
     "pipeline/loop.js": {
-      "source": "94a1e800fcfa3f3263646f9e2c91e779c3ede8d3b6c9d5392a84d8008c18e62b",
-      "embedded": "94a1e800fcfa3f3263646f9e2c91e779c3ede8d3b6c9d5392a84d8008c18e62b"
+      "source": "f9eb4f67d188b36bea4766073e60be2939eca769f6f0c4bac78f12eadd61bf29",
+      "embedded": "f9eb4f67d188b36bea4766073e60be2939eca769f6f0c4bac78f12eadd61bf29"
     },
     "pipeline/next_task.js": {
       "source": "d319a3b34dc5d80f4ce9e74e3e0805d2d4ee79aa4cfda8bc9be3dcaf8d9ce583",
@@ -280,8 +280,8 @@
       "embedded": "4023e87bc6dd66a33cd8bbaaab20cc07af46584ced03e6093aaa762e097fef02"
     },
     "runtime/stdio.js": {
-      "source": "b4dd6dca95e7d2a1bed07148fd5464669a84fb474577d7e91ed3adb32af5427f",
-      "embedded": "b4dd6dca95e7d2a1bed07148fd5464669a84fb474577d7e91ed3adb32af5427f"
+      "source": "56db69695b0f673d69c68f15dc5f989aeb3d2cba453defe8339536546b419e86",
+      "embedded": "56db69695b0f673d69c68f15dc5f989aeb3d2cba453defe8339536546b419e86"
     },
     "runtime/workspace.js": {
       "source": "1ccbe48769fd72363230d4a914849ce6b5fc52f5db6496e0b35ce8ac655ff220",

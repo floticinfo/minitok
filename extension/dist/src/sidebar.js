@@ -201,9 +201,11 @@ class minitokSidebar {
         if (message?.command === "auth-status") {
             const session = await (0, device_auth_1.refreshExtensionSession)(this.context);
             if (!session) {
+                (0, entitlement_1.invalidateEntitlementCache)();
                 this.view?.webview.postMessage({ type: "auth-state", ok: false, text: "Sign in with browser to continue." });
                 return;
             }
+            (0, entitlement_1.invalidateEntitlementCache)();
             const result = await (0, entitlement_1.checkEntitlement)();
             this.view?.webview.postMessage({ type: "auth-state", ok: result.allowed, text: result.allowed ? `Signed in with ${result.plan} plan.` : `Entitlement error: ${result.message || "An active paid plan is required."}` });
             return;
@@ -211,6 +213,7 @@ class minitokSidebar {
         if (message?.command === "device-login") {
             try {
                 await (0, device_auth_1.deviceLogin)(this.context, text => this.view?.webview.postMessage({ type: "auth-state", ok: false, text }));
+                (0, entitlement_1.invalidateEntitlementCache)();
                 const result = await (0, entitlement_1.checkEntitlement)();
                 if (!result.allowed) {
                     this.view?.webview.postMessage({ type: "auth-state", ok: false, text: `Entitlement error: ${result.message || "An active paid plan is required."}` });
@@ -225,6 +228,7 @@ class minitokSidebar {
         }
         if (message?.command === "device-logout") {
             await (0, device_auth_1.logoutExtension)(this.context);
+            (0, entitlement_1.invalidateEntitlementCache)();
             this.view?.webview.postMessage({ type: "auth-state", ok: false, text: "Signed out." });
             return;
         }
@@ -430,6 +434,7 @@ class minitokSidebar {
                 this.view?.webview.postMessage({ type: "auth-state", ok: false, text: stderr || error.message });
                 return;
             }
+            (0, entitlement_1.invalidateEntitlementCache)();
             const result = await (0, entitlement_1.checkEntitlement)();
             this.view?.webview.postMessage({ type: "auth-state", ok: result.allowed, text: result.allowed ? `Signed in with ${result.plan} plan.` : result.message || stdout });
         });
