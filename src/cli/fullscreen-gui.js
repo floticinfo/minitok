@@ -2,7 +2,33 @@
 const readline = require("readline");
 const { listSessions } = require("../runtime/sessions");
 const { runTask } = require("./gui-run");
-const ansi = { reset: "\x1b[0m", dim: "\x1b[2m", bold: "\x1b[1m", blue: "\x1b[38;5;75m", cyan: "\x1b[36m", green: "\x1b[32m", yellow: "\x1b[33m", red: "\x1b[31m" };
+const { BRAND, ansiBackground, ansiForeground } = require("../core/palette");
+/**
+ * Terminal tones, derived from the brand palette in `src/core/palette.js`.
+ *
+ * The brand is carried by *filled tiles*, never by coloured text: `primary` is
+ * 2.6:1 against a black terminal and would be unreadable as a foreground, so
+ * the mode badges paint a 24-bit background instead -- ` ACT ` is white on
+ * primary (the logo pairing) and ` PLAN ` is pale on deep navy. Text tones use
+ * `secondaryBlue`, the one palette member that clears 4.5:1 on a light surface
+ * and 4.3:1 on a dark one, while `accent` stays a decorative brand echo for the
+ * wordmark. `green`/`yellow`/`red` are deliberately the terminal's own colours
+ * rather than brand hues, because a success or failure status must not be
+ * re-tinted to a brand colour, and `MINITOK_NO_COLOR=1` still drops every
+ * sequence.
+ */
+const ansi = {
+  reset: "\x1b[0m",
+  dim: "\x1b[2m",
+  bold: "\x1b[1m",
+  brand: ansiForeground(BRAND.secondaryBlue),
+  accent: ansiForeground(BRAND.cyanAccent),
+  actBadge: `${ansiBackground(BRAND.primary)}${ansiForeground(BRAND.onPrimary)}`,
+  planBadge: `${ansiBackground(BRAND.deepNavy)}${ansiForeground(BRAND.pale)}`,
+  green: "\x1b[32m",
+  yellow: "\x1b[33m",
+  red: "\x1b[31m",
+};
 const ansiPattern = new RegExp(`${String.fromCharCode(27)}\\[[0-?]*[ -/]*[@-~]`, "g");
 function tone(text, name, enabled) { return enabled ? `${ansi[name]}${text}${ansi.reset}` : text; }
 const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
@@ -43,7 +69,7 @@ function createFullscreenGui(options = {}) {
     const scrollLabel = state.transcript.length > viewportHeight ? ` ${state.transcriptOffset ? `↑${state.transcriptOffset}` : "↓latest"} ` : "";
     const conversation = frame(`${state.focus === "conversation" ? "> " : "  "}${state.mode.toUpperCase()} / ${state.status}${scrollLabel}`, messages, rightWidth, rows, enabled);
     if (!screenEntered) { out.write("\x1b[?1049h\x1b[2J\x1b[H\x1b[?25l"); screenEntered = true; } else out.write("\x1b[2J\x1b[H");
-    out.write(`${tone(" minitok", "bold", enabled)}  ${tone(state.mode === "act" ? " ACT " : " PLAN ", state.mode === "act" ? "blue" : "cyan", enabled)}  ${tone(` ${state.status} `, state.status === "Completed" ? "green" : state.status === "Failed" ? "red" : state.status === "Running" ? "cyan" : "dim", enabled)}  ${tone(`Focus: ${state.focus === "conversation" ? "Conversation" : "Compose"}`, "bold", enabled)}\n${tone("-".repeat(cols), "dim", enabled)}\n`);
+    out.write(`${tone(" minitok", "bold", enabled)}  ${tone(state.mode === "act" ? " ACT " : " PLAN ", state.mode === "act" ? "actBadge" : "planBadge", enabled)}  ${tone(` ${state.status} `, state.status === "Completed" ? "green" : state.status === "Failed" ? "red" : state.status === "Running" ? "brand" : "dim", enabled)}  ${tone(`Focus: ${state.focus === "conversation" ? "Conversation" : "Compose"}`, "bold", enabled)}\n${tone("-".repeat(cols), "dim", enabled)}\n`);
     const width = Math.max(1, cols - 2); for (let i = 0; i < Math.max(sessions.length, conversation.length); i++) out.write(fit(`${sessions[i] || ""} ${conversation[i] || ""}`, width) + "\n"); out.write(`${tone(`${state.focus === "compose" ? ">" : " "} TASK`, state.focus === "compose" ? "bold" : "dim", enabled)} ${fit(state.task, width)}\n`);
   };
   const input = readlineApi.createInterface({ input: inputStream, output: out });
@@ -64,7 +90,7 @@ function createFullscreenGui(options = {}) {
   };
   const compose = () => { state.focus = "compose"; state.cursor = state.task.length; state.historyIndex = -1; render(); };
   const submitTask = options.runTask || runTask;
-  const run = async () => { const task = state.task; if (closed || !task.trim() || state.activeAbort) return; if (!state.composeHistory.includes(task)) state.composeHistory.push(task); state.historyIndex = -1; state.focus = "conversation"; state.status = "Running"; state.transcript.push(`You  ${task}`); state.transcript.push(`${tone("minitok", "cyan", enabled)}  Working...`); render(); try { await submitTask(task, repo, input, state); state.status = "Completed"; state.transcript.push(`${tone("minitok", "green", enabled)}  Completed`); } catch (error) { state.status = state.activeAbort?.signal.aborted ? "Cancelled" : "Failed"; state.transcript.push(`${tone("minitok", "red", enabled)}  ${error.message}`); } finally { state.activeAbort = undefined; if (!closed) render(); } };
+  const run = async () => { const task = state.task; if (closed || !task.trim() || state.activeAbort) return; if (!state.composeHistory.includes(task)) state.composeHistory.push(task); state.historyIndex = -1; state.focus = "conversation"; state.status = "Running"; state.transcript.push(`You  ${task}`); state.transcript.push(`${tone("minitok", "accent", enabled)}  Working...`); render(); try { await submitTask(task, repo, input, state); state.status = "Completed"; state.transcript.push(`${tone("minitok", "green", enabled)}  Completed`); } catch (error) { state.status = state.activeAbort?.signal.aborted ? "Cancelled" : "Failed"; state.transcript.push(`${tone("minitok", "red", enabled)}  ${error.message}`); } finally { state.activeAbort = undefined; if (!closed) render(); } };
   const onSignal = signal => { if (state.activeAbort) { state.activeAbort.abort(); state.status = "Cancelling"; cleanup(signal === "SIGINT" ? 130 : 143); } else cleanup(signal === "SIGINT" ? 130 : 143); };
   for (const event of ["SIGINT", "SIGTERM"]) { const handler = () => onSignal(event); proc.on(event, handler); signalHandlers.push([event, handler]); }
   const onException = error => { if (state.activeAbort) state.activeAbort.abort(); state.status = "Failed"; state.transcript.push(`${error?.message || error}`); cleanup(1); };

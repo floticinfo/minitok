@@ -3,6 +3,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 const { visibleWidth, fit, frame, editTask, clampTranscriptOffset, scrollTranscript, createFullscreenGui } = require("../src/cli/fullscreen-gui");
+const { BRAND, ansiBackground, ansiForeground } = require("../src/core/palette");
 
 function createFocusGui(options = {}) {
   const stdout = new EventEmitter();
@@ -248,4 +249,46 @@ test("fullscreen renderer rerenders on resize and removes its listener during cl
     Object.defineProperty(process, "stdout", { configurable: true, value: originalStdout });
     Object.defineProperty(process, "stdin", { configurable: true, value: originalStdin });
   }
+});
+
+test("fullscreen mode badges paint the brand palette as filled tiles", () => {
+  const stdout = new EventEmitter();
+  const stdin = new EventEmitter();
+  const writes = [];
+  stdout.columns = 80;
+  stdout.rows = 24;
+  stdout.write = value => { writes.push(value); return true; };
+  stdin.isTTY = false;
+  const processStub = new EventEmitter();
+  processStub.stdout = stdout;
+  processStub.stdin = stdin;
+  processStub.env = {};
+  processStub.cwd = () => process.cwd();
+  const readlineStub = { emitKeypressEvents: () => {}, createInterface: () => { const input = new EventEmitter(); input.close = () => input.emit("close"); return input; } };
+  const gui = createFullscreenGui({ process: processStub, readline: readlineStub, exit: () => {} });
+  const painted = () => { const index = writes.length; gui.render(); return writes.slice(index).join(""); };
+  // The brand is carried by a filled tile rather than by coloured text:
+  // `primary` is 2.6:1 against a black terminal and would be unreadable as a
+  // foreground, so the badge paints a background and white glyphs on top.
+  assert.equal(painted().includes(`${ansiBackground(BRAND.primary)}${ansiForeground(BRAND.onPrimary)} ACT `), true);
+  gui.state.mode = "plan";
+  assert.equal(painted().includes(`${ansiBackground(BRAND.deepNavy)}${ansiForeground(BRAND.pale)} PLAN `), true);
+  // `secondaryBlue` is the one palette member that clears 4.5:1 on a light
+  // surface and 4.3:1 on a dark one, which is why it is the only text tone.
+  gui.state.mode = "act";
+  gui.state.status = "Running";
+  assert.equal(painted().includes(`${ansiForeground(BRAND.secondaryBlue)} Running `), true);
+  gui.cleanup();
+});
+
+test("fullscreen plain mode drops the brand tones without dropping the label", () => {
+  const { gui, writes } = createFocusGui();
+  const index = writes.length;
+  gui.render();
+  const output = writes.slice(index).join("");
+  assert.equal(output.includes("ACT"), true);
+  // render() still clears the screen, so this asserts on tones only: no 24-bit
+  // brand sequence and no semantic tone survives MINITOK_NO_COLOR/NO_COLOR.
+  for (const sequence of ["\x1b[38;2;", "\x1b[48;2;", "\x1b[32m", "\x1b[33m", "\x1b[31m"]) assert.equal(output.includes(sequence), false, `${JSON.stringify(sequence)} must be dropped in plain mode`);
+  gui.cleanup();
 });
