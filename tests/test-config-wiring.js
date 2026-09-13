@@ -57,7 +57,14 @@ test("loadConfig no longer advertises an unimplemented commit section", () => {
 test("the pipeline consumes the options the CLI and configuration expose", () => {
   // security.blocked_extensions reaches applyChanges instead of being a no-op.
   assert.match(loopSource, /const blockedExtensions = \[\.\.\.new Set\(\[\.\.\.DEFAULT_BLOCKED_EXTENSIONS/);
-  assert.equal((loopSource.match(/applyChanges\(repoRoot, implResult\.changes, opts\.dryRun, \{ blockedExtensions \}\)/g) || []).length, 2);
+  // validation.script_path is the gate the run is judged by, so it is passed to
+  // applyChanges as a protected path: a model that rewrites its own verifier must
+  // be refused rather than trusted.
+  assert.match(loopSource, /const protectedExtraPaths = typeof config\.validation\?\.script_path === "string"/);
+  assert.match(loopSource, /const applyOptions = \{ blockedExtensions, protectedExtraPaths \};/);
+  // Both call sites — already-confirmed and first-confirmation — must carry those
+  // options, not just one of them.
+  assert.equal((loopSource.match(/applyChanges\(repoRoot, implResult\.changes, opts\.dryRun, applyOptions\)/g) || []).length, 2);
   // --coding-adapter / --research-adapter / --review-adapter map onto roles.
   assert.match(loopSource, /const adapterOverrides = \{ work: opts\.codingAdapter, intel: opts\.researchAdapter, review: opts\.reviewAdapter \}/);
   // validation.enabled, max_changed_files, and confidence_threshold are enforced.

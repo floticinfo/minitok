@@ -15,7 +15,60 @@ const { randomBytes } = require("crypto");
  */
 const PROTECTED_PATHS = ["minitok.yml", ".minitok"];
 const RELEASE_PROTECTED_PATHS = ["package.json", "package-lock.json", "extension/package.json", "extension/package-lock.json", "extension/runtime/package.json", "extension/runtime/runtime-manifest.json"];
-const VERIFICATION_PROTECTED_PATHS = ["tests", "scripts", "VERIFY_CMD.mjs", "VERIFY_CMD.sh", "release-manifest.json"];
+const VERIFICATION_PROTECTED_PATHS = ["tests", "scripts", "release-manifest.json"];
+
+/**
+ * Paths whose contents run outside the pipeline's own review.
+ *
+ * A `.git/hooks/pre-commit` file executes on the operator's next commit, a CI
+ * workflow runs with the repository's secrets, and `.husky` installs those hooks.
+ * The write policy only protected `minitok.yml` and `.minitok`, so an autonomous
+ * run could install a persistent backdoor in the repository it was asked to fix.
+ * Each entry matches the path itself and everything below it.
+ */
+const PROTECTED_EXECUTION_PATHS = [".git", ".github", ".gitlab", ".circleci", ".husky", ".gitlab-ci.yml", "Jenkinsfile", ".travis.yml", "azure-pipelines.yml"];
+
+/**
+ * The verification gate itself.
+ *
+ * The gate is the only independent evidence that a change is correct, and it was
+ * protected only inside the canonical minitok repository: in a customer
+ * repository the model could rewrite `VERIFY_CMD.mjs` and then satisfy its own
+ * gate. It is protected everywhere now; a run that needs to change the gate has
+ * to be approved by a human (`allowProtectedPaths` / a manual edit).
+ */
+const GATE_PROTECTED_PATHS = ["VERIFY_CMD.mjs", "VERIFY_CMD.sh"];
+
+/**
+ * Files whose contents are credentials, or whose presence is executed by another
+ * program. Matching is by file name, not by extension: `path.extname(".env")`
+ * is the empty string, so the previous extension-only rule never matched `.env`,
+ * `.env.local` (extname `.local`), `.npmrc`, `id_rsa`, or a `.pem` bundle.
+ */
+const SENSITIVE_FILE_NAME_PATTERNS = [
+  /^\.env$/i,
+  /^\.env\.[^.]*$/i,
+  /^\.envrc$/i,
+  /^id_(?:rsa|dsa|ecdsa|ed25519)(?:\.pub)?$/i,
+  /^\.npmrc$/i,
+  /^\.yarnrc(?:\.yml)?$/i,
+  /^\.pypirc$/i,
+  /^(?:\.netrc|_netrc)$/i,
+  /^\.git-credentials$/i,
+  /^\.(?:aws|docker|kube|terraformrc|pgpass|htpasswd|gitconfig)$/i,
+  /^credentials(?:\.json|\.ya?ml|\.toml)?$/i,
+  /^secrets?(?:\.json|\.ya?ml|\.toml)$/i,
+  /^\.?keystore(?:\.json)?$/i,
+  /\.(?:pem|key|p12|pfx|jks|keystore|ppk)$/i,
+];
+
+/** Committed templates of a `.env` file, which hold no secrets. */
+const ENV_TEMPLATE_NAMES = /^\.env\.(?:example|sample|template|dist)$/i;
+
+/** A file at or above this size is large enough for a silent truncation to matter. */
+const SHRINK_GUARD_MIN_BYTES = 4096;
+/** The replacement must keep at least this share of the original size. */
+const SHRINK_GUARD_RATIO = 0.4;
 
 /**
  * Default blocked file extensions for autonomous pipeline.
@@ -58,6 +111,24 @@ function unsafeFileNameReason(filePath) {
   if (RESERVED_DEVICE_NAME.test(name)) return `Change 'file' uses a reserved device name: ${name}`;
   // On POSIX a name like `FOO~1.TXT` is an ordinary file, so only Windows rejects it.
   if (process.platform === "win32" && SHORT_NAME_PATTERN.test(name)) return `Change 'file' looks like a Windows 8.3 short name, which can alias another file: ${name}`;
+  return null;
+}
+
+/**
+ * Reject a file whose name marks it as a credential store or an unpacked key.
+ *
+ * @param {string} filePath repository-relative or absolute path from the model
+ * @returns {string|null} a rejection reason, or null when the name is ordinary
+ */
+function sensitiveFileNameReason(filePath) {
+  // Compare on the basename after the same normalization the write path uses:
+  // `config/.env.` and `config/ENV` must not differ from `config/.env`.
+  const name = path.basename(String(filePath).replace(/\\/g, "/")).replace(/[. ]+$/, "");
+  if (!name) return null;
+  if (ENV_TEMPLATE_NAMES.test(name)) return null;
+  for (const pattern of SENSITIVE_FILE_NAME_PATTERNS) {
+    if (pattern.test(name)) return `Sensitive file is protected from autonomous writes: ${name}`;
+  }
   return null;
 }
 
@@ -163,20 +234,37 @@ function isCanonicalReleaseRepository(repoRoot) {
  * Check if a resolved file path is protected from autonomous modification.
  * @param {string} repoRoot
  * @param {string} filePath - resolved absolute path
+ * @param {{ protectedExtraPaths?: string[] }} [options] paths the caller resolves
+ *   at run time (the configured verification gate, for example)
  * @returns {{ protected: boolean, reason?: string }}
  */
-function isProtectedPath(repoRoot, filePath) {
+function isProtectedPath(repoRoot, filePath, options = {}) {
   const root = path.resolve(repoRoot);
   let rel = path.relative(root, filePath).replace(/\\/g, "/");
   // The same file can be named with a trailing dot or space, which Windows strips
   // before it opens the path. Normalize so a near-miss name is still protected.
   rel = rel.replace(/[. ]+$/, "");
+  // Name-based rule first: it does not depend on the extension (`.env` has none)
+  // and applies to every repository, canonical or customer.
+  const sensitive = sensitiveFileNameReason(rel);
+  if (sensitive) return { protected: true, reason: sensitive };
   // On Windows/NTFS the filesystem is case-insensitive, normalize for comparison
   if (process.platform === "win32") {
     rel = rel.toLowerCase();
   }
   const releaseProtected = isCanonicalReleaseRepository(root);
-  const protectedPaths = releaseProtected ? [...PROTECTED_PATHS, ...RELEASE_PROTECTED_PATHS, ...VERIFICATION_PROTECTED_PATHS] : PROTECTED_PATHS;
+  const requested = Array.isArray(options.protectedExtraPaths) ? options.protectedExtraPaths : [];
+  const extraPaths = requested
+    .filter(value => typeof value === "string" && value.trim())
+    .map(value => value.replace(/\\/g, "/").replace(/[. ]+$/, "").replace(/^\.\//, ""))
+    .map(value => (process.platform === "win32" ? value.toLowerCase() : value));
+  const protectedPaths = [
+    ...PROTECTED_PATHS,
+    ...PROTECTED_EXECUTION_PATHS,
+    ...GATE_PROTECTED_PATHS,
+    ...extraPaths,
+    ...(releaseProtected ? [...RELEASE_PROTECTED_PATHS, ...VERIFICATION_PROTECTED_PATHS] : []),
+  ];
   for (const p of protectedPaths) {
     const pat = process.platform === "win32" ? p.toLowerCase() : p;
     if (rel === pat || rel.startsWith(pat + "/")) {
@@ -200,6 +288,34 @@ function isBlockedExtension(filePath, blockedExtensions) {
     return { blocked: true, reason: `Blocked extension: ${ext}` };
   }
   return { blocked: false };
+}
+
+/**
+ * Reject a write that replaces a large file with a much smaller one.
+ *
+ * The implementer has to return the complete body of every file it modifies, and
+ * a model that runs out of output tokens silently shortens a large file instead
+ * of failing. The result is still valid JSON, so it passed validation and the
+ * truncated body overwrote the real file. Only a large reduction is refused, and
+ * the pipeline reports the change as rejected instead of writing it.
+ *
+ * @param {string} filePath absolute path of an existing file
+ * @param {string} nextContent content the model wants to write
+ * @param {{ allowLargeReduction?: boolean }} [options]
+ * @returns {string|null} a rejection reason, or null when the write looks complete
+ */
+function suspiciousShrinkReason(filePath, nextContent, options = {}) {
+  if (options.allowLargeReduction === true) return null;
+  let previous;
+  try {
+    const stat = fs.lstatSync(filePath);
+    if (stat.isSymbolicLink() || !stat.isFile()) return null;
+    previous = fs.readFileSync(filePath, "utf-8");
+  } catch { return null; }
+  const before = Buffer.byteLength(previous, "utf8");
+  const after = Buffer.byteLength(String(nextContent ?? ""), "utf8");
+  if (before < SHRINK_GUARD_MIN_BYTES || after >= before * SHRINK_GUARD_RATIO) return null;
+  return `Refusing to replace ${before} bytes with ${after} bytes: the model very likely truncated the file content. Re-run the task, split the file, or pass allowLargeReduction to accept the reduction.`;
 }
 
 /**
@@ -241,7 +357,7 @@ function applyChanges(repoRoot, changesResult, dryRun = false, options = {}) {
     }
 
     // 🔒 Check protected paths
-    const { protected: isProtected, reason: protReason } = isProtectedPath(repoRoot, filePath);
+    const { protected: isProtected, reason: protReason } = isProtectedPath(repoRoot, filePath, { protectedExtraPaths: options.protectedExtraPaths });
     const releaseProtected = isCanonicalReleaseRepository(repoRoot);
     if (isProtected && !(releaseProtected && change.action === "create" && path.relative(path.resolve(repoRoot), filePath).replace(/\\/g, "/").startsWith("tests/"))) {
       recordAudit({ action: change.action, file: change.file, result: "rejected", reason: protReason });
@@ -269,6 +385,16 @@ function applyChanges(repoRoot, changesResult, dryRun = false, options = {}) {
         // re-emit create for a file it wrote earlier), but the overwrite is
         // audited so evidence never hides a replaced file.
         const replacedExisting = fs.existsSync(filePath);
+        // A "create" that lands on an existing file is an overwrite in practice,
+        // so the truncation guard applies here too.
+        if (replacedExisting) {
+          const shrink = suspiciousShrinkReason(filePath, change.content, options);
+          if (shrink) {
+            recordAudit({ action: "create", file: change.file, result: "rejected", reason: shrink });
+            results.errors.push(`${change.file}: ${shrink}`);
+            continue;
+          }
+        }
         const temporary = temporaryWritePath(filePath);
         fs.writeFileSync(temporary, change.content, { encoding: "utf-8", flag: "wx" });
         try { fs.renameSync(temporary, filePath); } catch (error) { try { fs.unlinkSync(temporary); } catch {} throw error; }
@@ -282,6 +408,12 @@ function applyChanges(repoRoot, changesResult, dryRun = false, options = {}) {
         }
         const current = fs.lstatSync(filePath);
         if (current.isSymbolicLink() || !current.isFile()) throw new Error("Modify target must be a regular file");
+        const shrink = suspiciousShrinkReason(filePath, change.content, options);
+        if (shrink) {
+          recordAudit({ action: "modify", file: change.file, result: "rejected", reason: shrink });
+          results.errors.push(`${change.file}: ${shrink}`);
+          continue;
+        }
         const temporary = temporaryWritePath(filePath);
         fs.writeFileSync(temporary, change.content, { encoding: "utf-8", flag: "wx" });
         try { fs.renameSync(temporary, filePath); } catch (error) { try { fs.unlinkSync(temporary); } catch {} throw error; }
@@ -367,4 +499,4 @@ function validateChanges(changesResult) {
   return { valid: errors.length === 0, errors, validatedChanges: validated };
 }
 
-module.exports = { implement, applyChanges, safePath, isProtectedPath, isBlockedExtension, unsafeFileNameReason, validateChange, validateChanges, temporaryWritePath, PROTECTED_PATHS, RELEASE_PROTECTED_PATHS, VERIFICATION_PROTECTED_PATHS, DEFAULT_BLOCKED_EXTENSIONS, IMPLEMENT_SYSTEM_PROMPT };
+module.exports = { implement, applyChanges, safePath, isProtectedPath, isBlockedExtension, unsafeFileNameReason, sensitiveFileNameReason, suspiciousShrinkReason, validateChange, validateChanges, temporaryWritePath, PROTECTED_PATHS, PROTECTED_EXECUTION_PATHS, GATE_PROTECTED_PATHS, RELEASE_PROTECTED_PATHS, VERIFICATION_PROTECTED_PATHS, SHRINK_GUARD_MIN_BYTES, SHRINK_GUARD_RATIO, DEFAULT_BLOCKED_EXTENSIONS, IMPLEMENT_SYSTEM_PROMPT };

@@ -264,6 +264,13 @@ async function runPipelineInWorkspace(task, opts = {}) {
   const configuredBlocked = Array.isArray(config.security?.blocked_extensions) ? config.security.blocked_extensions : [];
   const blockedExtensions = [...new Set([...DEFAULT_BLOCKED_EXTENSIONS, ...configuredBlocked.filter(value => typeof value === "string" && value.trim()).map(value => value.trim().toLowerCase())])];
 
+  // The verification gate is not always VERIFY_CMD.mjs: validation.script_path can
+  // point anywhere in the repository, and a file the model may rewrite is not a
+  // gate. Its path is resolved here (the only place that reads the config) and
+  // handed to the write policy as an extra protected path.
+  const protectedExtraPaths = typeof config.validation?.script_path === "string" && config.validation.script_path.trim() ? [config.validation.script_path.trim()] : [];
+  const applyOptions = { blockedExtensions, protectedExtraPaths };
+
   // validation.* thresholds were accepted, env-mapped and documented but never
   // enforced.
   const confidenceThreshold = Number(config.validation?.confidence_threshold);
@@ -545,7 +552,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
     let applyResult;
     if (confirmationGranted || opts.dryRun) {
       // Already confirmed this run, or dry-run (no mutation)
-      applyResult = applyChanges(repoRoot, implResult.changes, opts.dryRun, { blockedExtensions });
+      applyResult = applyChanges(repoRoot, implResult.changes, opts.dryRun, applyOptions);
     } else {
       const accepted = await promptConfirmation(implResult.changes, { ...opts, repoRoot });
       if (!accepted) {
@@ -554,7 +561,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
         break;
       }
       confirmationGranted = true;
-      applyResult = applyChanges(repoRoot, implResult.changes, opts.dryRun, { blockedExtensions });
+      applyResult = applyChanges(repoRoot, implResult.changes, opts.dryRun, applyOptions);
     }
     console.log(`     Applied: ${applyResult.applied} changes${applyResult.errors.length ? `, ${applyResult.errors.length} errors` : ""}`);
 
