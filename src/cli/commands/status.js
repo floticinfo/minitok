@@ -98,11 +98,30 @@ async function cmdStatusHuman(options = {}) {
 async function cmdStatus(options = {}) {
   if (options.json) {
     const ws = new WorkspaceManager();
-    const workspace = options.repo ? { name: path.basename(path.resolve(options.repo)), repository_root: path.resolve(options.repo), project_type: "repository", last_used: null } : options.workspace ? ws.resolve(options.workspace) : ws.currentWorkspace();
-    const gate = await authorizeEntitlement();
-    const config = workspace ? loadConfig(path.join(workspace.repository_root, "minitok.yml")) : null;
+    let workspace = null;
+    let workspaceError = null;
+    // The human path below reports an unreadable registry as a message and keeps
+    // going; the JSON path used to re-throw, so a script asking for
+    // machine-readable status got a stack trace (or empty stdout) exactly when the
+    // diagnostic mattered. Every section now degrades to a reported value.
+    try {
+      workspace = options.repo ? { name: path.basename(path.resolve(options.repo)), repository_root: path.resolve(options.repo), project_type: "repository", last_used: null } : options.workspace ? ws.resolve(options.workspace) : ws.currentWorkspace();
+    } catch (error) {
+      workspaceError = error.message;
+    }
+    let gate;
+    try {
+      gate = await authorizeEntitlement();
+    } catch (error) {
+      gate = { state: "UNKNOWN", allowed: false, entitlement: null, error: error.message };
+    }
+    let config = null;
+    if (workspace) {
+      try { config = loadConfig(path.join(workspace.repository_root, "minitok.yml")); } catch { config = null; }
+    }
     const providers = config ? await detectAvailableProviders(config) : [];
-    return { version: minitokVersion, entitlement: { state: gate.state, allowed: gate.allowed, plan: gate.entitlement?.payload?.plan_id || gate.entitlement?.plan_id || null, expires_at: gate.entitlement?.payload?.expires_at || gate.entitlement?.expires_at || null }, workspace, providers, roles: config ? Object.fromEntries(Object.keys(config.roles).map(role => [role, resolveProviderName(config, role) || null])) : {} };
+    const payload = gate.entitlement?.payload || gate.entitlement;
+    return { version: minitokVersion, entitlement: { state: gate.state, allowed: gate.allowed === true, plan: payload?.plan_id || null, expires_at: payload?.expires_at || null, ...(gate.error ? { error: gate.error } : {}) }, workspace, ...(workspaceError ? { workspace_error: workspaceError } : {}), providers, roles: config ? Object.fromEntries(Object.keys(config.roles).map(role => [role, resolveProviderName(config, role) || null])) : {} };
   }
   return cmdStatusHuman(options);
 }
