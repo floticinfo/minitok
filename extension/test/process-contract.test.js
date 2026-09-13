@@ -82,7 +82,16 @@ test("MCP stdio transport contract", () => {
   assert.match(sidebar, /mcpEnvironment\(\)/);
   assert.match(sidebar, /configuredMcp\[0\]/);
   assert.match(sidebar, /MINITOK_MCP_AUTH_TOKEN_FILE/);
-  assert.match(sidebar, /method, params: \{ \.\.\.params, authToken/);
+  // The credential travels through the spawned child's environment
+  // (mcpEnvironment → MINITOK_MCP_AUTH_TOKEN_FILE) and never through request
+  // params: a standard host such as VS Code, Claude Desktop, or Cursor has no way
+  // to echo a token in `params`, and the probe used to work only because it
+  // injected one - reporting "online" for a configuration every real host failed.
+  assert.match(sidebar, /const send = \(method: string, params: Record<string, unknown> = \{\}\) => mcp\.stdin\.write/);
+  assert.match(sidebar, /env: mcpEnvironment\(\)/);
+  assert.equal(/authToken/.test(sidebar), false, "the probe must not echo a token in request params");
+  assert.match(extension, /method: "tools\/list", params: \{\} \}/);
+  assert.equal(/authToken:/.test(extension), false, "the probe must not echo a token in request params");
 });
 
 test("all extension process paths require trusted workspaces", () => {
@@ -101,6 +110,35 @@ test("interactive consent is forwarded to the spawned CLI", () => {
   assert.match(panel, /args\.push\("--auto-accept"\)/);
   assert.match(sidebar, /"--approval-file"/);
   assert.match(sidebar, /"--approval-timeout-ms"/);
+});
+
+test("a run can be cancelled or timed out instead of hanging the extension host", () => {
+  // `runCli` spawned the CLI and waited with no timeout and no cancellation path:
+  // a stuck provider request kept the "minitok task" notification, the run status,
+  // and the sidebar state alive until the window was reloaded.
+  assert.match(extension, /const CLI_RUN_TIMEOUT_MS = 1800000;/);
+  assert.match(extension, /setTimeout\(\(\) => \{ killProcessTree\(child\); finish\(new Error\(`minitok timed out after/);
+  assert.match(extension, /options\.token\?\.onCancellationRequested\(\(\) => \{ killProcessTree\(child\); finish\(new Error\("minitok run cancelled"\)\); \}\)/);
+  assert.match(extension, /cancellable: true/);
+  assert.match(extension, /await runCli\(cliPath\(\), runArgs, \{ timeoutMs: CLI_RUN_TIMEOUT_MS, token \}\)/);
+  // The whole tree is killed: on Windows a Node child can survive its parent's
+  // signal, and the CLI has the verification gate as a child of its own.
+  assert.match(extension, /function killProcessTree\(/);
+  assert.match(extension, /execFile\("taskkill", \["\/pid", String\(child\.pid\), "\/t", "\/f"\]/);
+});
+
+test("status and version answers are bounded", () => {
+  assert.match(extension, /const CLI_STATUS_TIMEOUT_MS = 60000;/);
+  assert.match(extension, /await runCli\(cliPath\(\), \["--version"\], \{ timeoutMs: CLI_STATUS_TIMEOUT_MS \}\)/);
+  assert.match(extension, /await runCli\(cliPath\(\), statusCwd \? \["status", "--repo", statusCwd\] : \["status"\], \{ timeoutMs: CLI_STATUS_TIMEOUT_MS \}\)/);
+});
+
+test("every MCP probe call is bounded", () => {
+  // The probe preflight spawned processes without a timeout, so a provider outage
+  // left the sidebar reporting "checking" forever.
+  assert.match(sidebar, /const timeout = setTimeout\(\(\) => \{ mcp\.kill\(\);[\s\S]{0,200}handshake timed out/);
+  assert.match(sidebar, /execFile\(spec\.command, spec\.args, \{ \.\.\.spawnOptionsFor\(spec, \{ cwd, env \}\), timeout: 30000 \}/);
+  assert.match(sidebar, /execFile\("git", args, \{ cwd, timeout: 30000, windowsHide: true \}/);
 });
 
 test("the entitlement decision is cached and dropped after an auth change", () => {

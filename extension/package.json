@@ -139,6 +139,16 @@
           "type": "boolean",
           "default": false,
           "description": "Automatically approve minitok changes. Disabled by default for safety."
+        },
+        "minitok.approvalTimeoutMs": {
+          "type": "number",
+          "default": 1800000,
+          "description": "How long a run waits for an approve/reject decision before the change is rejected (milliseconds, default 30 minutes)."
+        },
+        "minitok.runTimeoutMs": {
+          "type": "number",
+          "default": 0,
+          "description": "Hard timeout after which the sidebar stops a run (milliseconds). 0 keeps a run alive for its approval timeout plus a 5-minute margin, so a late decision is never lost to the kill timer."
         }
       }
     }

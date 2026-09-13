@@ -13,6 +13,27 @@ function cliRelease(context: vscode.ExtensionContext) {
   return { packageName: typeof release?.cliPackage === "string" ? release.cliPackage : "@flotic/minitok", version: typeof release?.cliVersion === "string" ? release.cliVersion : "0.0.0" };
 }
 
+/** Default approval window: how long a proposed change waits for an answer. */
+const APPROVAL_TIMEOUT_MS = 30 * 60 * 1000;
+/** Extra time a run gets after that window before the sidebar kills it. */
+const RUN_TIMEOUT_MARGIN_MS = 5 * 60 * 1000;
+
+/**
+ * Timeouts for a sidebar run.
+ *
+ * The approval timeout and the process kill timer were the same 30 minutes, so an
+ * answer given at minute 29:59 raced the kill: the run was terminated while the
+ * approve response was being written, and the work was thrown away. The kill timer
+ * now defaults to the approval timeout plus a margin, and both are configurable
+ * (`minitok.approvalTimeoutMs`, `minitok.runTimeoutMs`).
+ */
+function runTimeouts() {
+  const config = vscode.workspace.getConfiguration("minitok");
+  const positive = (value: unknown, fallback: number): number => typeof value === "number" && Number.isFinite(value) && value > 0 ? value : fallback;
+  const approvalMs = positive(config.get("approvalTimeoutMs"), APPROVAL_TIMEOUT_MS);
+  return { approvalMs, runMs: positive(config.get("runTimeoutMs"), approvalMs + RUN_TIMEOUT_MARGIN_MS) };
+}
+
 export class minitokSidebar implements vscode.WebviewViewProvider {
   public static readonly viewType = "minitok.sidebar";
   private view?: vscode.WebviewView;
@@ -51,9 +72,13 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
     if (apiKey && provider === "google") env.GOOGLE_API_KEY = apiKey;
     if (apiKey && provider === "custom") env.OPENAI_API_KEY = apiKey;
     if (customBaseUrl && provider === "custom") env.MINITOK_OPENAI_COMPATIBLE_BASE_URL = customBaseUrl;
-    if (cwd && args[0] === "run" && !args.includes("--dry-run")) {
+    const timeouts = runTimeouts();
+    if (cwd && args[0] === "run" && !args.includes("--dry-run") && !args.includes("--auto-accept")) {
+      // autoApprove() adds --auto-accept just below, and auto-accept now takes
+      // precedence over an approval file (loop.promptConfirmation). Passing both
+      // would only produce an unused request file, so it is not written at all.
       this.approvalFile = path.join(cwd, ".minitok", "extension-approval.json");
-      args.push("--approval-file", this.approvalFile, "--approval-timeout-ms", "1800000");
+      args.push("--approval-file", this.approvalFile, "--approval-timeout-ms", String(timeouts.approvalMs));
     }
     return new Promise((resolve, reject) => {
       const processSpec = spawnSpec(cli, args);
@@ -79,8 +104,8 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
       child.on("error", errorValue => { this.process = undefined; reject(errorValue); });
       const timeout = setTimeout(() => {
         this.stopProcess();
-        this.view?.webview.postMessage({ type: "timeout", text: "minitok run timed out after 30 minutes" });
-      }, 1800000);
+        this.view?.webview.postMessage({ type: "timeout", text: `minitok run timed out after ${Math.round(timeouts.runMs / 60000)} minutes` });
+      }, timeouts.runMs);
       child.on("close", code => {
         clearTimeout(timeout);
         this.process = undefined;
@@ -307,7 +332,7 @@ private async discoverModels(cwd?: string, provider?: string) {
     const processSpec = spawnSpec(configured[0], configured.slice(1));
     // Refresh the short lived runtime token before spawning the server, so both
     // sides use the same credential instead of failing 15 minutes after setup.
-    const authToken = await ensureMcpAuthToken();
+    await ensureMcpAuthToken();
     this.output.appendLine(`[spawn] mcp command=${JSON.stringify(processSpec.command)} args=${JSON.stringify(processSpec.args)} cwd=${JSON.stringify(workspacePath())}`);
     let mcp: ChildProcessWithoutNullStreams;
     try { mcp = spawn(processSpec.command, processSpec.args, spawnOptionsFor(processSpec, { cwd: workspacePath(), env: mcpEnvironment() })); } catch (error) { this.output.appendLine(`[spawn] synchronous error=${String(error)}`); this.view?.webview.postMessage({ type: "mcp", ok: false, text: `MCP spawn failed: ${String(error)}` }); return; }
@@ -315,7 +340,12 @@ private async discoverModels(cwd?: string, provider?: string) {
     let buffer = "";
     let nextId = 1;
     const timeout = setTimeout(() => { mcp.kill(); this.view?.webview.postMessage({ type: "mcp", ok: false, text: "MCP offline: handshake timed out" }); }, 5000);
-    const send = (method: string, params: Record<string, unknown> = {}) => mcp.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: nextId++, method, params: { ...params, authToken } })}\n`);
+    // Probe exactly the way a real MCP host does. The credential reaches the
+    // server through mcpEnvironment() (MINITOK_MCP_AUTH_TOKEN_FILE), never
+    // through request params: a host like VS Code, Claude Desktop or Cursor has
+    // no way to inject one. Echoing the token here made this probe report
+    // "online" while every real host failed on its first tool call.
+    const send = (method: string, params: Record<string, unknown> = {}) => mcp.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: nextId++, method, params })}\n`);
     const finish = (ok: boolean, text: string) => { clearTimeout(timeout); if (this.mcpProcess === mcp) this.mcpProcess = undefined; this.stopChild(mcp); this.view?.webview.postMessage({ type: "mcp", ok, text }); };
     mcp.stdout.on("data", chunk => { buffer += chunk.toString(); const lines = buffer.split(/\r?\n/); buffer = lines.pop() || ""; for (const line of lines) { try { const message = JSON.parse(line); if (message.error) finish(false, `MCP handshake error: ${message.error.message}`); else if (message.id === 1) send("tools/list"); else if (message.id === 2) finish(true, `MCP online: ${message.result?.tools?.length || 0} tools`); } catch (error) { this.output.appendLine(`MCP invalid response: ${error instanceof Error ? error.message : String(error)}`); } } });
     mcp.on("error", error => finish(false, `MCP offline: ${error.message}`));
