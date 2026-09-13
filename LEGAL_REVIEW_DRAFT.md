@@ -14,7 +14,7 @@ came from, and which pages must change to stay consistent with it.
 
 | Decision | Value | Applied in | Recorded |
 |---|---|---|---|
-| Contracting entity | **Flotic LC.** (the legal form includes the trailing period), Representative Juseong Park, business registration number 180-88-03655 | EULA §11 | 2026-09-13 |
+| Contracting entity | **Flotic LC.** (the legal form includes the trailing period), Representative JOO SUNG PARK, business registration number 180-88-03655 | EULA §11 | 2026-09-13 |
 | Notice address | 3F 301-Na025, Sangik Plaza, 57 Munin-ro, Suji-gu, Yongin-si, Gyeonggi-do, Republic of Korea | EULA §11 | 2026-09-13 |
 | Governing law and venue | **Republic of Korea**; the customer may also sue at their place of residence | EULA §12, §13 | 2026-09-13 |
 | Refunds | **None.** Fees are charged in advance per period, cancelling stops the following period, the paid period stays usable, no credit or pro-rated refund; one sentence preserves non-waivable Korean consumer rights | EULA §4 | 2026-09-13 |
@@ -23,7 +23,7 @@ came from, and which pages must change to stay consistent with it.
 | Privacy notice | https://minitok.dev/privacy | EULA §6, POLICY §10 | 2026-09-13 |
 | Rights, processor, and transfer contact | support@minitok.dev | POLICY §10 | 2026-09-13 |
 | Retention | Open telemetry 30 days, Select aggregate 14 days, Private none; account while the account exists; billing, support, and security as needed | POLICY §10, DATA_CLASSIFICATION §9 | 2026-09-13 |
-| Controller and privacy officer | Flotic LC.; privacy officer Juseong Park, Representative | POLICY §10 | 2026-09-13 |
+| Controller and privacy officer | Flotic LC.; privacy officer JOO SUNG PARK, Representative | POLICY §10 | 2026-09-13 |
 | Effective date and version | EULA 2026-09-13; POLICY version 1.2.0 on 2026-09-13 | both | 2026-09-13 |
 
 Replacing the notes with approved wording clears the `BLOCKED` status but does
@@ -55,7 +55,7 @@ sentence that precedes it:
 ## 11. Contracting entity and notices
 
 This Agreement is entered into with Flotic LC., the licensor of minitok.
-Representative: Juseong Park. Business registration number: 180-88-03655. Notice
+Representative: JOO SUNG PARK. Business registration number: 180-88-03655. Notice
 address: 3F 301-Na025, Sangik Plaza, 57 Munin-ro, Suji-gu, Yongin-si, Gyeonggi-do,
 Republic of Korea. Notices to Flotic must be sent to that address or by email to
 support@minitok.dev.
@@ -236,7 +236,7 @@ legal wording must not contradict.
 | 5 | email to support@minitok.dev, 24–48 hours, Monday–Friday (UTC), no guaranteed SLA | minitok.dev/support | EULA §5 |
 | 6 | https://minitok.dev/privacy | minitok.dev/privacy | EULA §6 |
 | 7 | support@minitok.dev ("contact support@minitok.dev for processor and transfer details") | minitok.dev/privacy §6 | POLICY §10 |
-| 8 | Juseong Park, Representative (privacy officer) | floticinfo.com privacy policy, Article 9 | POLICY §10 |
+| 8 | JOO SUNG PARK, Representative (privacy officer) | floticinfo.com privacy policy, Article 9 | POLICY §10 |
 | 9 | Flotic LC. as controller; the server stores consented telemetry; LLM providers are the customer's own relationship | minitok.dev/privacy §5, §6 | POLICY §10 |
 | 10 | operated from the Republic of Korea; Dodo Payments, Hetzner, and Let's Encrypt may process data outside the customer's country; the PIPA disclosures are those listed in the privacy notice | minitok.dev/privacy §6 | POLICY §10 |
 | 11 | support@minitok.dev; actioned as soon as practicable and within the period required by applicable law | minitok.dev/privacy §8 | POLICY §10 |
@@ -282,9 +282,12 @@ from 2026-09-13, so each line below is the text to search for.
 
 **Version strings.** The homepage still advertises the 1.3.12 install command while
 this repository prepares 1.3.14, so the command has to follow the publish. The
-Extension was repackaged so its embedded CLI runtime matches 1.3.14 and still
-reports 0.2.6: if 0.2.6 was ever published to the Marketplace, bump the Extension
-version before publishing again, because a published version cannot be replaced.
+Extension was repackaged so its embedded CLI runtime matches 1.3.14 and still reports
+0.2.6, which is the correct next version: the Marketplace serves
+`…/minitok-extension/0.2.5/vspackage` with HTTP 200 and a 725,989 byte VSIX, while the
+same URL for 0.2.6 returns HTTP 404, so 0.2.5 is the published version and 0.2.6 has
+not been used. Publish the repackaged VSIX as 0.2.6, and bump the Extension version
+whenever a version that was already published has to change.
 
 Also re-read section 2.6: the live 7-day window is close to the statutory
 withdrawal period for a first purchase of digital content under Korean consumer law,
@@ -305,7 +308,7 @@ entity in the same language.
 
 ```text
 Flotic LC. (a limited company organized under the laws of the Republic of Korea)
-Representative: Juseong Park
+Representative: JOO SUNG PARK
 Business Registration No.: 180-88-03655
 Address: 3F 301-Na025, Sangik Plaza, 57 Munin-ro, Suji-gu, Yongin-si, Gyeonggi-do, Republic of Korea
 Contact: support@minitok.dev

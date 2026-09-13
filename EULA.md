@@ -50,7 +50,7 @@ This Agreement is the complete agreement regarding the license granted here and 
 
 ## 11. Contracting entity and notices
 
-This Agreement is entered into with Flotic LC., the licensor of minitok. Representative: Juseong Park. Business registration number: 180-88-03655. Notice address: 3F 301-Na025, Sangik Plaza, 57 Munin-ro, Suji-gu, Yongin-si, Gyeonggi-do, Republic of Korea. Notices to Flotic must be sent to that address or by email to support@minitok.dev.
+This Agreement is entered into with Flotic LC., the licensor of minitok. Representative: JOO SUNG PARK. Business registration number: 180-88-03655. Notice address: 3F 301-Na025, Sangik Plaza, 57 Munin-ro, Suji-gu, Yongin-si, Gyeonggi-do, Republic of Korea. Notices to Flotic must be sent to that address or by email to support@minitok.dev.
 
 ## 12. Governing law and venue
 
