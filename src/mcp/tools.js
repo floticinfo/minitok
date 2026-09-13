@@ -42,6 +42,14 @@ const TOOL_SCOPES = Object.freeze({
 });
 function requiredScopeFor(name) { return TOOL_SCOPES[name] || "read"; }
 
+// Running the pipeline executes the repository's own verification script
+// (validation.script_path / VERIFY_CMD.*) with the operator's account, so an MCP
+// client needs an explicit grant in addition to `write`: a repository the agent
+// can point at must not be able to run code merely because the client may write
+// files. `minitok_run` therefore also requires the `verify_exec` scope.
+const TOOL_EXTRA_SCOPES = Object.freeze({ minitok_run: ["verify_exec"] });
+function requiredExtraScopesFor(name) { return TOOL_EXTRA_SCOPES[name] || []; }
+
 function getToolDefinitions() { return TOOLS; }
 function canonical(value) { return fs.realpathSync.native(path.resolve(value)); }
 function sameOrUnder(candidate, root) {
@@ -179,4 +187,4 @@ async function getToolHandler(name, args, services, runtimeOptions = {}) {
     return { content: [{ type: "text", text: JSON.stringify(structuredContent) }], structuredContent, isError: true, error: { code, message: error.message } };
   }
 }
-module.exports = { getToolDefinitions, getToolHandler, validateArgs, MCP_ERROR_CODES, TOOL_SCOPES, requiredScopeFor, requireWorkspacePath, requireApprovalPath, acquireStdoutGuard, releaseStdoutGuard };
+module.exports = { getToolDefinitions, getToolHandler, validateArgs, MCP_ERROR_CODES, TOOL_SCOPES, TOOL_EXTRA_SCOPES, requiredScopeFor, requiredExtraScopesFor, requireWorkspacePath, requireApprovalPath, acquireStdoutGuard, releaseStdoutGuard };

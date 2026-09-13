@@ -4,7 +4,7 @@
 
 - GitHub: https://github.com/floticinfo/minitok
 - npm: https://www.npmjs.com/package/@flotic/minitok
-- Local canonical CLI: `@flotic/minitok@1.3.16`
+- Local canonical CLI: `@flotic/minitok@1.3.17`
 - Publication state: unverified until an approved release manifest and registry evidence are present
 - Website: https://minitok.dev
 - Docs: https://minitok.dev/docs
@@ -12,7 +12,7 @@
 ## Demo recording
 
 1. Create a disposable repository and record the exact commit.
-2. Run `npm install -g @flotic/minitok@1.3.16`.
+2. Run `npm install -g @flotic/minitok@1.3.17`.
 3. Run `minitok doctor` and show provider configuration without exposing keys.
 4. Run `minitok migrate`.
 5. Run a small task with tests and documentation.

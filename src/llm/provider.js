@@ -5,6 +5,7 @@ const MAX_RESPONSE_BYTES = 2 * 1024 * 1024; // 2 MB max response body
 
 const dns = require("dns").promises;
 const net = require("net");
+const crypto = require("crypto");
 const { authManager } = require("../auth");
 const { Agent } = require("undici");
 const { getProxyDispatcher, shouldBypassProxy } = require("../core/http");
@@ -740,18 +741,48 @@ async function _probeProvider(provider) {
 }
 
 /**
+ * Fingerprint the credential a probe would actually use.
+ *
+ * The verification cache was keyed by provider name and endpoint only, so a
+ * credential the user had just replaced kept the previous verdict: a 401
+ * rejection survived the fix (and an OK survived a revoked key) until the TTL
+ * expired, with no way to invalidate it (`resetVerifyCache` had no caller).
+ * Hashing the resolved credential keeps the cache useful without serving an
+ * answer that belongs to a different key.
+ */
+async function credentialFingerprint(provider) {
+  let auth;
+  try { auth = await provider._resolveAuth(); } catch { auth = {}; }
+  const headers = auth?.headers || {};
+  const material = [
+    auth?.token || "",
+    headers.authorization || headers.Authorization || "",
+    headers["x-api-key"] || "",
+    headers["x-goog-api-key"] || "",
+    provider.apiKey || "",
+  ].join("\u0000");
+  return crypto.createHash("sha256").update(material).digest("hex").slice(0, 16);
+}
+
+/**
  * Live-check a provider's credentials.
  * @returns {Promise<{status: string, detail: string}>}
  *   ok | invalid (401/403) | absent | network_error | error | skipped
  */
 async function verifyCredentials(providerName, providerConfig = {}) {
-  const key = String(providerName).toLowerCase() + "\u0000" + (providerConfig?.base_url || providerConfig?.endpoint || "");
   const now = Date.now();
+  let provider = null;
+  let fingerprint = "unresolved";
+  try {
+    provider = createProvider(providerName, providerConfig);
+    fingerprint = await credentialFingerprint(provider);
+  } catch { /* an unusable configuration is reported below */ }
+  const key = [String(providerName).toLowerCase(), providerConfig?.base_url || providerConfig?.endpoint || "", fingerprint].join("\u0000");
   const hit = verifyCache.get(key);
   if (hit && now - hit.at < (hit.status === "ok" ? VERIFY_OK_TTL_MS : VERIFY_FAIL_TTL_MS)) return hit;
   let result;
   try {
-    const provider = createProvider(providerName, providerConfig);
+    if (!provider) throw new Error(`Unknown provider: ${providerName}`);
     result = await _probeProvider(provider);
   } catch (error) {
     result = { status: "error", detail: String(error?.message || error).slice(0, 200) };

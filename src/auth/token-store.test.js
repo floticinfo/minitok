@@ -27,7 +27,7 @@ describe("token store: keychain command construction", () => {
     const provider = "x') ; Remove-Item -Recurse -Force 'y";
     const commands = [
       store._powerShellLoadCommand(provider),
-      store._powerShellSaveCommand(provider, JSON.stringify({ access_token: "t" })),
+      store._powerShellSaveCommand(provider),
       store._powerShellRemoveCommand(provider),
     ];
     for (const command of commands) {
@@ -37,12 +37,26 @@ describe("token store: keychain command construction", () => {
     }
   });
 
-  it("escapes the stored secret payload as well", () => {
+  it("reads the stored secret from stdin instead of the command line", () => {
     const store = tempStore();
-    const payload = JSON.stringify({ access_token: "a') ; Set-Content -Path 'x' -Value y ; ('" });
-    const command = store._powerShellSaveCommand("anthropic", payload);
-    assert.equal(command.includes("a') ; Set-Content"), false);
-    assert.ok(command.includes("a'') ; Set-Content"));
+    const payload = JSON.stringify({ access_token: "sk-ant-secret-value" });
+    const command = store._powerShellSaveCommand("anthropic");
+    // An argument is visible to every local process through the command line
+    // (Win32_Process.CommandLine), so the token must never be part of it.
+    assert.equal(command.includes(payload), false, "the secret must not be interpolated into the command");
+    assert.equal(command.includes("sk-ant-secret-value"), false);
+    assert.match(command, /\[Console\]::In\.ReadToEnd\(\)/, "the payload is read from stdin");
+    assert.match(command, /Set-Secret -Name 'minitok:anthropic'/);
+  });
+
+  it("only trusts a keychain write it can read back", () => {
+    const store = tempStore();
+    store._keychainLoad = () => ({ access_token: "something-else" });
+    assert.equal(store._keychainReadBack("anthropic", { access_token: "written" }), false);
+    store._keychainLoad = () => ({ access_token: "written" });
+    assert.equal(store._keychainReadBack("anthropic", { access_token: "written" }), true);
+    store._keychainLoad = () => null;
+    assert.equal(store._keychainReadBack("anthropic", { access_token: "written" }), false);
   });
 
   it("leaves benign provider names untouched", () => {

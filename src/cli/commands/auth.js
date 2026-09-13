@@ -3,11 +3,23 @@
 const { TokenStore } = require("../../auth/token-store");
 const { OAuthFlow, OAUTH_CONFIGS } = require("../../auth/oauth");
 const { saveCustomerToken } = require("../../auth/customer-token");
+const { resetVerifyCache } = require("../../llm/provider");
 const { resolveServerUrl } = require("./server-config");
 const readline = require("readline");
 const { postJson } = require("../../core/http");
 
 const tokenStore = new TokenStore();
+
+/**
+ * Drop the cached provider-verification verdict.
+ *
+ * `verifyCredentials` caches per credential, but an embedded host (the MCP
+ * runtime or any long-lived process) can still hold a verdict resolved before
+ * this credential change, so invalidate explicitly after a login or logout.
+ */
+function afterCredentialChange() {
+  resetVerifyCache();
+}
 
 function prompt(question) {
   const rl = readline.createInterface({ input: process.stdin, output: process.stderr });
@@ -31,7 +43,7 @@ async function cmdAuthLogin(provider) {
   if (OAUTH_CONFIGS[name]) {
     const oauthConfig = OAUTH_CONFIGS[name];
     if (!oauthConfig.client_id) { console.log("\nOAuth not available: " + oauthConfig.name + " client_id not configured."); console.log("   You can:"); console.log("   1. Set the client ID via environment variable:"); const envVar = name.toUpperCase().replace("-", "_") + "_CLIENT_ID"; console.log("      export " + envVar + "=your_client_id"); console.log("   2. Use API key authentication instead:"); console.log("      minitok auth login " + name + " (API key mode)"); console.log("\nAPI Key fallback:"); return await cmdApiKeyLogin(name); }
-    try { const oauth = new OAuthFlow(); const tokens = await oauth.authorize(name); tokenStore.save(name, tokens); console.log("\nLogged in to " + name + " successfully."); return 0; } catch (e) { console.error("\nOAuth login failed: " + e.message); console.error("\nFalling back to API key authentication..."); return await cmdApiKeyLogin(name); }
+    try { const oauth = new OAuthFlow(); const tokens = await oauth.authorize(name); tokenStore.save(name, tokens); afterCredentialChange(); console.log("\nLogged in to " + name + " successfully."); return 0; } catch (e) { console.error("\nOAuth login failed: " + e.message); console.error("\nFalling back to API key authentication..."); return await cmdApiKeyLogin(name); }
   }
   return await cmdApiKeyLogin(name);
 }
@@ -40,6 +52,7 @@ async function cmdApiKeyLogin(name) {
   const key = await prompt("Enter API key for " + name + ": ");
   if (!key) { console.error("No key entered. Aborting."); return 1; }
   tokenStore.save(name, { access_token: key, token_type: "api_key" });
+  afterCredentialChange();
   console.log("\nAPI key saved for " + name + ".");
   return 0;
 }
@@ -55,7 +68,7 @@ async function cmdAuthStatus() {
 
 async function cmdAuthLogout(provider) {
   if (!provider) { console.error("Usage: minitok auth logout <provider>"); return 1; }
-  const name = provider.toLowerCase(); tokenStore.remove(name); console.log("Logged out from " + name + "."); return 0;
+  const name = provider.toLowerCase(); tokenStore.remove(name); afterCredentialChange(); console.log("Logged out from " + name + "."); return 0;
 }
 
 function addCustomerLogin(command, description) {

@@ -25,7 +25,9 @@ function harness(root, options = {}) {
     authToken: TOKEN,
     workspaceRoot: root,
     runStatePath: path.join(root, "mcp-runs.json"),
-    permissions: "read,write",
+    // verify_exec is required for minitok_run as well: the run executes the
+    // repository's own verification script.
+    permissions: "read,write,verify_exec",
     services: { entitlement: { status: async () => ({ allowed: true, state: "ALLOWED" }) } },
     ...options,
   });

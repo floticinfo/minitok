@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.3.17 - 2026-09-13
+
+### Security
+
+- **MCP `minitok_run` now requires the `verify_exec` scope** in addition to `write`. A run executes the target repository's own verification script (`validation.script_path` / `VERIFY_CMD.*`), and a client that could write files was implicitly allowed to run repository code with the operator's account. A client granted only `read,write` is refused with `PERMISSION_DENIED` (`data.scope: verify_exec`) until the grant is added: `minitok mcp connect <host> --scopes read,write,verify_exec`, `minitok runtime start --scopes read,write,verify_exec`, or `MINITOK_MCP_SCOPES=read,write,verify_exec`. Existing MCP configurations that only list `read,write` must add the scope to keep using `minitok_run`.
+- **The verification gate no longer receives credentials.** The repository's verification script now runs with the MCP auth token (`MINITOK_MCP_AUTH_TOKEN*`), minitok account/activation tokens, and provider API keys (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`, `OPENROUTER_API_KEY`, and equivalents) removed from its environment. `PATH`, `HOME`, proxy settings, and unrelated application variables are still passed through, so an ordinary build gate is unaffected.
+- **The Windows and macOS keychain writes no longer expose the secret on the command line.** Storing a provider token passed the JSON payload as a PowerShell `-Command` argument (or `security … -w <payload>`), which every local process can read through `Win32_Process.CommandLine` (Task Manager, WMI, Sysmon) or `ps`. The payload is now written to the child's stdin, and a write is only treated as successful when the stored secret can be read back with the same token — otherwise the owner-only token file is used as before.
+
+### Fixes
+
+- Fixed the MCP run registry growing without bound. The in-memory map kept one entry per run for the life of the runtime process (the persisted file was capped at 100 records, memory was not), so a long editor session accumulated every run and `minitok_run_list` returned them all. Finished runs are now evicted oldest-first beyond 100 entries; recent runs stay addressable and a running run is never evicted.
+- Fixed a completed oversized stdio request being parsed instead of refused. The 4 MB line cap only applied to an unterminated remainder, so a line that arrived with its newline was handed to the JSON parser and its tail could be answered with a confusing parse error. The cap now applies to complete lines as well, and the remainder of an oversized line is discarded until its newline so following requests stay in sync.
+- Fixed the provider verification cache serving a verdict that belonged to a different credential. The cache key was `provider + endpoint`, so a key the user had just replaced kept its previous 401 rejection (and a revoked key kept its OK) until the TTL expired. The cache is now keyed by a fingerprint of the resolved credential, and `minitok auth login`/`auth logout` clear it explicitly (`resetVerifyCache` previously had no caller).
+- Fixed the VS Code extension writing the MCP host entry to the wrong container. A host configuration that lists its servers under `servers` was read from that key and then written to `mcpServers`, so the host never loaded the minitok entry listed as connected.
+- `minitok mcp status` now reports whether the configured MCP auth token file is usable and names the reason and the expected binding path. A runtime token record is only accepted when its `installation_id` matches the `installation-token.json` beside it, so a token file outside `~/.minitok/mcp/` was refused with no diagnostic while every call failed with `AUTH_REQUIRED`.
+- The expected "keychain module missing" PowerShell error no longer leaks into `minitok auth` output: the keychain child's stderr is discarded, and the owner-only token file remains the documented fallback.
+
+### Changed
+
+- `LOCAL_MCP_SCOPES` gained `verify_exec`; `minitok mcp connect --scopes` and `minitok runtime start --scopes` help text lists it. The CLI `minitok run` command is unaffected: the scope gates the MCP surface only.
+
 ## 1.3.16 - 2026-09-13
 
 ### Fixes

@@ -90,10 +90,23 @@ function runVerification(repoRoot, options = {}) {
   return runProcess(command, args, repoRoot, options);
 }
 
+/**
+ * Credentials that must not reach the repository's own verification script.
+ *
+ * The script is repository-controlled code, so leaving the paid provider keys or
+ * the MCP grant in its environment let a repository read the operator's
+ * credentials (and the MCP token) from a process minitok started for it. Only
+ * credentials are removed: PATH, HOME, proxy settings, and unrelated application
+ * variables (a database URL, a CI flag) are kept.
+ */
+const PROVIDER_CREDENTIAL_ENV = /^(?:ANTHROPIC|OPENAI|AZURE_OPENAI|GOOGLE|GEMINI|OPENROUTER|GROQ|MISTRAL|DEEPSEEK|XAI|TOGETHER|FIREWORKS|COHERE|PERPLEXITY|VOYAGE)_(?:API_KEY|TOKEN|SECRET|KEY)$/i;
+const MINITOK_SECRET_ENV = /^MINITOK_(?:MCP_AUTH_TOKEN|MCP_AUTH_TOKEN_FILE|MCP_AUTH_TOKEN_NEXT|MCP_AUTH_TOKEN_TTL_MS|MCP_AUTH_TOKEN_EXPIRES_AT|MCP_AUTH_TOKEN_REVOKED|MCP_RUNTIME_IDENTITY|TOKEN|CUSTOMER_TOKEN|ACTIVATION_KEY|SERVER_TOKEN)/i;
+
 function verificationEnvironment(base = process.env) {
   const env = { ...base };
   for (const key of Object.keys(env)) {
     if (/^MINITOK_(OFFLINE|DEFAULT_PROVIDER|SERVER_URL|PROJECT_|BUDGET_|EXECUTION_|VALIDATION_)/i.test(key)) delete env[key];
+    else if (MINITOK_SECRET_ENV.test(key) || PROVIDER_CREDENTIAL_ENV.test(key)) delete env[key];
   }
   return env;
 }

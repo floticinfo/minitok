@@ -88,6 +88,31 @@ describe("Pipeline stages", () => {
     assert.equal(env.CUSTOMER_FLAG, "keep");
   });
 
+  it("withholds provider credentials and the MCP grant from a repository verification script", () => {
+    const { verificationEnvironment } = require("./check");
+    const env = verificationEnvironment({
+      ANTHROPIC_API_KEY: "sk-ant-secret",
+      OPENAI_API_KEY: "sk-openai-secret",
+      GEMINI_API_KEY: "gm-secret",
+      OPENROUTER_API_KEY: "or-secret",
+      MINITOK_MCP_AUTH_TOKEN: "mcp-secret",
+      MINITOK_MCP_AUTH_TOKEN_FILE: "/home/user/.minitok/mcp/runtime-token.json",
+      MINITOK_CUSTOMER_TOKEN: "customer-secret",
+      PATH: "/usr/bin",
+      HOME: "/home/user",
+      DATABASE_URL: "postgres://user:pass@localhost/db",
+      CI: "true",
+    });
+    for (const key of ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "MINITOK_MCP_AUTH_TOKEN", "MINITOK_MCP_AUTH_TOKEN_FILE", "MINITOK_CUSTOMER_TOKEN"]) {
+      assert.equal(env[key], undefined, `${key} must not reach repository code`);
+    }
+    // Only credentials are removed: a gate that needs its build environment keeps it.
+    assert.equal(env.PATH, "/usr/bin");
+    assert.equal(env.HOME, "/home/user");
+    assert.equal(env.DATABASE_URL, "postgres://user:pass@localhost/db");
+    assert.equal(env.CI, "true");
+  });
+
   it("builds a repair task from review and check failures", () => {
     const task = buildRepairTask("original goal", { summary: "bad change", findings: [{ severity: "error", message: "fix this" }] }, { evidence: { command: "npm test", output: "failed test" } });
     assert.match(task, /original goal/);

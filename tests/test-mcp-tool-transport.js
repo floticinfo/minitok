@@ -80,7 +80,7 @@ function sandbox(scopes, pipeline, calls = []) {
 
 test("a client-supplied run_id reaches minitok_run_get and minitok_run_cancel", async () => {
   const calls = [];
-  const box = sandbox("read,write", pendingPipeline(calls), calls);
+  const box = sandbox("read,write,verify_exec", pendingPipeline(calls), calls);
   try {
     await box.init();
     // Start a run and leave it pending so it stays addressable by run_id.
@@ -107,7 +107,7 @@ test("a client-supplied run_id reaches minitok_run_get and minitok_run_cancel", 
 });
 
 test("minitok_approve_run delivers the documented approval flow", async () => {
-  const box = sandbox("read,write");
+  const box = sandbox("read,write,verify_exec");
   try {
     await box.init();
     const approvalDir = path.join(box.root, ".minitok");
@@ -146,7 +146,7 @@ test("the read scope is read-only: every writing tool is refused", async () => {
 });
 
 test("the write scope grants the writing tools", async () => {
-  const box = sandbox("read,write");
+  const box = sandbox("read,write,verify_exec");
   try {
     await box.init();
     const recorded = await box.call(20, "minitok_knowledge_record", { goal: "scope probe", status: "success" });
@@ -184,7 +184,7 @@ test("project scoping arguments are accepted by the analysis tools", async () =>
 
 test("the pipeline injected into the constructor replaces the real one", async () => {
   const seen = [];
-  const box = sandbox("read,write", async (task) => { seen.push(task); return { success: true, marker: "injected" }; });
+  const box = sandbox("read,write,verify_exec", async (task) => { seen.push(task); return { success: true, marker: "injected" }; });
   try {
     await box.init();
     const reply = await box.call(50, "minitok_run", { task: "injected pipeline probe", repo: box.root });
@@ -218,7 +218,7 @@ test("every tool declares the scope it actually needs", () => {
 });
 
 test("initialize rejects a token the server would not accept", async () => {
-  const box = sandbox("read,write");
+  const box = sandbox("read,write,verify_exec");
   try {
     // Previously initialize accepted any value, so a bogus token produced a
     // successful handshake followed by AUTH_REQUIRED on every later call.

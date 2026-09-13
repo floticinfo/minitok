@@ -114,6 +114,14 @@ test("the entitlement decision is cached and dropped after an auth change", () =
   assert.equal((sidebar.match(/invalidateEntitlementCache\(\)/g) || []).length >= 4, true, "login, logout, manual refresh, and the credential form");
 });
 
+test("the MCP host entry is written back to the key that host uses", () => {
+  // A host config that lists its servers under `servers` was read from that key and
+  // then written to `mcpServers`, so the entry never loaded.
+  assert.match(sidebar, /const serversKey = /);
+  assert.match(sidebar, /config\[serversKey\] = existingServers/);
+  assert.equal(/config\.mcpServers = existingServers/.test(sidebar), false, "the container key must not be hardcoded");
+});
+
 test("sidebar process lifecycle contract", () => {
   assert.match(sidebar, /approval-timeout-ms/);
   assert.match(sidebar, /taskkill/);

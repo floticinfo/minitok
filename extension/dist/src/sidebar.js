@@ -514,7 +514,12 @@ class minitokSidebar {
                 throw new Error("MCP config must be a JSON object");
             config = parsed;
         }
-        const existingServers = config.mcpServers ?? config.servers ?? {};
+        // Write back to the key the host actually uses. A configuration that lists its
+        // servers under `servers` was read from that key but always written to
+        // `mcpServers`, so the host never loaded the minitok entry (the CLI's
+        // `mcp connect` already preserves the container key).
+        const serversKey = config.mcpServers !== undefined ? "mcpServers" : config.servers !== undefined ? "servers" : "mcpServers";
+        const existingServers = config[serversKey] ?? {};
         if (!existingServers || typeof existingServers !== "object" || Array.isArray(existingServers))
             throw new Error("MCP server configuration must be an object");
         const backup = `${configPath}.minitok-backup-${Date.now()}`;
@@ -523,7 +528,7 @@ class minitokSidebar {
             fs.copyFileSync(configPath, backup, fs.constants.COPYFILE_EXCL);
         const configuredMcp = (0, workspace_1.mcpCommand)();
         existingServers.minitok = { command: configuredMcp[0], args: configuredMcp.slice(1), env: { MINITOK_MCP_AUTH_TOKEN_FILE: (0, workspace_1.mcpEnvironment)().MINITOK_MCP_AUTH_TOKEN_FILE }, disabled: false };
-        config.mcpServers = existingServers;
+        config[serversKey] = existingServers;
         const temp = `${configPath}.tmp-${process.pid}-${(0, node_crypto_1.randomUUID)()}`;
         try {
             fs.writeFileSync(temp, `${JSON.stringify(config, null, 2)}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });

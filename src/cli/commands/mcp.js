@@ -278,9 +278,25 @@ function register(program) {
   mcp.command("status")
     .option("--json")
     .action(opts => {
+      /** @type {Array<{ name: string, file: string, detected: boolean, candidates?: string[], reason?: string | null, action?: string | null }>} */
       const rows = detect();
-      if (opts.json) console.log(JSON.stringify(rows));
-      else rows.forEach(row => console.log(`${row.name}: ${row.detected ? "detected" : "not found"} (${row.file})`));
+      // The token row explains a class of silent failure: an MCP host is configured
+      // with a token file that readRuntimeToken refuses (outside ~/.minitok/mcp/, or
+      // an expired/revoked record), so every call fails with AUTH_REQUIRED while the
+      // host configuration looks correct.
+      const { runtimeTokenDiagnostics } = require("../../mcp/runtime-token");
+      const tokenFile = process.env.MINITOK_MCP_AUTH_TOKEN_FILE || runtimeTokenPath();
+      const token = runtimeTokenDiagnostics(tokenFile);
+      rows.push({ name: "token", file: token.file || tokenFile, detected: token.ok === true, reason: token.reason || null, action: token.action || null });
+      if (opts.json) { console.log(JSON.stringify(rows)); return; }
+      for (const row of rows) {
+        if (row.name === "token") {
+          console.log(`token: ${row.detected ? "usable" : "NOT usable"} (${row.file})`);
+          if (!row.detected) { console.log(`  ${row.reason}`); if (row.action) console.log(`  ${row.action}`); }
+          continue;
+        }
+        console.log(`${row.name}: ${row.detected ? "detected" : "not found"} (${row.file})`);
+      }
     });
 
   mcp.command("remote-health <url>")
@@ -300,7 +316,7 @@ function register(program) {
       .option("--keep-backup", "keep <config>.bak after a successful write as a restore point")
       .option("--host-file <path>", "write this host configuration file instead of the detected one")
       .option("--rollback", "restore the previous configuration on failure")
-      .option("--scopes <scopes>", "local MCP scopes to grant (read,write,auto_accept)")
+      .option("--scopes <scopes>", "local MCP scopes to grant (read,write,auto_accept,verify_exec)")
       .action(async (host, opts) => {
         const target = resolveHost(host, opts.hostFile);
         const file = target.file;

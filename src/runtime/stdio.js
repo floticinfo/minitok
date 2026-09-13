@@ -1,7 +1,7 @@
 "use strict";
 
 const { createRuntimeServices } = require("./index");
-const { getToolDefinitions, getToolHandler, MCP_ERROR_CODES, requiredScopeFor } = require("../mcp/tools");
+const { getToolDefinitions, getToolHandler, MCP_ERROR_CODES, requiredScopeFor, requiredExtraScopesFor } = require("../mcp/tools");
 const packageMetadata = require("../../package.json");
 const version = typeof packageMetadata.version === "string" ? packageMetadata.version : "unknown";
 const fs = require("fs");
@@ -10,7 +10,7 @@ const os = require("os");
 const crypto = require("crypto");
 const { readRuntimeToken } = require("../mcp/runtime-token");
 const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
-const LOCAL_MCP_SCOPES = new Set(["read", "write", "auto_accept"]);
+const LOCAL_MCP_SCOPES = new Set(["read", "write", "auto_accept", "verify_exec"]);
 
 function parseLocalMcpScopes(value = "read") {
   const scopes = String(value).split(",").map(item => item.trim()).filter(Boolean);
@@ -23,6 +23,10 @@ function parseLocalMcpScopes(value = "read") {
 const SUPPORTED_PROTOCOLS = ["2024-11-05"];
 const RUN_STATE_VERSION = 2;
 const RUN_STATES = new Set(["running", "completed", "failed", "cancelled", "unknown"]);
+// The persisted record list is capped at the same size, but the in-memory map used
+// to grow one entry per run for the life of the process: a long-lived editor
+// session accumulated every run it had ever started (and run_list returned them).
+const MAX_TRACKED_RUNS = 100;
 
 function runtimeBinding(options, authToken) {
   const explicit = options.runtimeIdentity || options.bindingId || process.env.MINITOK_MCP_RUNTIME_IDENTITY;
@@ -87,16 +91,35 @@ const MAX_REQUEST_BYTES = 4 * 1024 * 1024;
 /**
  * Split incoming stdio data into complete lines while keeping the remainder.
  * Extracted so the framing and its size guard can be unit tested.
+ *
+ * `dropping` carries the state of an oversized line: once a line is known to be
+ * too long its remaining bytes are discarded until the terminating newline, so
+ * the tail cannot arrive as a separate (valid-looking) request and the buffer
+ * never grows past the cap.
  * @param {string} buffer text already held back
  * @param {string} chunk newly received text
- * @param {number} maxBytes maximum length of an incomplete line
- * @returns {{ lines: string[], rest: string, oversized: boolean }}
+ * @param {number} maxBytes maximum length of one line
+ * @param {boolean} dropping true while discarding the tail of an oversized line
+ * @returns {{ lines: string[], rest: string, oversized: boolean, dropping: boolean }}
  */
-function drainStdioLines(buffer, chunk, maxBytes = MAX_REQUEST_BYTES) {
-  const segments = `${buffer}${chunk}`.split("\n");
-  const rest = segments.pop() || "";
-  if (rest.length > maxBytes) return { lines: segments, rest: "", oversized: true };
-  return { lines: segments, rest, oversized: false };
+function drainStdioLines(buffer, chunk, maxBytes = MAX_REQUEST_BYTES, dropping = false) {
+  let remaining = `${dropping ? "" : buffer}${chunk}`;
+  const lines = [];
+  let oversized = false;
+  while (true) {
+    const index = remaining.indexOf("\n");
+    if (index === -1) break;
+    const segment = remaining.slice(0, index);
+    remaining = remaining.slice(index + 1);
+    if (dropping) { dropping = false; continue; }
+    // A complete line above the cap is dropped rather than parsed: the client is
+    // broken either way, and parsing it would spend the memory the cap protects.
+    if (segment.length > maxBytes) { oversized = true; continue; }
+    lines.push(segment);
+  }
+  if (dropping) return { lines, rest: remaining.length > maxBytes ? "" : remaining, oversized, dropping: true };
+  if (remaining.length > maxBytes) return { lines, rest: "", oversized: true, dropping: true };
+  return { lines, rest: remaining, oversized, dropping: false };
 }
 
 class RuntimeStdio {
@@ -182,6 +205,20 @@ class RuntimeStdio {
       return this._persistence;
     }
   }
+  /**
+   * Keep the in-memory run registry bounded.
+   *
+   * Completed runs are kept for `minitok_run_get` / `minitok_run_list`, but the
+   * map must not grow without limit in a long-lived stdio or HTTP session. Only
+   * finished runs are evicted, oldest first, and never while one is running.
+   */
+  _pruneRuns() {
+    if (this._runs.size <= MAX_TRACKED_RUNS) return;
+    for (const [runId, run] of this._runs) {
+      if (this._runs.size <= MAX_TRACKED_RUNS) break;
+      if (run.state !== "running") this._runs.delete(runId);
+    }
+  }
   rotateAuthToken(token, expiresAt = 0) {
     if (!token || typeof token !== "string") throw new TypeError("token is required");
     this._nextAuthToken = token;
@@ -210,18 +247,21 @@ class RuntimeStdio {
   start() {
     process.stdin.setEncoding("utf-8");
     let buffer = "";
+    let dropping = false;
     process.stdin.on("data", chunk => {
-      const { lines, rest, oversized } = drainStdioLines(buffer, String(chunk));
-      buffer = rest;
-      for (const line of lines) this._handleLine(line.trim());
-      if (oversized) {
-        // A single line longer than any legitimate request: report it and drop the
-        // buffer instead of growing it until the process runs out of memory. The
-        // HTTP transport already caps a request body at 1 MB.
+      const result = drainStdioLines(buffer, String(chunk), MAX_REQUEST_BYTES, dropping);
+      buffer = result.rest;
+      dropping = result.dropping;
+      for (const line of result.lines) this._handleLine(line.trim());
+      if (result.oversized) {
+        // A line longer than any legitimate request: report it once and discard
+        // the rest of it (drainStdioLines keeps `dropping` set) instead of growing
+        // the buffer until the process runs out of memory. The HTTP transport
+        // already caps a request body at 1 MB.
         this._respond({ jsonrpc: "2.0", id: null, error: { code: -32600, message: `Request exceeds the maximum line length (${MAX_REQUEST_BYTES} bytes)`, data: { type: "INVALID_REQUEST" } } });
       }
     });
-    process.stdin.on("end", () => { if (buffer.trim()) this._handleLine(buffer.trim()); });
+    process.stdin.on("end", () => { if (!dropping && buffer.trim()) this._handleLine(buffer.trim()); });
   }
   async _handleLine(line, respond = this._respond.bind(this)) {
      if (!line) return;
@@ -282,6 +322,11 @@ class RuntimeStdio {
     // read-only default scope.
     const requiredScope = requiredScopeFor(params.name);
     if (!this._permissions.has(requiredScope)) return this._error(id, MCP_ERROR_CODES.PERMISSION_DENIED, requiredScope === "write" ? "Workspace write permission required" : "Read permission required", "PERMISSION_DENIED", correlationId, {}, reply);
+    // A run executes the target repository's verification script, so it needs its
+    // own grant: `write` alone must not authorize running repository code.
+    for (const scope of requiredExtraScopesFor(params.name)) {
+      if (!this._permissions.has(scope)) return this._error(id, MCP_ERROR_CODES.PERMISSION_DENIED, `Workspace verification permission required (add ${scope} to the MCP scopes)`, "PERMISSION_DENIED", correlationId, { scope }, reply);
+    }
     if (params.name === "minitok_run" && [...this._runs.values()].filter(run => run.state === "running").length >= this._maxConcurrentRuns) return this._error(id, MCP_ERROR_CODES.RUN_LIMIT_REACHED, "Concurrent run limit reached", "RUN_LIMIT_REACHED", correlationId, {}, reply);
     const runId = params.name === "minitok_run" ? crypto.randomUUID() : null;
     const controller = new AbortController();
@@ -291,6 +336,7 @@ class RuntimeStdio {
        const persistence = this._saveRunState();
        const run = this._runs.get(runId);
        if (run) run.persistence = persistence;
+       this._pruneRuns();
      }
      try {
       // Inject the server-generated run id for minitok_run only. Spreading the
@@ -303,10 +349,10 @@ class RuntimeStdio {
        if (runId) { const run = this._runs.get(runId); if (run && run.state !== "cancelled" && !controller.signal.aborted) run.state = "completed"; if (run) { run.result = result; run.persistence = this._saveRunState(); } }
         reply({ jsonrpc: "2.0", id, result: { ...result, run_id: runId, correlation_id: correlationId, structuredContent: result.structuredContent || null, persistence: runId ? this._runs.get(runId)?.persistence || this._persistence : undefined, isError: result.isError === true } });
      } catch (error) { if (runId) { const run = this._runs.get(runId); if (run) { run.state = controller.signal.aborted ? "cancelled" : "failed"; run.result = { error: error.message }; run.persistence = this._saveRunState(); } } this._error(id, this._errorCode(error.code), error.message, error.code || "MCP_TOOL_ERROR", correlationId, { run_id: runId, persistence: runId ? this._runs.get(runId)?.persistence || this._persistence : undefined }, reply); }
-    finally { if (runId) { this._requestToRun.delete(id); } }
+    finally { if (runId) { this._requestToRun.delete(id); this._pruneRuns(); } }
   }
   _error(id, code, message, type, correlationId, extra = {}, respond = this._respond.bind(this)) { respond({ jsonrpc: "2.0", id, error: { code, message, data: { type, correlation_id: correlationId, ...extra } } }); }
   _errorCode(code) { return code === "INVALID_PARAMS" || code === "INVALID_PATH" || code === "PATH_OUTSIDE_WORKSPACE" ? -32602 : code === "RUN_NOT_FOUND" || code === "TOOL_NOT_FOUND" ? MCP_ERROR_CODES.NOT_FOUND : MCP_ERROR_CODES.TOOL_ERROR; }
   _respond(msg) { process.stdout.write(`${JSON.stringify(msg)}\n`); }
 }
-module.exports = { RuntimeStdio, SUPPORTED_PROTOCOLS, isValidJsonRpcRequest, loadAuthTokenFile, parseLocalMcpScopes, LOCAL_MCP_SCOPES, drainStdioLines, MAX_REQUEST_BYTES };
+module.exports = { RuntimeStdio, SUPPORTED_PROTOCOLS, isValidJsonRpcRequest, loadAuthTokenFile, parseLocalMcpScopes, LOCAL_MCP_SCOPES, drainStdioLines, MAX_REQUEST_BYTES, MAX_TRACKED_RUNS };

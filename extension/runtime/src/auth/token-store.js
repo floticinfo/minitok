@@ -55,9 +55,16 @@ class TokenStore {
     return `(Get-Secret -Name '${this._escapePowerShellString(this._keychainName(provider))}' -AsPlainText -ErrorAction Stop | ConvertFrom-Json) | ConvertTo-Json -Compress`;
   }
 
-  /** PowerShell -Command script that stores a secret. */
-  _powerShellSaveCommand(provider, payload) {
-    return `$secret = ConvertTo-SecureString '${this._escapePowerShellString(payload)}' -AsPlainText -Force; Set-Secret -Name '${this._escapePowerShellString(this._keychainName(provider))}' -Secret $secret -ErrorAction Stop`;
+  /**
+   * PowerShell -Command script that stores a secret.
+   *
+   * The payload is read from stdin, never passed as an argument: an argument is
+   * visible to every local process through the process command line
+   * (Win32_Process.CommandLine — Task Manager, WMI, Sysmon), which exposed the API
+   * key it was meant to store.
+   */
+  _powerShellSaveCommand(provider) {
+    return `$payload = [Console]::In.ReadToEnd(); $secret = ConvertTo-SecureString -String $payload -AsPlainText -Force; Set-Secret -Name '${this._escapePowerShellString(this._keychainName(provider))}' -Secret $secret -ErrorAction Stop`;
   }
 
   /** PowerShell -Command script that removes a stored secret. */
@@ -67,20 +74,47 @@ class TokenStore {
 
   /** @returns {Record<string, unknown> | null} */
   _keychainLoad(provider) {
+    // The child's stderr is discarded: without the SecretManagement module every
+    // read prints a PowerShell error that is expected (the owner-only token file is
+    // the documented fallback) and only confuses the CLI output.
+    const options = /** @type {import("child_process").ExecFileSyncOptionsWithStringEncoding} */ ({ encoding: "utf8", timeout: 5000, windowsHide: true, stdio: ["ignore", "pipe", "ignore"] });
     try {
-      if (process.platform === "win32") return JSON.parse(execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", this._powerShellLoadCommand(provider)], { encoding: "utf8", timeout: 5000, windowsHide: true }).trim());
-      if (process.platform === "darwin") return JSON.parse(execFileSync("security", ["find-generic-password", "-s", this._keychainName(provider), "-w"], { encoding: "utf8", timeout: 5000 }).trim());
-      return JSON.parse(execFileSync("secret-tool", ["lookup", "service", "minitok", "provider", provider], { encoding: "utf8", timeout: 5000 }).trim());
+      if (process.platform === "win32") return JSON.parse(execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", this._powerShellLoadCommand(provider)], options).trim());
+      if (process.platform === "darwin") return JSON.parse(execFileSync("security", ["find-generic-password", "-s", this._keychainName(provider), "-w"], options).trim());
+      return JSON.parse(execFileSync("secret-tool", ["lookup", "service", "minitok", "provider", provider], options).trim());
     } catch { return null; }
+  }
+
+  /**
+   * Verify the keychain holds what was just written.
+   *
+   * A storage command can exit 0 without persisting anything (a missing
+   * SecretManagement module, an unexpected stdin contract, a platform-specific
+   * `security` option). Reporting success for a secret that cannot be read back
+   * would log the user into an account that stops working later, so the write is
+   * confirmed and the owner-only token file is used when it is not.
+   */
+  _keychainReadBack(provider, record) {
+    const stored = this._keychainLoad(provider);
+    return Boolean(stored && stored.access_token && stored.access_token === record.access_token);
   }
 
   /** @param {Record<string, unknown>} record @returns {boolean} */
   _keychainSave(provider, record) {
     const payload = JSON.stringify(record);
     try {
-      if (process.platform === "win32") { execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", this._powerShellSaveCommand(provider, payload)], { stdio: "ignore", timeout: 5000, windowsHide: true }); return true; }
-      if (process.platform === "darwin") { execFileSync("security", ["add-generic-password", "-U", "-s", this._keychainName(provider), "-a", process.env.USER || "minitok", "-w", payload], { stdio: "ignore", timeout: 5000 }); return true; }
-      execFileSync("secret-tool", ["store", "--label", this._keychainName(provider), "service", "minitok", "provider", provider], { input: payload, stdio: ["pipe", "ignore", "ignore"], timeout: 5000 }); return true;
+      if (process.platform === "win32") {
+        execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", this._powerShellSaveCommand(provider)], { input: payload, stdio: ["pipe", "ignore", "ignore"], timeout: 5000, windowsHide: true });
+        return this._keychainReadBack(provider, record);
+      }
+      if (process.platform === "darwin") {
+        // `security add-generic-password` without a -w value reads the secret from
+        // stdin, keeping it out of the process argument list (ps).
+        execFileSync("security", ["add-generic-password", "-U", "-s", this._keychainName(provider), "-a", process.env.USER || "minitok", "-w"], { input: `${payload}\n`, stdio: ["pipe", "ignore", "ignore"], timeout: 5000 });
+        return this._keychainReadBack(provider, record);
+      }
+      execFileSync("secret-tool", ["store", "--label", this._keychainName(provider), "service", "minitok", "provider", provider], { input: payload, stdio: ["pipe", "ignore", "ignore"], timeout: 5000 });
+      return this._keychainReadBack(provider, record);
     } catch { return false; }
   }
 
