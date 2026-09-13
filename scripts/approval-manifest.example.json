@@ -1,0 +1,89 @@
+{
+  "_howTo": [
+    "This is a template, not an approval. Copy it outside the repository, replace",
+    "every PENDING/TODO/TBD/REPLACE_ME value, then verify with:",
+    "  MINITOK_COMMERCIAL_APPROVAL_MANIFEST=<path to filled copy> npm run release:verify",
+    "  npm run commercial:readiness -- --manifest <path to filled copy>",
+    "Where each value comes from:",
+    "  release.version                 -> package.json version",
+    "  release.artifacts.cli.version   -> the same CLI version",
+    "  release.artifacts.cli.sha256    -> release-manifest.json, release.artifact.sha256",
+    "  release.artifacts.vsix.version  -> extension/package.json version",
+    "  release.artifacts.vsix.sha256   -> printed by: npm run package:extension",
+    "  approvals.*                     -> the named owner records the decision and",
+    "                                     points evidenceRef at the signed record",
+    "Unfilled values are rejected on purpose, and legal-owner-approval plus",
+    "privacy-owner-approval also require the review notes in EULA.md and POLICY.md",
+    "to be resolved by the owners: while those notes remain, both stay BLOCKED."
+  ],
+  "schemaVersion": 2,
+  "release": {
+    "package": "@flotic/minitok",
+    "version": "PENDING",
+    "artifacts": {
+      "cli": {
+        "version": "PENDING",
+        "sha256": "PENDING"
+      },
+      "vsix": {
+        "version": "PENDING",
+        "sha256": "PENDING"
+      }
+    }
+  },
+  "approvals": {
+    "legal-owner-approval": {
+      "status": "PENDING",
+      "owner": "TODO legal owner",
+      "decision": "TBD",
+      "approvedAt": "PENDING",
+      "evidenceRef": { "type": "external", "reference": "REPLACE_ME" }
+    },
+    "privacy-owner-approval": {
+      "status": "PENDING",
+      "owner": "TODO privacy owner",
+      "decision": "TBD",
+      "approvedAt": "PENDING",
+      "evidenceRef": { "type": "external", "reference": "REPLACE_ME" }
+    },
+    "support-commitments": {
+      "status": "PENDING",
+      "owner": "TODO support owner",
+      "decision": "TBD",
+      "approvedAt": "PENDING",
+      "evidenceRef": { "type": "external", "reference": "REPLACE_ME" },
+      "support": { "contactOwner": "TODO", "sla": "TODO", "escalationOwner": "TODO" }
+    },
+    "npm-publication-authorization": {
+      "status": "PENDING",
+      "owner": "TODO publication owner",
+      "decision": "TBD",
+      "approvedAt": "PENDING",
+      "evidenceRef": { "type": "external", "reference": "REPLACE_ME" },
+      "npmPublication": { "package": "@flotic/minitok", "version": "PENDING", "registry": "https://registry.npmjs.org/" }
+    },
+    "marketplace-publisher-authorization": {
+      "status": "PENDING",
+      "owner": "TODO publisher owner",
+      "decision": "TBD",
+      "approvedAt": "PENDING",
+      "evidenceRef": { "type": "external", "reference": "REPLACE_ME" },
+      "marketplacePublication": { "publisher": "Flotic", "extension": "minitok-extension", "version": "PENDING" }
+    },
+    "registry-publication-verification": {
+      "status": "PENDING",
+      "owner": "TODO publication owner",
+      "decision": "TBD",
+      "approvedAt": "PENDING",
+      "evidenceRef": { "type": "external", "reference": "REPLACE_ME" }
+    },
+    "production-operations": {
+      "status": "PENDING",
+      "owner": "TODO operations owner",
+      "decision": "TBD",
+      "approvedAt": "PENDING",
+      "evidenceRef": { "type": "external", "reference": "REPLACE_ME" },
+      "productionOperations": { "deploymentOwner": "TODO", "databaseOwner": "TODO", "rollbackOwner": "TODO", "monitoringOwner": "TODO", "signerOwner": "TODO" }
+    }
+  }
+}

@@ -25,5 +25,23 @@ test("approval validation rejects identity, timestamp, evidence, and ownership d
 test("approval validation accepts valid-shaped external evidence", async () => { const { validateApprovalManifest } = await import("../scripts/commercial-readiness.mjs"); assert.deepEqual(validateApprovalManifest(approvalManifest("NOT_APPROVED")), []); });
 test("approval validation rejects template placeholders and stale artifact versions", async () => { const { validateApprovalManifest } = await import("../scripts/commercial-readiness.mjs"); const manifest = approvalManifest("PENDING"); manifest.approvals[ids[0]].owner = "REPLACE_WITH_OWNER"; manifest.release.artifacts.cli.version = "1.3.2"; const errors = validateApprovalManifest(manifest); assert.ok(errors.some(error => error.includes("placeholder"))); assert.ok(errors.some(error => error.includes("release.artifacts"))); });
 test("approval validation tracks the current Extension VSIX version", async () => { const { validateApprovalManifest } = await import("../scripts/commercial-readiness.mjs"); assert.deepEqual(validateApprovalManifest(approvalManifest()), [], "an approval manifest declaring the current VSIX is accepted"); const stale = approvalManifest(); stale.release.artifacts.vsix.version = "0.0.1"; assert.ok(validateApprovalManifest(stale).some(error => error.includes("release.artifacts.vsix")), "a stale VSIX version is rejected"); });
+test("the approval manifest example is fail-closed until the owners record decisions", async () => {
+  const { validateApprovalManifest } = await import("../scripts/commercial-readiness.mjs");
+  const example = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "scripts", "approval-manifest.example.json"), "utf8"));
+  assert.ok(validateApprovalManifest(example).includes("manifest contains unresolved placeholder values"), "the unfilled example must never validate");
+  // Fill it the way _howTo documents: replace the unresolved values, point the
+  // versions at the current packages, and record the owner decisions.
+  const filled = JSON.parse(JSON.stringify(example).replace(/PENDING|TODO|TBD|REPLACE_ME/g, "recorded").replace(/<[^>]+>/g, "the path"));
+  filled.release.version = pkg.version;
+  filled.release.artifacts.cli.version = pkg.version;
+  filled.release.artifacts.cli.sha256 = "a".repeat(64);
+  filled.release.artifacts.vsix.version = extensionPkg.version;
+  filled.release.artifacts.vsix.sha256 = "b".repeat(64);
+  filled.approvals["npm-publication-authorization"].npmPublication.version = pkg.version;
+  filled.approvals["marketplace-publisher-authorization"].marketplacePublication.version = extensionPkg.version;
+  for (const approval of Object.values(filled.approvals)) { approval.status = "APPROVED"; approval.approvedAt = "2026-09-06T00:00:00Z"; }
+  assert.deepEqual(validateApprovalManifest(filled), [], "a copy filled in as documented validates");
+});
+
 
 test("release verification includes unresolved commercial readiness", () => { const source = fs.readFileSync(path.join(__dirname, "..", "scripts", "release-verify.mjs"), "utf8"); assert.match(source, /evaluateCommercialReadiness/); assert.match(source, /BLOCKED|UNVERIFIED/); });
