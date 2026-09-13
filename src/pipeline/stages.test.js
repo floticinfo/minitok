@@ -66,7 +66,9 @@ describe("Pipeline stages", () => {
 
   it("marks verification failures separately from reviewer rejection", () => {
     const source = fs.readFileSync(path.join(__dirname, "loop.js"), "utf8");
-    assert.match(source, /const verdict = checkPassed \? reviewVerdict : "VERIFICATION_FAILED"/);
+    // Verification failure outranks a low-confidence approval, which in turn
+    // outranks the reviewer verdict, so the three outcomes stay distinguishable.
+    assert.match(source, /const verdict = !checkPassed \? "VERIFICATION_FAILED" : lowConfidence \? "LOW_CONFIDENCE" : reviewVerdict/);
     assert.match(source, /verdict === "REJECT" \|\| verdict === "VERIFICATION_FAILED"/);
   });
 

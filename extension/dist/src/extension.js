@@ -50,7 +50,7 @@ function runCli(cliPath, args) {
     (0, workspace_1.requireTrustedWorkspace)(cwd);
     return new Promise((resolve, reject) => {
         const spec = (0, workspace_1.spawnSpec)(cliPath, args);
-        const child = (0, node_child_process_1.spawn)(spec.command, spec.args, { cwd: (0, workspace_2.workspacePath)(), shell: spec.shell, windowsHide: true });
+        const child = (0, node_child_process_1.spawn)(spec.command, spec.args, (0, workspace_2.spawnOptionsFor)(spec, { cwd: (0, workspace_2.workspacePath)() }));
         let stdout = "";
         let stderr = "";
         child.stdout.on("data", chunk => { stdout += chunk.toString(); });
@@ -95,7 +95,7 @@ function activate(context) {
         output.appendLine(`[spawn] mcp command=${JSON.stringify(processSpec.command)} args=${JSON.stringify(processSpec.args)} cwd=${JSON.stringify((0, workspace_2.workspacePath)())}`);
         let child;
         try {
-            child = (0, node_child_process_1.spawn)(processSpec.command, processSpec.args, { cwd: (0, workspace_2.workspacePath)(), env: (0, workspace_2.mcpEnvironment)(), shell: processSpec.shell, windowsHide: true });
+            child = (0, node_child_process_1.spawn)(processSpec.command, processSpec.args, (0, workspace_2.spawnOptionsFor)(processSpec, { cwd: (0, workspace_2.workspacePath)(), env: (0, workspace_2.mcpEnvironment)() }));
         }
         catch (error) {
             output.appendLine(`[spawn] synchronous error=${String(error)}`);

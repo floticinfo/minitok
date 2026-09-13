@@ -3,7 +3,7 @@ import { spawn, ChildProcessWithoutNullStreams } from "node:child_process";
 import { minitokPanel } from "./panel";
 import { spawnSpec, requireTrustedWorkspace } from "./workspace";
 import { minitokSidebar } from "./sidebar";
-import { cliPath, workspacePath, autoApprove, isCliCompatible, mcpCommand, mcpEnvironment, ensureMcpAuthToken } from "./workspace";
+import { cliPath, workspacePath, autoApprove, isCliCompatible, mcpCommand, mcpEnvironment, ensureMcpAuthToken, spawnOptionsFor } from "./workspace";
 import { checkEntitlement, EntitlementState } from "./entitlement";
 
 function extensionVersion(context: vscode.ExtensionContext) {
@@ -15,7 +15,7 @@ function runCli(cliPath: string, args: string[]): Promise<string> {
   requireTrustedWorkspace(cwd);
   return new Promise((resolve, reject) => {
     const spec = spawnSpec(cliPath, args);
-    const child = spawn(spec.command, spec.args, { cwd: workspacePath(), shell: spec.shell, windowsHide: true });
+    const child = spawn(spec.command, spec.args, spawnOptionsFor(spec, { cwd: workspacePath() }));
     let stdout = "";
     let stderr = "";
     child.stdout.on("data", chunk => { stdout += chunk.toString(); });
@@ -48,7 +48,7 @@ try { await requireEntitlement(); requireTrustedWorkspace(workspacePath()); } ca
     const authToken = await ensureMcpAuthToken();
     output.appendLine(`[spawn] mcp command=${JSON.stringify(processSpec.command)} args=${JSON.stringify(processSpec.args)} cwd=${JSON.stringify(workspacePath())}`);
     let child: ChildProcessWithoutNullStreams;
-    try { child = spawn(processSpec.command, processSpec.args, { cwd: workspacePath(), env: mcpEnvironment(), shell: processSpec.shell, windowsHide: true }); } catch (error) { output.appendLine(`[spawn] synchronous error=${String(error)}`); vscode.window.showErrorMessage(`minitok MCP spawn failed: ${String(error)}`); return; }
+    try { child = spawn(processSpec.command, processSpec.args, spawnOptionsFor(processSpec, { cwd: workspacePath(), env: mcpEnvironment() })); } catch (error) { output.appendLine(`[spawn] synchronous error=${String(error)}`); vscode.window.showErrorMessage(`minitok MCP spawn failed: ${String(error)}`); return; }
     let buffer = "";
     const finish = (text: string) => { child.kill(); output.appendLine(text); vscode.window.showInformationMessage(text); };
     const timer = setTimeout(() => finish("minitok MCP handshake timed out"), 5000);

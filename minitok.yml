@@ -25,6 +25,9 @@ execution:
   max_retries: 3
   timeout_sec: 600
 
-commit:
-  enabled: false
-  auto_message: true
+validation:
+  enabled: true
+  script_path: VERIFY_CMD.mjs
+  timeout_ms: 120000
+  confidence_threshold: 0.8
+  max_changed_files: 20

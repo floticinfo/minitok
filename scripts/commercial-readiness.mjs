@@ -9,7 +9,7 @@ const packageData = JSON.parse(fs.readFileSync(path.join(root, "package.json"), 
 // expected VSIX version comes from the Extension package itself. This used to
 // fall back to a hardcoded "0.1.4" because the root package.json has no
 // extensionVersion, which rejected any approval manifest that declared the real
-// current VSIX (0.2.6) as stale — the approval flow could never pass.
+// current VSIX (0.2.7) as stale — the approval flow could never pass.
 const extensionPackageData = (() => {
   try { return JSON.parse(fs.readFileSync(path.join(root, "extension", "package.json"), "utf8")); } catch { return {}; }
 })();

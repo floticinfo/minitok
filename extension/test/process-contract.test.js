@@ -14,7 +14,10 @@ const panelHtml = fs.readFileSync(path.join(root, "src", "panel.html"), "utf8");
 const workspace = fs.readFileSync(path.join(root, "src", "workspace.ts"), "utf8");
 
 test("panel process lifecycle contract", () => {
-  assert.match(panel, /setTimeout\([\s\S]*?1800000/);
+  // The timeout is a named constant; the assertion follows the constant instead
+  // of a literal inside the timer callback, which is how it went stale.
+  assert.match(panel, /const CLI_TIMEOUT_MS = 1800000;/);
+  assert.match(panel, /setTimeout\([\s\S]*?CLI_TIMEOUT_MS\)/);
   assert.match(panel, /detached:\s*process\.platform !== "win32"/);
   assert.match(panel, /spawnSpec/);
   assert.match(sidebar, /spawnSpec/);

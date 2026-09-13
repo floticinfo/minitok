@@ -11,7 +11,7 @@ const providerModule = require("../llm/provider");
 const { loadConfig, resolveProviderName } = require("../config/loader");
 const { intel } = require("./intel");
 const { plan } = require("./planner");
-const { implement, applyChanges } = require("./implementer");
+const { implement, applyChanges, DEFAULT_BLOCKED_EXTENSIONS } = require("./implementer");
 const { verify } = require("./verifier");
 const { verifyCommand } = require("./check");
 const { buildRepairTask } = require("./repair");
@@ -105,8 +105,11 @@ function compactContext(repoContext, budgetChars) {
   return result.text;
 }
 
-function buildRoleOptions(role = {}, signal) {
+function buildRoleOptions(role = {}, signal, timeoutMs) {
   const roleOptions = { model: role.model, signal };
+  // A role budget travels with the request so the provider bounds its HTTP call
+  // by it instead of the fixed default (see fetchWithTimeout).
+  if (Number.isFinite(Number(timeoutMs)) && Number(timeoutMs) > 0) roleOptions.timeout_ms = Number(timeoutMs);
   if (role.reasoning) {
     roleOptions.reasoning_effort = role.reasoning;
     roleOptions.thinking = role.reasoning;
@@ -244,6 +247,28 @@ async function runPipelineInWorkspace(task, opts = {}) {
   // but never read, so disabling research still ran the intel phase every cycle
   // (paid tokens) and still demanded intel provider credentials.
   const researchEnabled = config.execution?.research_enabled !== false;
+
+  // --coding-adapter / --research-adapter / --review-adapter were parsed by the
+  // CLI, forwarded into runPipeline and then never read. They name the role they
+  // configure, so map them onto the role adapter (which resolveProviderName
+  // consults) and clear the role provider so the flag actually takes effect.
+  const adapterOverrides = { work: opts.codingAdapter, intel: opts.researchAdapter, review: opts.reviewAdapter };
+  for (const [role, adapter] of Object.entries(adapterOverrides)) {
+    if (typeof adapter !== "string" || !adapter.trim()) continue;
+    config.roles[role] = { ...config.roles[role], provider: "", adapter: adapter.trim() };
+  }
+
+  // security.blocked_extensions is a floor, not a replacement: the built-in list
+  // (executables and scripts) may be extended by configuration but never
+  // weakened. Before this the option reached no call site at all.
+  const configuredBlocked = Array.isArray(config.security?.blocked_extensions) ? config.security.blocked_extensions : [];
+  const blockedExtensions = [...new Set([...DEFAULT_BLOCKED_EXTENSIONS, ...configuredBlocked.filter(value => typeof value === "string" && value.trim()).map(value => value.trim().toLowerCase())])];
+
+  // validation.* thresholds were accepted, env-mapped and documented but never
+  // enforced.
+  const confidenceThreshold = Number(config.validation?.confidence_threshold);
+  const maxChangedFiles = Number(config.validation?.max_changed_files);
+  const validationEnabled = config.validation?.enabled !== false;
 
   if (!git.isGitRepo(repoRoot)) {
     throw new Error(`Not a git repository: ${repoRoot}`);
@@ -434,7 +459,16 @@ async function runPipelineInWorkspace(task, opts = {}) {
     const repoContext = compactContext(rawRepoContext, budgetChars);
     writeContextManifest(repoRoot, { goal: task, source: "pipeline", budget_chars: budgetChars, original_chars: rawRepoContext.length, final_chars: repoContext.length, files: ["package.json", "README.md", "minitok.yml"].filter(file => fs.existsSync(path.join(repoRoot, file))) });
 
-    const roleOpts = (role) => buildRoleOptions(config.roles[role], opts.signal);
+    // roles.<role>.timeout_sec is the documented per-request budget;
+    // execution.timeout_hard_limit_sec bounds it (a role may not exceed the
+    // ceiling). Both keys were previously unused: every request inherited the
+    // fixed five minute transport timeout.
+    const timeoutCeilingMs = Math.max(1000, (Number(config.execution?.timeout_hard_limit_sec) || 86400) * 1000);
+    const roleTimeoutMs = (role) => {
+      const seconds = Number(config.roles?.[role]?.timeout_sec);
+      return Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds * 1000, timeoutCeilingMs) : timeoutCeilingMs;
+    };
+    const roleOpts = (role) => buildRoleOptions(config.roles[role], opts.signal, roleTimeoutMs(role));
 
     opts.onProgress?.({ phase: "intel", state: "started", cycle });
     let intelResult = { intelligence: undefined, tokens: { input: 0, output: 0 } };
@@ -491,10 +525,19 @@ async function runPipelineInWorkspace(task, opts = {}) {
     }
 
     // Apply changes — require user confirmation on first file modification
+    const changeList = Array.isArray(implResult.changes?.changes) ? implResult.changes.changes : [];
+    // validation.max_changed_files is a real safety bound: an oversized change set
+    // is refused BEFORE anything is written, instead of being reported after the
+    // fact. Nothing was enforced before, so the documented limit was advisory.
+    if (Number.isFinite(maxChangedFiles) && maxChangedFiles > 0 && changeList.length > maxChangedFiles) {
+      console.log(`     ❌ ${changeList.length} files changed, above validation.max_changed_files (${maxChangedFiles}). Nothing was applied.`);
+      results.cycles.push({ cycle, plan: planResult.plan, implement: implResult.changes, status: "changes_exceeded_limit" });
+      break;
+    }
     let applyResult;
     if (confirmationGranted || opts.dryRun) {
       // Already confirmed this run, or dry-run (no mutation)
-      applyResult = applyChanges(repoRoot, implResult.changes, opts.dryRun);
+      applyResult = applyChanges(repoRoot, implResult.changes, opts.dryRun, { blockedExtensions });
     } else {
       const accepted = await promptConfirmation(implResult.changes, { ...opts, repoRoot });
       if (!accepted) {
@@ -503,14 +546,19 @@ async function runPipelineInWorkspace(task, opts = {}) {
         break;
       }
       confirmationGranted = true;
-      applyResult = applyChanges(repoRoot, implResult.changes, opts.dryRun);
+      applyResult = applyChanges(repoRoot, implResult.changes, opts.dryRun, { blockedExtensions });
     }
     console.log(`     Applied: ${applyResult.applied} changes${applyResult.errors.length ? `, ${applyResult.errors.length} errors` : ""}`);
 
     // Phase 4: Check
     opts.onProgress?.({ phase: "verify", state: "started", cycle });
-    console.log("  🧪 Running verification command...");
-    const checkResult = opts.dryRun ? { passed: true, evidence: { status: "skipped", command: "dry-run", output: "" } } : verifyCommand(repoRoot, { script_path: config.validation?.script_path, timeout_ms: config.validation?.timeout_ms });
+    if (!validationEnabled) console.log("  🧪 Verification disabled (validation.enabled: false).");
+    else console.log("  🧪 Running verification command...");
+    const checkResult = opts.dryRun
+      ? { passed: true, evidence: { status: "skipped", command: "dry-run", output: "" } }
+      : validationEnabled
+        ? verifyCommand(repoRoot, { script_path: config.validation?.script_path, timeout_ms: config.validation?.timeout_ms })
+        : { passed: true, evidence: { status: "skipped", command: "validation.enabled=false", output: "Verification command skipped by configuration." } };
     opts.onProgress?.({ phase: "verify", state: "completed", cycle, passed: checkResult.passed, total_tokens: results.totalTokens, total_cost: results.totalCost });
 
     // Phase 5: Review
@@ -523,9 +571,16 @@ async function runPipelineInWorkspace(task, opts = {}) {
     opts.onProgress?.({ phase: "review", state: "completed", cycle, tokens: verifyResult.tokens, total_tokens: results.totalTokens, total_cost: results.totalCost });
     const reviewVerdict = verifyResult.review.verdict || "UNKNOWN";
     const checkPassed = checkResult.passed;
-    const verdict = checkPassed ? reviewVerdict : "VERIFICATION_FAILED";
+    // validation.confidence_threshold was documented and unused. It is applied
+    // only when the model reported a numeric confidence; a missing value keeps the
+    // previous behaviour rather than silently failing a good review.
+    const reportedConfidence = Number(verifyResult.review.confidence);
+    const lowConfidence = reviewVerdict === "APPROVE" && Number.isFinite(confidenceThreshold) && confidenceThreshold > 0
+      && Number.isFinite(reportedConfidence) && reportedConfidence < confidenceThreshold;
+    const verdict = !checkPassed ? "VERIFICATION_FAILED" : lowConfidence ? "LOW_CONFIDENCE" : reviewVerdict;
     const icon = verdict === "APPROVE" ? "✅" : "❌";
     console.log(`     Review: ${icon} ${verdict} (confidence: ${verifyResult.review.confidence || "N/A"})`);
+    if (lowConfidence) console.log(`     Confidence ${reportedConfidence} is below validation.confidence_threshold (${confidenceThreshold}); continuing.`);
 
     const changeSignature = JSON.stringify({ status: verdict, files: implResult.changes?.changes?.map(change => change.file) || [] });
     if (changeSignature === lastChangeSignature || !(implResult.changes?.changes || []).length) stagnantCycles += 1;
@@ -572,7 +627,10 @@ async function runPipelineInWorkspace(task, opts = {}) {
     if (escRec.escalate) escalateWorkRole(escRec.targetTier, escRec.model);
 
     // If approved, goal-directed: check if overall goal is achieved
-    if (verdict === "APPROVE" && (verifyResult.review.confidence || 0) >= 0.8) {
+    // The goal-progress gate uses the configured confidence threshold instead of a
+    // hardcoded 0.8, so validation.confidence_threshold means one thing.
+    const goalConfidenceFloor = Number.isFinite(confidenceThreshold) && confidenceThreshold > 0 ? confidenceThreshold : 0.8;
+    if (verdict === "APPROVE" && (Number(verifyResult.review.confidence) || 0) >= goalConfidenceFloor) {
       if (cycle < adaptedMaxCycles && !opts.dryRun) {
         console.log("  🧠 Evaluating goal progress...");
         const nextResult = await generateNextTask(roleProviders.plan.provider, originalGoal, results.cycles, verifyResult.review, roleOpts("plan"));

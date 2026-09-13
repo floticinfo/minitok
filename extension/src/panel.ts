@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawn, ChildProcessWithoutNullStreams, execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { cliPath, workspacePath, requireTrustedWorkspace, autoApprove, spawnSpec } from "./workspace";
+import { cliPath, workspacePath, requireTrustedWorkspace, autoApprove, spawnSpec, spawnOptionsFor } from "./workspace";
 import { requireEntitlement } from "./entitlement";
 
 const CLI_TIMEOUT_MS = 1800000;
@@ -24,7 +24,7 @@ function killProcessTree(child: ChildProcessWithoutNullStreams) {
 function runCli(cliPath: string, args: string[], cwd: string | undefined, onProcess: (child: ChildProcessWithoutNullStreams | undefined) => void): Promise<string> {
   return new Promise((resolve, reject) => {
     const processSpec = spawnSpec(cliPath, args);
-    const child = spawn(processSpec.command, processSpec.args, { cwd, shell: processSpec.shell, windowsHide: true, detached: process.platform !== "win32" });
+    const child = spawn(processSpec.command, processSpec.args, spawnOptionsFor(processSpec, { cwd, detached: process.platform !== "win32" }));
     onProcess(child);
     let stdout = "";
     let stderr = "";
@@ -92,8 +92,14 @@ export class minitokPanel {
         if (message.command === "dry-run") args.push("--dry-run");
         else if (autoApprove()) args.push("--auto-accept");
         else {
+          // The panel collects consent before the run starts, and the CLI it
+          // spawns has no TTY: without --auto-accept every file change was
+          // refused with "No TTY detected. Refusing to accept file changes".
+          // The answer collected here is the same decision the setting encodes,
+          // so an approved run passes the flag through.
           const answer = await vscode.window.showWarningMessage("Allow minitok to modify this workspace?", "Approve", "Cancel");
           if (answer !== "Approve") return;
+          args.push("--auto-accept");
         }
         const output = await runCli(cli, args, cwd, child => { this.process = child; });
         const evidence = cwd ? this.readEvidence(cwd) : null;

@@ -1,0 +1,79 @@
+"use strict";
+
+/**
+ * Regression coverage for configuration keys and CLI flags that used to be
+ * accepted, documented (and env-mapped) without reaching any consumer.
+ */
+
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+
+const ROOT = path.join(__dirname, "..");
+const { loadConfig, DEFAULTS } = require(path.join(ROOT, "src", "config", "loader.js"));
+const { applyChanges, DEFAULT_BLOCKED_EXTENSIONS } = require(path.join(ROOT, "src", "pipeline", "implementer.js"));
+
+const loopSource = fs.readFileSync(path.join(ROOT, "src", "pipeline", "loop.js"), "utf8");
+const providerSource = fs.readFileSync(path.join(ROOT, "src", "llm", "provider.js"), "utf8");
+const migrateSource = fs.readFileSync(path.join(ROOT, "src", "cli", "commands", "migrate.js"), "utf8");
+
+test("the built-in blocked extensions stay a floor when configuration is merged", () => {
+  const repo = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-blocked-"));
+  const changes = { changes: [
+    { file: "schema.sql", action: "create", content: "select 1;\n" },
+    { file: "danger.ps1", action: "create", content: "Write-Host 'no'\n" },
+  ] };
+  try {
+    // Without the extra entry the SQL file is written; the script never is.
+    const baseline = applyChanges(repo, changes, false, { blockedExtensions: DEFAULT_BLOCKED_EXTENSIONS });
+    assert.equal(baseline.applied, 1);
+    assert.equal(fs.existsSync(path.join(repo, "schema.sql")), true);
+    assert.equal(fs.existsSync(path.join(repo, "danger.ps1")), false, "the built-in list blocks executables");
+    fs.rmSync(path.join(repo, "schema.sql"), { force: true });
+
+    // A configured entry blocks the SQL file too, and the built-in floor still
+    // covers the script: configuration can extend the list but never weaken it.
+    const configured = applyChanges(repo, changes, false, { blockedExtensions: [...DEFAULT_BLOCKED_EXTENSIONS, ".sql"] });
+    assert.equal(configured.applied, 0);
+    assert.equal(fs.existsSync(path.join(repo, "schema.sql")), false, "the configured extension is enforced");
+    assert.equal(configured.errors.length, 2);
+  } finally {
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("loadConfig no longer advertises an unimplemented commit section", () => {
+  assert.equal(Object.prototype.hasOwnProperty.call(DEFAULTS, "commit"), false);
+  assert.doesNotMatch(migrateSource, /^commit:/m, "the generated config must not promise auto-commit");
+  const config = loadConfig(path.join(os.tmpdir(), "minitok-does-not-exist.yml"));
+  assert.equal(config.commit, undefined);
+  assert.equal(config.validation.confidence_threshold, 0.8);
+  assert.equal(config.validation.max_changed_files, 20);
+  assert.equal(config.validation.enabled, true);
+});
+
+test("the pipeline consumes the options the CLI and configuration expose", () => {
+  // security.blocked_extensions reaches applyChanges instead of being a no-op.
+  assert.match(loopSource, /const blockedExtensions = \[\.\.\.new Set\(\[\.\.\.DEFAULT_BLOCKED_EXTENSIONS/);
+  assert.equal((loopSource.match(/applyChanges\(repoRoot, implResult\.changes, opts\.dryRun, \{ blockedExtensions \}\)/g) || []).length, 2);
+  // --coding-adapter / --research-adapter / --review-adapter map onto roles.
+  assert.match(loopSource, /const adapterOverrides = \{ work: opts\.codingAdapter, intel: opts\.researchAdapter, review: opts\.reviewAdapter \}/);
+  // validation.enabled, max_changed_files, and confidence_threshold are enforced.
+  assert.match(loopSource, /const validationEnabled = config\.validation\?\.enabled !== false/);
+  assert.match(loopSource, /maxChangedFiles > 0 && changeList\.length > maxChangedFiles/);
+  assert.match(loopSource, /reportedConfidence < confidenceThreshold/);
+  // roles.<role>.timeout_sec travels into the request.
+  assert.match(loopSource, /roleOptions\.timeout_ms = Number\(timeoutMs\)/);
+  assert.match(loopSource, /buildRoleOptions\(config\.roles\[role\], opts\.signal, roleTimeoutMs\(role\)\)/);
+  assert.equal((providerSource.match(/timeout_ms: options\.timeout_ms/g) || []).length, 5, "every provider request carries the role budget");
+  assert.match(providerSource, /const requestedTimeout = Number\.isFinite\(Number\(opts\.timeout_ms\)\)/);
+});
+
+test("a role timeout cannot exceed the configured hard ceiling", () => {
+  // The ceiling is execution.timeout_hard_limit_sec (default 86400s), and it is
+  // applied with Math.min over the role value.
+  assert.match(loopSource, /const timeoutCeilingMs = Math\.max\(1000, \(Number\(config\.execution\?\.timeout_hard_limit_sec\) \|\| 86400\) \* 1000\)/);
+  assert.match(loopSource, /Math\.min\(seconds \* 1000, timeoutCeilingMs\)/);
+});

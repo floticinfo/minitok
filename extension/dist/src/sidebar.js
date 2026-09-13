@@ -105,7 +105,7 @@ class minitokSidebar {
             this.output.appendLine(`[spawn] cli command=${JSON.stringify(processSpec.command)} args=${JSON.stringify(processSpec.args)} cwd=${JSON.stringify(cwd)}`);
             let child;
             try {
-                child = (0, node_child_process_1.spawn)(processSpec.command, processSpec.args, { cwd, shell: processSpec.shell, windowsHide: true, detached: process.platform !== "win32", env });
+                child = (0, node_child_process_1.spawn)(processSpec.command, processSpec.args, (0, workspace_1.spawnOptionsFor)(processSpec, { cwd, env, detached: process.platform !== "win32" }));
             }
             catch (error) {
                 reject(error);
@@ -163,6 +163,15 @@ class minitokSidebar {
                 child.kill("SIGTERM");
             }
         }
+    }
+    /**
+     * npm is a batch shim on Windows, so it needs the same launch spec as the CLI:
+     * `execFile("npm", ...)` throws EINVAL on Node 18.20+ and the update banner
+     * silently never appeared.
+     */
+    runNpm(args, timeout, done) {
+        const spec = (0, workspace_1.npmSpawnSpec)(process.platform, args, { comspec: process.env.ComSpec });
+        (0, node_child_process_1.execFile)(spec.command, spec.args, { timeout, windowsHide: true, windowsVerbatimArguments: spec.windowsVerbatimArguments }, (error, stdout, stderr) => done(error, String(stdout), String(stderr)));
     }
     stopProcess() {
         this.stopChild(this.process);
@@ -360,7 +369,7 @@ class minitokSidebar {
             const release = cliRelease(this.context);
             const answer = await vscode.window.showInformationMessage(`Update minitok to ${release.version}?`, "Update", "Cancel");
             if (answer === "Update")
-                (0, node_child_process_1.execFile)("npm", ["install", "-g", `${release.packageName}@${release.version}`], { timeout: 120000, windowsHide: true }, (error, stdout, stderr) => this.view?.webview.postMessage({ type: "update-result", ok: !error, text: error ? stderr || error.message : stdout }));
+                this.runNpm(["install", "-g", `${release.packageName}@${release.version}`], 120000, (error, stdout, stderr) => this.view?.webview.postMessage({ type: "update-result", ok: !error, text: error ? stderr || error.message : stdout }));
             return;
         }
         try {
@@ -411,8 +420,10 @@ class minitokSidebar {
             this.view?.webview.postMessage({ type: "auth-state", ok: false, text: "Email and password are required." });
             return;
         }
+        const cwd = (0, workspace_1.workspacePath)();
         const env = { ...process.env, MINITOK_CUSTOMER_EMAIL: email.trim(), MINITOK_CUSTOMER_PASSWORD: password };
-        (0, node_child_process_1.execFile)((0, workspace_1.cliPath)(), ["auth", "customer-login", "--email-env", "MINITOK_CUSTOMER_EMAIL", "--password-env", "MINITOK_CUSTOMER_PASSWORD"], { cwd: (0, workspace_1.workspacePath)(), timeout: 30000, windowsHide: true, env }, async (error, stdout, stderr) => {
+        const spec = (0, workspace_1.spawnSpec)((0, workspace_1.cliPath)(), ["auth", "customer-login", "--email-env", "MINITOK_CUSTOMER_EMAIL", "--password-env", "MINITOK_CUSTOMER_PASSWORD"]);
+        (0, node_child_process_1.execFile)(spec.command, spec.args, { ...(0, workspace_1.spawnOptionsFor)(spec, { cwd, env }), timeout: 30000 }, async (error, stdout, stderr) => {
             delete env.MINITOK_CUSTOMER_EMAIL;
             delete env.MINITOK_CUSTOMER_PASSWORD;
             if (error) {
@@ -425,11 +436,13 @@ class minitokSidebar {
     }
     async discoverModels(cwd, provider) {
         (0, workspace_1.requireTrustedWorkspace)(cwd);
-        const cli = (0, workspace_1.cliPath)();
         const args = ["models", "--discover"];
         if (provider)
             args.splice(1, 0, provider);
-        (0, node_child_process_1.execFile)(cli, args, { cwd, timeout: 30000, windowsHide: true }, (error, stdout, stderr) => {
+        // cliPath() resolves the real entry point; the configured setting alone
+        // defaulted to "minitok" and could not be launched on Windows.
+        const spec = (0, workspace_1.spawnSpec)((0, workspace_1.cliPath)(), args);
+        (0, node_child_process_1.execFile)(spec.command, spec.args, { ...(0, workspace_1.spawnOptionsFor)(spec, { cwd }), timeout: 30000 }, (error, stdout, stderr) => {
             const text = error ? stderr || error.message : stdout;
             const models = error ? [] : [...new Set((stdout.match(/(?:claude|gpt|o[134]|gemini|[\w-]+-\w+)[\w.:-]*/gi) || []).filter(id => !/^(models|available|provider)$/i.test(id)))];
             this.view?.webview.postMessage({ type: "models", ok: !error, text, provider: provider || "all", models });
@@ -437,12 +450,11 @@ class minitokSidebar {
     }
     async readInfo(cwd) {
         (0, workspace_1.requireTrustedWorkspace)(cwd);
-        const cli = vscode.workspace.getConfiguration("minitok").get("cliPath", "minitok");
         const commands = [["status", "--repo", cwd], ["doctor"], ["evolution", "status"], ["workspace", "current"]];
         const outputs = [];
         for (const args of commands) {
             try {
-                outputs.push(`$ minitok ${args.join(" ")}\n${await new Promise((resolve, reject) => (0, node_child_process_1.execFile)(cli, args, { cwd, timeout: 15000, windowsHide: true }, (error, stdout, stderr) => error ? reject(new Error(stderr || error.message)) : resolve(stdout.trim())))} `);
+                outputs.push(`$ minitok ${args.join(" ")}\n${await new Promise((resolve, reject) => { const spec = (0, workspace_1.spawnSpec)((0, workspace_1.cliPath)(), args); (0, node_child_process_1.execFile)(spec.command, spec.args, { ...(0, workspace_1.spawnOptionsFor)(spec, { cwd }), timeout: 15000 }, (error, stdout, stderr) => error ? reject(new Error(stderr || error.message)) : resolve(String(stdout).trim())); })} `);
             }
             catch (error) {
                 outputs.push(`$ minitok ${args.join(" ")}\n${String(error)}`);
@@ -540,7 +552,7 @@ class minitokSidebar {
         this.output.appendLine(`[spawn] mcp command=${JSON.stringify(processSpec.command)} args=${JSON.stringify(processSpec.args)} cwd=${JSON.stringify((0, workspace_1.workspacePath)())}`);
         let mcp;
         try {
-            mcp = (0, node_child_process_1.spawn)(processSpec.command, processSpec.args, { cwd: (0, workspace_1.workspacePath)(), env: (0, workspace_1.mcpEnvironment)(), shell: processSpec.shell, windowsHide: true });
+            mcp = (0, node_child_process_1.spawn)(processSpec.command, processSpec.args, (0, workspace_1.spawnOptionsFor)(processSpec, { cwd: (0, workspace_1.workspacePath)(), env: (0, workspace_1.mcpEnvironment)() }));
         }
         catch (error) {
             this.output.appendLine(`[spawn] synchronous error=${String(error)}`);
@@ -642,7 +654,7 @@ class minitokSidebar {
     async checkUpdate() {
         (0, workspace_1.requireTrustedWorkspace)((0, workspace_1.workspacePath)());
         const release = cliRelease(this.context);
-        (0, node_child_process_1.execFile)("npm", ["view", release.packageName, "version", "--json"], { timeout: 10000, windowsHide: true }, (error, stdout) => this.view?.webview.postMessage({ type: "update", current: release.version, latest: error ? null : String(stdout).trim().replace(/^\"|\"$/g, "") }));
+        this.runNpm(["view", release.packageName, "version", "--json"], 10000, (error, stdout) => this.view?.webview.postMessage({ type: "update", current: release.version, latest: error ? null : stdout.trim().replace(/^"|"$/g, "") }));
     }
     async readSettings() {
         const settings = Object.fromEntries(["provider", "model", "showCost", "evidencePath", "autoApprove", "enterBehavior", "plan.provider", "plan.model", "work.provider", "work.model", "review.provider", "review.model", "intel.provider", "intel.model"].map(key => [key, key === "autoApprove" ? vscode.workspace.getConfiguration("minitok").get(key, false) : this.context.workspaceState.get(`minitok.setting.${key}`, undefined)]));

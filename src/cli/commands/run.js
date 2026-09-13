@@ -107,6 +107,15 @@ async function cmdRun(task, opts) {
     const result = await runPipeline(task, {
       repoRoot,
       dryRun: opts.dryRun,
+      // Approval and cancellation options must reach the pipeline. They were
+      // parsed by the CLI and then dropped here, so the documented
+      // `run --approval-file` contract never fired: the extension sidebar's
+      // Approve/Reject flow waited for a request that was never written, and a
+      // non-TTY run refused every change for lack of a terminal.
+      approvalFile: opts.approvalFile,
+      approvalTimeoutMs: Number.isFinite(Number(opts.approvalTimeoutMs)) ? Number(opts.approvalTimeoutMs) : undefined,
+      runId: typeof opts.runId === "string" ? opts.runId : undefined,
+      signal: opts.signal,
       autoAccept: opts.autoAccept,
       providerOverride: opts.providerOverride,
       codingAdapter: opts.codingAdapter,

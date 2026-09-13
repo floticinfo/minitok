@@ -1,7 +1,7 @@
 {
   "source": "canonical-root-src",
   "cliPackage": "@flotic/minitok",
-  "cliVersion": "1.3.14",
+  "cliVersion": "1.3.15",
   "entry": "src/runtime/stdio-entry.js",
   "files": [
     "auth/index.js",
@@ -88,8 +88,8 @@
       "embedded": "043c5f1bd9d5444e221068f946fe90b3914df730a37d8a0213ca52ced89eb5da"
     },
     "config/loader.js": {
-      "source": "19517dd18427ab702a4ab31825af8bb23c1b7e5ae26a1c979a308f7aa92445bd",
-      "embedded": "19517dd18427ab702a4ab31825af8bb23c1b7e5ae26a1c979a308f7aa92445bd"
+      "source": "e9eccc6bfa27b659b379114701f7b7ff08843d49f74815dad34a8b7cb089cf43",
+      "embedded": "e9eccc6bfa27b659b379114701f7b7ff08843d49f74815dad34a8b7cb089cf43"
     },
     "context/compaction.js": {
       "source": "0475f4c5ed57462603366a047689064c136cf596822394fff72f0c456bb27cdf",
@@ -180,8 +180,8 @@
       "embedded": "34f63b0632f2740a83c239536a69e1e72ee5230c1ce7b76598fe8408f638ce27"
     },
     "llm/provider.js": {
-      "source": "95c5a6513d5f898fb29c9e84dde7927ed7ce1347162611c1f374e0b6c23b6d19",
-      "embedded": "95c5a6513d5f898fb29c9e84dde7927ed7ce1347162611c1f374e0b6c23b6d19"
+      "source": "f28639650ad813b271cb6e7460cd1751074da9f9cc738c10f2b51e1e7b45823f",
+      "embedded": "f28639650ad813b271cb6e7460cd1751074da9f9cc738c10f2b51e1e7b45823f"
     },
     "mcp/runtime-token.js": {
       "source": "ff1d9e38f7e50104e849e7f4bf88d0e1b0c60433d2f3d946144047f2c49d1bc3",
@@ -208,8 +208,8 @@
       "embedded": "d139507183711739b0829b47ff81b475b8f78f0d985ddc26e1d1ab187133976f"
     },
     "pipeline/loop.js": {
-      "source": "6c4780d61c6bd5eb72a1850e8ba8f3959c4267c91f810abf7b037edbe94a8eba",
-      "embedded": "6c4780d61c6bd5eb72a1850e8ba8f3959c4267c91f810abf7b037edbe94a8eba"
+      "source": "94a1e800fcfa3f3263646f9e2c91e779c3ede8d3b6c9d5392a84d8008c18e62b",
+      "embedded": "94a1e800fcfa3f3263646f9e2c91e779c3ede8d3b6c9d5392a84d8008c18e62b"
     },
     "pipeline/next_task.js": {
       "source": "d319a3b34dc5d80f4ce9e74e3e0805d2d4ee79aa4cfda8bc9be3dcaf8d9ce583",
@@ -300,8 +300,8 @@
       "embedded": "857fdde926aae950cbfab73dd25adb0a415f958eb10d2cc44dd36c1d0a5eda57"
     },
     "utils/temp-cleanup.js": {
-      "source": "3ee3ebd555cfaa1b3fc1c03bc488b372a7b5757fa6bfeffccb5295d8953255bb",
-      "embedded": "3ee3ebd555cfaa1b3fc1c03bc488b372a7b5757fa6bfeffccb5295d8953255bb"
+      "source": "849aedd9715de90f9187d31df677d3ae44ae682ae84aa86f1e5e6d6642d5dea6",
+      "embedded": "849aedd9715de90f9187d31df677d3ae44ae682ae84aa86f1e5e6d6642d5dea6"
     },
     "workspace/isolation.js": {
       "source": "e6c8291dc6a24ac6cfb0f9d0098362cea8a01e8ac88d6dfa7303c31997110e98",

@@ -51,7 +51,6 @@ const DEFAULTS = {
     search: { web: { endpoint: "", api_key: "" }, github: { token: "", base: "" } },
   },
   validation: { enabled: true, script_path: "VERIFY_CMD.mjs", timeout_ms: 120000, confidence_threshold: 0.8, max_changed_files: 20 },
-  commit: { enabled: false, auto_message: true },
   security: { blocked_extensions: [".env", ".pem", ".key", ".p12", ".pfx"] },
 };
 

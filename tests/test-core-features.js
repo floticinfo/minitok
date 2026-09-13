@@ -4,7 +4,7 @@ const assert = require("node:assert/strict");
 const fs = require("fs");
 const p = require("path");
 const os = require("os");
-function tmpDir() { return fs.mkdtempSync(p.join(os.tmpdir(), "mt-")); }
+function tmpDir() { return fs.mkdtempSync(p.join(os.tmpdir(), "minitok-test-")); }
 function clean(d) { try { fs.rmSync(d, { recursive: true, force: true }); } catch {} }
 function knowledgePath() { return p.join(tmpDir(), "outcomes.json"); }
 function withoutProviderEnvironment(fn) {

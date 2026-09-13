@@ -97,8 +97,13 @@ async function request(path, body) {
     }
     catch { }
     if (!response.ok) {
-        const error = new Error(value?.error || `Authentication request failed (${response.status})`);
-        Object.assign(error, { kind: response.status >= 500 ? "network" : "login" });
+        // Carry the machine readable code: device login decides whether to keep
+        // polling from it, and deriving that decision from a human message broke as
+        // soon as a server sent a structured body (it stringified to "[object Object]").
+        const code = typeof value?.code === "string" ? value.code : typeof value?.error === "string" ? value.error : `http_${response.status}`;
+        const detail = typeof value?.error_description === "string" && value.error_description ? value.error_description : code;
+        const error = new Error(detail);
+        Object.assign(error, { code, kind: response.status >= 500 ? "network" : "login" });
         throw error;
     }
     return value;
@@ -161,10 +166,12 @@ async function deviceLogin(context, onStatus) {
         }
         catch (error) {
             // RFC 8628: "authorization_pending" means keep polling, "slow_down" means
-            // poll less often. Treating slow_down as fatal aborted valid logins.
-            if (error?.message === "authorization_pending")
+            // poll less often. Treating slow_down as fatal aborted valid logins; the
+            // message comparison stays as a fallback for servers that only send text.
+            const pollingCode = typeof error?.code === "string" ? error.code : error?.message;
+            if (pollingCode === "authorization_pending")
                 continue;
-            if (error?.message === "slow_down") {
+            if (pollingCode === "slow_down") {
                 interval += 5000;
                 continue;
             }

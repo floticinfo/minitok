@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { cliPath, workspacePath, requireTrustedWorkspace, spawnSpec } from "./workspace";
+import { cliPath, workspacePath, requireTrustedWorkspace, spawnSpec, spawnOptionsFor } from "./workspace";
 
 export type EntitlementState = { checked: boolean; allowed: boolean; plan?: string | null; message?: string };
 
@@ -13,7 +13,7 @@ export function checkEntitlement(): Promise<EntitlementState> {
   return new Promise(resolve => {
     try { requireTrustedWorkspace(workspacePath()); } catch (error) { resolve({ checked: true, allowed: false, message: error instanceof Error ? error.message : String(error) }); return; }
     const spec = spawnSpec(cliPath(), ["status", "--json"]);
-    const child = spawn(spec.command, spec.args, { cwd: workspacePath(), shell: spec.shell, windowsHide: true });
+    const child = spawn(spec.command, spec.args, spawnOptionsFor(spec, { cwd: workspacePath() }));
     let stdout = "";
     let stderr = "";
     const timer = setTimeout(() => { child.kill(); resolve({ checked: true, allowed: false, message: "Entitlement check timed out" }); }, 30000);

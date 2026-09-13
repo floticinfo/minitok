@@ -151,6 +151,21 @@ describe("sweepTempEntries", () => {
   it("exposes the documented defaults", () => {
     assert.equal(DEFAULT_RETENTION_MS, 6 * HOUR);
     assert.ok(DEFAULT_PREFIXES.includes("minitok-"));
-    assert.ok(DEFAULT_PREFIXES.includes("mt-"));
+    assert.ok(DEFAULT_PREFIXES.includes("mtok-"));
+    // `mt-` is short enough for unrelated tools to use, so it must not be part of
+    // the default ownership rule.
+    assert.equal(DEFAULT_PREFIXES.includes("mt-"), false);
+  });
+
+  it("never reclaims a foreign entry that merely shares a short prefix", () => {
+    const { root, clean } = sandbox();
+    try {
+      makeEntry(root, "mt-foreign-tool-cache");
+      makeEntry(root, "minitok-ours");
+      const summary = sweepTempEntries({ tmpdir: root, retentionMs: 1, protectMs: 0, now: Date.now() + 48 * HOUR });
+      assert.equal(summary.removed, 1);
+      assert.equal(fs.existsSync(path.join(root, "mt-foreign-tool-cache")), true, "a foreign mt- entry must survive");
+      assert.equal(fs.existsSync(path.join(root, "minitok-ours")), false);
+    } finally { clean(); }
   });
 });

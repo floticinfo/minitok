@@ -260,12 +260,17 @@ class LLMProvider {
  * and transient HTTP statuses (429/5xx), honoring Retry-After when present.
  */
 async function fetchWithTimeout(url, opts = {}, timeoutMs = FETCH_TIMEOUT_MS, retryOverride = {}) {
+  // The per-request deadline may travel inside the request options: roles carry
+  // their own timeout_sec, and a shorter role budget must bound the HTTP call
+  // instead of the fixed five minute default.
+  const requestedTimeout = Number.isFinite(Number(opts.timeout_ms)) && Number(opts.timeout_ms) > 0 ? Number(opts.timeout_ms) : timeoutMs;
   const policy = { ..._retryPolicy, ...retryOverride };
   const externalSignal = retryOverride.signal || opts.signal;
-  const deadline = Date.now() + timeoutMs;
+  const deadline = Date.now() + requestedTimeout;
   const attempts = (/** @type {any} */ (opts)).retry_network_errors === false ? 1 : Math.max(1, policy.maxRetries + 1);
   const requestOpts = { ...opts };
   delete /** @type {any} */ (requestOpts).retry_network_errors;
+  delete /** @type {any} */ (requestOpts).timeout_ms;
   let lastError;
   for (let attempt = 1; attempt <= attempts; attempt++) {
     const remaining = deadline - Date.now();
@@ -390,7 +395,7 @@ class AnthropicProvider extends LLMProvider {
 
     const endpointTransport = await resolvePublicEndpoint(this.baseUrl, "Anthropic endpoint");
     const headers = this._requestHeaders(auth, apiKey, { "x-api-key": apiKey, "anthropic-version": "2023-06-01" });
-    const res = await fetchWithTimeout(`${endpointTransport.url}/v1/messages`, { method: "POST", headers, body: JSON.stringify(body), signal: options.signal, ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}) });
+    const res = await fetchWithTimeout(`${endpointTransport.url}/v1/messages`, { method: "POST", headers, body: JSON.stringify(body), signal: options.signal, timeout_ms: options.timeout_ms, ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}) });
     if (!res.ok) throw providerError("Anthropic", res.status, await providerErrorDetail(res));
     const data = await res.json();
     const textBlocks = (data.content || []).filter(b => b.type === "text");
@@ -437,7 +442,7 @@ class OpenAIProvider extends LLMProvider {
       method: "POST",
       headers: this._requestHeaders(auth, apiKey, { Authorization: "Bearer " + apiKey }),
       body: JSON.stringify(body),
-      signal: options.signal,
+      signal: options.signal, timeout_ms: options.timeout_ms,
       ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}),
     });
     if (!res.ok) throw providerError("OpenAI", res.status, await providerErrorDetail(res));
@@ -484,7 +489,7 @@ class GoogleProvider extends LLMProvider {
       method: "POST",
       headers: this._requestHeaders(auth, apiKey, { "x-goog-api-key": apiKey }),
       body: JSON.stringify(body),
-      signal: options.signal,
+      signal: options.signal, timeout_ms: options.timeout_ms,
       ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}),
     });
     if (!res.ok) throw providerError("Google", res.status, await providerErrorDetail(res));
@@ -541,7 +546,7 @@ class OpenRouterProvider extends LLMProvider {
     if (effort) body.reasoning_effort = effort;
     const endpointTransport = await resolvePublicEndpoint(this.baseUrl, "OpenRouter endpoint");
     const headers = this._requestHeaders(auth, apiKey, { Authorization: "Bearer " + apiKey, "HTTP-Referer": "https://github.com/minitok/minitok", "X-Title": "minitok" });
-    const res = await fetchWithTimeout(`${endpointTransport.url}/v1/chat/completions`, { method: "POST", headers, body: JSON.stringify(body), signal: options.signal, ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}) });
+    const res = await fetchWithTimeout(`${endpointTransport.url}/v1/chat/completions`, { method: "POST", headers, body: JSON.stringify(body), signal: options.signal, timeout_ms: options.timeout_ms, ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}) });
     if (!res.ok) throw providerError("OpenRouter", res.status, await providerErrorDetail(res));
     const data = await res.json();
     return { text: data.choices?.[0]?.message?.content || "", model: data.model, usage: data.usage || {}, tokens: _countTokens(data.usage) };
@@ -595,7 +600,7 @@ class CustomProvider extends LLMProvider {
     }
     const apiPath = this.baseUrl.endsWith("/v1") ? "/chat/completions" : "/v1/chat/completions";
     const requestHeaders = { ...headers, ...endpointTransport.headers };
-    const res = await fetchWithTimeout(`${endpointTransport.url}${apiPath}`, { method: "POST", headers: requestHeaders, body: JSON.stringify(body), signal: options.signal, ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}) });
+    const res = await fetchWithTimeout(`${endpointTransport.url}${apiPath}`, { method: "POST", headers: requestHeaders, body: JSON.stringify(body), signal: options.signal, timeout_ms: options.timeout_ms, ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}) });
     if (!res.ok) throw providerError(this.name, res.status, await providerErrorDetail(res));
     const data = await res.json();
     return { text: data.choices?.[0]?.message?.content || "", model: data.model || model, usage: data.usage || {}, tokens: _countTokens(data.usage) };

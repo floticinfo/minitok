@@ -68,7 +68,7 @@ function killProcessTree(child) {
 function runCli(cliPath, args, cwd, onProcess) {
     return new Promise((resolve, reject) => {
         const processSpec = (0, workspace_1.spawnSpec)(cliPath, args);
-        const child = (0, node_child_process_1.spawn)(processSpec.command, processSpec.args, { cwd, shell: processSpec.shell, windowsHide: true, detached: process.platform !== "win32" });
+        const child = (0, node_child_process_1.spawn)(processSpec.command, processSpec.args, (0, workspace_1.spawnOptionsFor)(processSpec, { cwd, detached: process.platform !== "win32" }));
         onProcess(child);
         let stdout = "";
         let stderr = "";
@@ -159,9 +159,15 @@ class minitokPanel {
                 else if ((0, workspace_1.autoApprove)())
                     args.push("--auto-accept");
                 else {
+                    // The panel collects consent before the run starts, and the CLI it
+                    // spawns has no TTY: without --auto-accept every file change was
+                    // refused with "No TTY detected. Refusing to accept file changes".
+                    // The answer collected here is the same decision the setting encodes,
+                    // so an approved run passes the flag through.
                     const answer = await vscode.window.showWarningMessage("Allow minitok to modify this workspace?", "Approve", "Cancel");
                     if (answer !== "Approve")
                         return;
+                    args.push("--auto-accept");
                 }
                 const output = await runCli(cli, args, cwd, child => { this.process = child; });
                 const evidence = cwd ? this.readEvidence(cwd) : null;

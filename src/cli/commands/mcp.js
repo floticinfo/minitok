@@ -7,17 +7,68 @@ const { runtimeTokenPath, ensureRuntimeToken } = require("../../mcp/runtime-toke
 
 const LOCK_STALE_MS = 30000;
 
-function configs() {
-  const app = process.env.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
+/**
+ * Per-platform locations of the supported MCP host applications.
+ *
+ * The previous implementation hardcoded `%APPDATA%` and fell back to
+ * `<home>/AppData/Roaming`, so on macOS and Linux `minitok mcp connect` created
+ * a fabricated `~/AppData/Roaming/...` tree, reported "Connected", and never
+ * touched the editor's real configuration.
+ */
+function hostRoots() {
+  const home = os.homedir();
+  if (process.platform === "win32") {
+    const app = process.env.APPDATA || path.join(home, "AppData", "Roaming");
+    return { vscodeUser: path.join(app, "Code", "User"), claude: path.join(app, "Claude"), home, configHome: path.join(home, ".config") };
+  }
+  if (process.platform === "darwin") {
+    const support = path.join(home, "Library", "Application Support");
+    return { vscodeUser: path.join(support, "Code", "User"), claude: path.join(support, "Claude"), home, configHome: path.join(home, ".config") };
+  }
+  const configHome = process.env.XDG_CONFIG_HOME || path.join(home, ".config");
+  return { vscodeUser: path.join(configHome, "Code", "User"), claude: path.join(configHome, "Claude"), home, configHome };
+}
+
+/** Every configuration file a host is known to read, preferred location first. */
+function hostCandidates() {
+  const roots = hostRoots();
   return {
-    cline: path.join(app, "Code", "User", "globalStorage", "saoudrizwan.claude-dev", "settings", "cline_mcp_settings.json"),
-    claude: path.join(app, "Claude", "claude_desktop_config.json"),
-    cursor: path.join(app, "Cursor", "User", "globalStorage", "mcp.json"),
+    cline: [path.join(roots.vscodeUser, "globalStorage", "saoudrizwan.claude-dev", "settings", "cline_mcp_settings.json")],
+    claude: [path.join(roots.claude, "claude_desktop_config.json")],
+    cursor: [path.join(roots.home, ".cursor", "mcp.json"), path.join(roots.vscodeUser, "globalStorage", "mcp.json")],
   };
 }
 
+function configs() {
+  const candidates = hostCandidates();
+  return Object.fromEntries(Object.entries(candidates).map(([name, list]) => [name, list.find(file => fs.existsSync(file)) || list[0]]));
+}
+
+/** Resolve a host, failing closed when the host is not installed on this machine. */
+function resolveHost(name, override) {
+  if (override) {
+    const file = path.resolve(override);
+    return { name, file, candidates: [file], installed: true };
+  }
+  const list = hostCandidates()[name];
+  if (!list) throw new Error(`Unsupported MCP host: ${name}`);
+  const existing = list.find(file => fs.existsSync(file));
+  if (existing) return { name, file: existing, candidates: list, installed: true };
+  // A host whose directory exists but has no config yet is a first run.
+  const firstRun = list.find(file => fs.existsSync(path.dirname(file)));
+  if (firstRun) return { name, file: firstRun, candidates: list, installed: true };
+  throw Object.assign(
+    new Error(`No ${name} configuration found. Checked: ${list.join(", ")}. Start ${name} once so it creates its configuration, or pass --host-file <path>.`),
+    { code: "MCP_HOST_NOT_FOUND" }
+  );
+}
+
 function detect() {
-  return Object.entries(configs()).map(([name, file]) => ({ name, file, detected: fs.existsSync(file) }));
+  const candidates = hostCandidates();
+  return Object.entries(candidates).map(([name, list]) => {
+    const file = list.find(candidate => fs.existsSync(candidate)) || list[0];
+    return { name, file, detected: fs.existsSync(file), candidates: list };
+  });
 }
 
 function readConfig(file) {
@@ -171,7 +222,10 @@ function writeConfig(file, data, options = {}) {
         }
       }
     }
-    if (fs.existsSync(backup)) { try { fs.unlinkSync(backup); syncDir(dir); } catch {} }
+    // The crash-recovery copy lives only for the duration of the replacement, so
+    // the flag that disables it is about that window. --keep-backup opts into
+    // keeping the copy as a restore point.
+    if (options.keepBackup !== true && fs.existsSync(backup)) { try { fs.unlinkSync(backup); syncDir(dir); } catch {} }
   } catch (error) {
     if (temp) { try { fs.unlinkSync(temp); } catch {} }
     if (backupTemp) { try { fs.unlinkSync(backupTemp); } catch {} }
@@ -226,7 +280,7 @@ function register(program) {
     .action(opts => {
       const rows = detect();
       if (opts.json) console.log(JSON.stringify(rows));
-      else rows.forEach(row => console.log(`${row.name}: ${row.detected ? "detected" : "not found"}`));
+      else rows.forEach(row => console.log(`${row.name}: ${row.detected ? "detected" : "not found"} (${row.file})`));
     });
 
   mcp.command("remote-health <url>")
@@ -242,13 +296,18 @@ function register(program) {
     mcp.command(`${action} <host>`)
       .option("--dry-run", "preview without writing")
       .option("--force", "write despite an unchanged configuration")
-      .option("--no-backup", "disable backup")
-      .option("--rollback", "restore backup on failure")
+      .option("--no-backup", "skip the crash-recovery copy taken during the write")
+      .option("--keep-backup", "keep <config>.bak after a successful write as a restore point")
+      .option("--host-file <path>", "write this host configuration file instead of the detected one")
+      .option("--rollback", "restore the previous configuration on failure")
       .option("--scopes <scopes>", "local MCP scopes to grant (read,write,auto_accept)")
       .action(async (host, opts) => {
-        const file = configs()[host];
-        if (!file) throw new Error(`Unsupported MCP host: ${host}`);
-        if (action === "disconnect" && !fs.existsSync(file)) return;
+        const target = resolveHost(host, opts.hostFile);
+        const file = target.file;
+        if (action === "disconnect" && !fs.existsSync(file)) {
+          console.log(`Already disconnected ${host} (${file} does not exist)`);
+          return;
+        }
 
         // Validate before touching any config so an unknown scope fails fast,
         // rather than throwing inside the MCP server the user just configured.
@@ -270,11 +329,12 @@ function register(program) {
           return;
         }
         if (opts.dryRun || opts.preview) {
-          console.log(JSON.stringify({ action, host, file, schema: plan.schema, changed: plan.changed, backup: opts.backup !== false ? plan.backup : null, scopes: action === "connect" ? scopes : null }));
+          console.log(JSON.stringify({ action, host, file, schema: plan.schema, changed: plan.changed, backup: opts.backup !== false ? plan.backup : null, keepBackup: opts.keepBackup === true, scopes: action === "connect" ? scopes : null }));
           return;
         }
-        writeConfig(file, plan.data, { backup: opts.backup !== false, rollback: opts.rollback === true });
-        console.log(`${action === "connect" ? "Connected" : "Disconnected"} minitok ${action === "connect" ? "to" : "from"} ${host}`);
+        writeConfig(file, plan.data, { backup: opts.backup !== false, keepBackup: opts.keepBackup === true, rollback: opts.rollback === true });
+        console.log(`${action === "connect" ? "Connected" : "Disconnected"} minitok ${action === "connect" ? "to" : "from"} ${host} (${file})`);
+        if (opts.keepBackup === true && fs.existsSync(plan.backup)) console.log(`Backup: ${plan.backup}`);
       });
   }
 
@@ -295,4 +355,4 @@ function register(program) {
       console.log(JSON.stringify({ status: "ok", path: record.path, expires_at: new Date(record.expires_at).toISOString() }));
     });
 }
-module.exports = { register, detect, readConfig, writeConfig, configs, serverContainer, planChange, readLock, processIsRunning };
+module.exports = { register, detect, readConfig, writeConfig, configs, serverContainer, planChange, readLock, processIsRunning, hostCandidates, resolveHost };

@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.3.15 - 2026-09-13
+
+### Fixes
+
+- Fixed `minitok run --approval-file` and `--approval-timeout-ms` being parsed by the CLI and then dropped before the pipeline. File-backed approval works from the CLI again, and the VS Code sidebar's Approve/Reject buttons work instead of waiting for a `MINITOK_APPROVAL_REQUEST` line that was never written; the run signal is forwarded too, so Ctrl+C ends the approval wait instead of holding it for the full timeout.
+- Fixed the VS Code extension on Windows, where no extension command could launch the CLI: the resolved `minitok.cmd` shim was handed to `cmd.exe` as a single argument escaped for the MSVCRT parser, so cmd.exe reported `'\"…minitok.cmd\"' is not recognized`. The entitlement preflight therefore reported "an active paid plan is required" to paying customers. CLI resolution now prefers the package's JavaScript entry point (executed by node, so cmd.exe is not involved), `.cmd` shims are launched with the command line passed verbatim, and an argument containing characters cmd.exe would re-parse is refused for a shim instead of executed. The panel's consent dialog now authorizes the run, and the update check/install and `minitok models --discover` use the same launch path.
+- Fixed `minitok mcp connect` writing `%APPDATA%`-based paths on macOS and Linux, where it created `~/AppData/Roaming/...`, printed "Connected", and left the editor's real configuration untouched. Host locations are per platform now, an uninstalled host fails closed with the locations it checked, `--host-file <path>` writes a specific file, `minitok mcp status` prints the resolved path, and `--keep-backup` keeps the restore copy that `--no-backup` skips.
+- Fixed configuration and flags that were accepted, documented, and env-mapped without a consumer: `roles.<role>.timeout_sec` / `execution.timeout_hard_limit_sec` now bound each provider request, `security.blocked_extensions` reaches `applyChanges` (as a floor that configuration can extend but not weaken), `validation.enabled: false` skips the verification command, `validation.max_changed_files` refuses an oversized change set before anything is written, and `validation.confidence_threshold` downgrades a low-confidence APPROVE and drives the goal-progress gate.
+- Fixed `--coding-adapter`, `--research-adapter`, and `--review-adapter` being forwarded and then ignored; they now configure the work, intel, and review roles.
+- Fixed the temp sweeper reclaiming any entry whose name merely began with `mt-`, which risked deleting an unrelated program's temporary data. The default ownership rule is `minitok-`, `mtok-`, `evo-optin-`; pass `--prefixes minitok-,mt-` to collect legacy fixtures explicitly.
+- Fixed device login deciding whether to keep polling by comparing human-readable error text, which failed for a structured error body.
+- Fixed a stale extension test assertion (the panel timeout had been extracted into a constant) and wired the extension unit tests into `npm run release:check` through the new `npm run test:extension`.
+
+### Changed
+
+- Removed the unimplemented `commit` section from the defaults, the `minitok migrate` template, and the shipped `minitok.yml`: `commit.enabled` and `commit.auto_message` never had a consumer. A configuration that still contains the section is ignored.
+- `roleOpts` now passes the resolved per-role timeout with every request, and the goal-progress confidence gate uses the configured `validation.confidence_threshold` instead of a hardcoded `0.8`.
+
 ## 1.3.14 - 2026-09-13
 
 ### Documentation

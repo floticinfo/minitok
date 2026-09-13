@@ -27,8 +27,15 @@ const DEFAULT_MAX_ENTRIES = 200;
 const DEFAULT_TIME_BUDGET_MS = 250;
 const DEFAULT_MAX_SCAN = 20000;
 
-/** Prefixes owned by this product and its tests. */
-const DEFAULT_PREFIXES = Object.freeze(["minitok-", "mtok-", "mt-", "evo-optin-"]);
+/**
+ * Prefixes owned by this product and its tests.
+ *
+ * A three character prefix such as `mt-` is deliberately absent: it is short
+ * enough that unrelated tools use it, and reclaiming foreign entries would delete
+ * another program's data. Add it back explicitly with `--prefixes minitok-,mt-`
+ * when a machine has legacy `mt-` fixtures to collect.
+ */
+const DEFAULT_PREFIXES = Object.freeze(["minitok-", "mtok-", "evo-optin-"]);
 
 function lastActivityMs(stat) {
   // mtime is the last write; ctime is the last inode change (creation time on

@@ -75,10 +75,8 @@ validation:
   enabled: true
   script_path: VERIFY_CMD.mjs
   timeout_ms: 120000
-
-commit:
-  enabled: false
-  auto_message: true
+  confidence_threshold: 0.8
+  max_changed_files: 20
 `;
 
 async function cmdMigrate(repoPath, name) {

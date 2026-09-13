@@ -78,7 +78,7 @@ function main() {
     return 0;
   }
   if (options.help) {
-    console.log("Usage: node scripts/sweep-temp.mjs [--older-than 2h] [--protect 10m] [--prefixes minitok-,mt-] [--max-entries 200] [--max-scan 20000] [--time-budget 250ms|0] [--dry-run] [--json] [--quiet]");
+    console.log("Usage: node scripts/sweep-temp.mjs [--older-than 2h] [--protect 10m] [--prefixes minitok-,mtok-] [--max-entries 200] [--max-scan 20000] [--time-budget 250ms|0] [--dry-run] [--json] [--quiet]");
     return 0;
   }
   const tmpdir = os.tmpdir();

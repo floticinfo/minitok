@@ -31,7 +31,31 @@ program.action(async () => {
 });
 program.command("status").description("Show entitlement, providers, roles, and recent runs").option("-w, --workspace <name>").option("--repo <path>", "inspect a repository without registering a workspace").option("--json", "output JSON").action(async (opts) => { const { cmdStatus } = require("../src/cli/commands/status"); const result = await cmdStatus(opts); if (opts.json) { console.log(JSON.stringify(result)); process.exit(0); } process.exit(typeof result === "number" ? result : 0); });
 program.command("doctor").description("Diagnose the local environment and entitlement").option("--verify", "live-check provider credentials against the API", false).action(async (opts) => { const { cmdDoctor } = require("../src/cli/commands/doctor"); process.exit(await cmdDoctor(opts)); });
-program.command("run").description("Run the autonomous coding workflow").argument("[task]").option("-w, --workspace <name>").option("-t, --task-flag <task>").option("--dry-run", "dry run", false).option("--auto-accept", "auto accept", false).option("--approval-file <path>").option("--approval-timeout-ms <ms>").option("--repo <path>").option("--provider-override <provider>").option("--coding-adapter <adapter>").option("--research-adapter <adapter>").option("--review-adapter <adapter>").action(async (task, opts) => { const { cmdRun } = require("../src/cli/commands/run"); process.exit(await cmdRun(task || opts.taskFlag || null, /** @type {object} */ (opts))); });
+program.command("run").description("Run the autonomous coding workflow").argument("[task]").option("-w, --workspace <name>").option("-t, --task-flag <task>").option("--dry-run", "dry run", false).option("--auto-accept", "auto accept", false).option("--approval-file <path>").option("--approval-timeout-ms <ms>").option("--repo <path>").option("--provider-override <provider>").option("--coding-adapter <adapter>").option("--research-adapter <adapter>").option("--review-adapter <adapter>").action(async (task, opts) => {
+  const { cmdRun } = require("../src/cli/commands/run");
+  // Cancel cooperatively on the first Ctrl-C: the pipeline observes this signal
+  // while polling for an approval response and while providers are in flight, so
+  // a run no longer holds the terminal (or the MCP run slot) until its timeout.
+  // A second Ctrl-C still exits immediately for the impatient case.
+  const controller = new AbortController();
+  let interrupts = 0;
+  const onSignal = () => {
+    interrupts += 1;
+    if (interrupts > 1) process.exit(130);
+    console.error("\nCancelling the run — press Ctrl-C again to exit immediately.");
+    controller.abort();
+  };
+  process.on("SIGINT", onSignal);
+  process.on("SIGTERM", onSignal);
+  let exitCode;
+  try {
+    exitCode = await cmdRun(task || opts.taskFlag || null, /** @type {object} */ ({ ...opts, signal: controller.signal }));
+  } finally {
+    process.off("SIGINT", onSignal);
+    process.off("SIGTERM", onSignal);
+  }
+  process.exit(exitCode);
+});
 const ws=program.command("workspace").description("Manage named repository workspaces"); ws.command("add").argument("[path]", ".").argument("[name]").action(async(p,n)=>{const {cmdWsAdd}=require("../src/cli/commands/workspace");process.exit(await cmdWsAdd(p,n));}); ws.command("list").action(async()=>{const {cmdWsList}=require("../src/cli/commands/workspace");process.exit(await cmdWsList());}); ws.command("use").argument("<name>").action(async n=>{const {cmdWsUse}=require("../src/cli/commands/workspace");process.exit(await cmdWsUse(n));}); ws.command("current").action(async()=>{const {cmdWsCurrent}=require("../src/cli/commands/workspace");process.exit(await cmdWsCurrent());}); ws.command("remove").argument("<name>").action(async n=>{const {cmdWsRemove}=require("../src/cli/commands/workspace");process.exit(await cmdWsRemove(n));});
 program.command("migrate").description("Create or update minitok project configuration").argument("[path]", ".").option("-n, --name <name>").action(async(p,o)=>{const {cmdMigrate}=require("../src/cli/commands/migrate");process.exit(await cmdMigrate(p,o.name));});
 require("../src/cli/commands/models").register(program); require("../src/cli/commands/auth").register(program); require("../src/cli/commands/account").registerAccount(program); require("../src/cli/commands/billing").register(program); require("../src/cli/commands/license").register(program); require("../src/cli/commands/evolution").register(program); require("../src/cli/commands/runs").register(program); require("../src/cli/commands/mcp").register(program); require("../src/cli/commands/gui").register(program);

@@ -3,10 +3,10 @@
   "displayName": "minitok",
   "description": "Run AI coding tasks through planning, verification, review, repair, and evidence",
   "publisher": "Flotic",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "minitok": {
     "cliPackage": "@flotic/minitok",
-    "cliVersion": "1.3.14"
+    "cliVersion": "1.3.15"
   },
   "author": "Flotic",
   "license": "SEE LICENSE IN LICENSE",
@@ -107,7 +107,7 @@
         "minitok.cliPath": {
           "type": "string",
           "default": "",
-          "description": "Optional path to the Node.js minitok CLI. Leave empty to auto-detect minitok.cmd/minitok; Python minitok executables are not supported."
+          "description": "Optional path to the Node.js minitok CLI (…/node_modules/@flotic/minitok/bin/minitok.js). Leave empty to auto-detect the npm package entry point, then minitok.cmd/minitok. Python minitok executables are not supported."
         },
         "minitok.serverUrl": {
           "type": "string",
@@ -148,7 +148,8 @@
     "compile": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json",
     "test:host": "npm run compile && node dist/test/run-host.js",
-    "test": "npm run compile && node --test test/process-contract.test.js test/mcp-config.test.js test/version.test.js && node dist/test/run-host.js"
+    "test:unit": "npm run compile && node --test test/process-contract.test.js test/mcp-config.test.js test/version.test.js test/spawn.test.js",
+    "test": "npm run compile && node --test test/process-contract.test.js test/mcp-config.test.js test/version.test.js test/spawn.test.js && node dist/test/run-host.js"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",

@@ -33,10 +33,14 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.npmSpawnSpec = void 0;
 exports.workspacePath = workspacePath;
 exports.requireTrustedWorkspace = requireTrustedWorkspace;
+exports.cliScriptCandidates = cliScriptCandidates;
 exports.cliPath = cliPath;
+exports.launchSpec = launchSpec;
 exports.spawnSpec = spawnSpec;
+exports.spawnOptionsFor = spawnOptionsFor;
 exports.mcpCommand = mcpCommand;
 exports.mcpEnvironment = mcpEnvironment;
 exports.mcpAuthToken = mcpAuthToken;
@@ -50,6 +54,8 @@ const os = __importStar(require("node:os"));
 const node_child_process_1 = require("node:child_process");
 const mcp_1 = require("./mcp");
 const version_1 = require("./version");
+const spawn_1 = require("./spawn");
+Object.defineProperty(exports, "npmSpawnSpec", { enumerable: true, get: function () { return spawn_1.npmSpawnSpec; } });
 function workspacePath() {
     const folders = vscode.workspace.workspaceFolders || [];
     if (!folders.length)
@@ -72,24 +78,59 @@ function requireTrustedWorkspace(cwd) {
 // cap short: a responsive CLI answers `--version` in well under a second.
 const CLI_PROBE_TIMEOUT_MS = 3000;
 function isNodeCli(candidate) {
+    const spec = launchSpec(candidate, ["--version"]);
     try {
-        const version = (0, node_child_process_1.execFileSync)(candidate, ["--version"], { stdio: ["ignore", "pipe", "ignore"], timeout: CLI_PROBE_TIMEOUT_MS, windowsHide: true }).toString();
+        // execFile* cannot pass a verbatim command line and throws EINVAL for a
+        // `.cmd` shim on Node 18.20+, so a Windows candidate always looked unusable.
+        // spawnSync supports both, which makes the probe match the real launch.
+        const result = (0, node_child_process_1.spawnSync)(spec.command, spec.args, {
+            stdio: ["ignore", "pipe", "ignore"],
+            timeout: CLI_PROBE_TIMEOUT_MS,
+            windowsHide: true,
+            windowsVerbatimArguments: spec.windowsVerbatimArguments,
+            env: { ...process.env, ...(spec.command === process.execPath ? { ELECTRON_RUN_AS_NODE: "1" } : {}) },
+        });
+        if (result.error || result.status !== 0)
+            return false;
+        const version = String(result.stdout || "");
         return /^minitok\s+\d+\.\d+\.\d+/i.test(version) || /^\d+\.\d+\.\d+/.test(version.trim());
     }
     catch {
         return false;
     }
 }
+/**
+ * npm's global prefix holds the real JavaScript entry point. Running that with
+ * node avoids cmd.exe entirely, which is the only reliable way to reach the CLI
+ * on Windows (a Python executable that happens to be called `minitok` is
+ * explicitly not supported).
+ */
+function cliScriptCandidates() {
+    const bases = [process.env.npm_config_prefix];
+    if (process.platform === "win32") {
+        bases.push(process.env.APPDATA ? path.join(process.env.APPDATA, "npm") : undefined);
+        bases.push(process.env.LOCALAPPDATA ? path.join(process.env.LOCALAPPDATA, "npm") : undefined);
+        bases.push(process.env.ProgramFiles ? path.join(process.env.ProgramFiles, "nodejs") : undefined);
+    }
+    else {
+        bases.push("/usr/local/lib", "/usr/lib");
+        bases.push(path.join(os.homedir(), ".npm-global", "lib"));
+        bases.push(path.join(path.dirname(process.execPath), "..", "lib"));
+    }
+    return [...new Set(bases.filter((base) => Boolean(base)).map(base => path.join(base, "node_modules", "@flotic", "minitok", "bin", "minitok.js")))];
+}
 function defaultCliPath() {
+    const scripts = cliScriptCandidates().filter(candidate => fs.existsSync(candidate));
+    for (const script of scripts)
+        if (isNodeCli(script))
+            return script;
     const candidates = process.platform === "win32" ? ["minitok.cmd", "minitok"] : ["minitok"];
     for (const candidate of candidates)
         if (isNodeCli(candidate))
             return candidate;
-    const npmRoot = process.platform === "win32" ? process.env.APPDATA ? path.join(process.env.APPDATA, "npm") : undefined : undefined;
-    const fallback = npmRoot ? path.join(npmRoot, "minitok.cmd") : undefined;
-    if (fallback && fs.existsSync(fallback) && isNodeCli(fallback))
-        return fallback;
-    return candidates[0];
+    // Nothing answered the probe: prefer an installed script entry (node can still
+    // run it) over a shim that may not exist.
+    return scripts[0] || candidates[0];
 }
 let cachedCliPath;
 function cliPath() {
@@ -102,12 +143,27 @@ function cliPath() {
     cachedCliPath = { configured, resolved };
     return resolved;
 }
-function quoteCmdArg(value) { return `"${value.replace(/"/g, '\\"')}"`; }
+/**
+ * Launch spec for a command. A JavaScript entry runs under node and a
+ * `.cmd`/`.bat` shim is handed to cmd.exe with the command line passed verbatim;
+ * see ./spawn.ts for why both matter on Windows.
+ */
+function launchSpec(command, args) {
+    return (0, spawn_1.spawnSpecFor)(process.platform, command, args, { comspec: process.env.ComSpec, nodePath: process.execPath });
+}
 function spawnSpec(command, args) {
-    if (process.platform !== "win32" || !command.toLowerCase().endsWith(".cmd"))
-        return { command, args, shell: false };
-    const commandLine = ["call", quoteCmdArg(command), ...args.map(quoteCmdArg)].join(" ");
-    return { command: process.env.ComSpec || "cmd.exe", args: ["/d", "/s", "/c", commandLine], shell: false };
+    return launchSpec(command, args);
+}
+/**
+ * Complete spawn options for a spec. Centralised so every call site inherits the
+ * Windows verbatim-argument fix and the Electron-as-Node environment a
+ * JavaScript CLI entry needs when the extension host itself is Electron.
+ */
+function spawnOptionsFor(spec, extra = {}) {
+    const env = { ...(extra.env || process.env) };
+    if (spec.command === process.execPath && !env.ELECTRON_RUN_AS_NODE)
+        env.ELECTRON_RUN_AS_NODE = "1";
+    return { cwd: extra.cwd, env, shell: spec.shell, windowsHide: true, windowsVerbatimArguments: spec.windowsVerbatimArguments, ...(extra.detached === undefined ? {} : { detached: extra.detached }) };
 }
 function mcpCommand() {
     const configured = vscode.workspace.getConfiguration("minitok").get("mcpCommand", "");
@@ -166,7 +222,7 @@ function refreshRuntimeToken() {
             resolve();
         } };
         try {
-            const child = (0, node_child_process_1.spawn)(spec.command, spec.args, { cwd: workspacePath(), shell: spec.shell, windowsHide: true, stdio: "ignore" });
+            const child = (0, node_child_process_1.spawn)(spec.command, spec.args, { ...spawnOptionsFor(spec, { cwd: workspacePath() }), stdio: "ignore" });
             const timer = setTimeout(() => { child.kill(); done(); }, 30000);
             child.on("error", () => { clearTimeout(timer); done(); });
             child.on("close", () => { clearTimeout(timer); done(); });
