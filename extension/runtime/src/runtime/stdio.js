@@ -1,7 +1,7 @@
 "use strict";
 
 const { createRuntimeServices } = require("./index");
-const { getToolDefinitions, getToolHandler, MCP_ERROR_CODES } = require("../mcp/tools");
+const { getToolDefinitions, getToolHandler, MCP_ERROR_CODES, requiredScopeFor } = require("../mcp/tools");
 const packageMetadata = require("../../package.json");
 const version = typeof packageMetadata.version === "string" ? packageMetadata.version : "unknown";
 const fs = require("fs");
@@ -79,6 +79,10 @@ class RuntimeStdio {
   constructor(options = {}) {
     this._services = options.services || createRuntimeServices(options);
     this._fs = options.fs || fs;
+    // Keep the injected pipeline so embedders and tests can run the server
+    // without the real pipeline (which performs paid calls and workspace writes).
+    // Without this the option was accepted and then silently ignored.
+    this._runPipeline = options.runPipeline || null;
     this._workspaceRoot = options.workspaceRoot || process.cwd();
     if (options.authRequired === false || options.entitlementRequired === false) throw new Error("MCP authentication and entitlement are mandatory");
     // Scopes are opt-in: the default stays read-only (tests/test-mcp-remote.js
@@ -227,7 +231,11 @@ class RuntimeStdio {
     if (method !== "tools/call") return this._error(id, -32601, `Method not found: ${method}`, "METHOD_NOT_FOUND", correlationId, {}, reply);
     const definition = getToolDefinitions().find(tool => tool.name === params.name);
     if (!definition) return this._error(id, MCP_ERROR_CODES.NOT_FOUND, "Tool not found", "TOOL_NOT_FOUND", correlationId, {}, reply);
-    if (definition.annotations.destructiveHint && !this._permissions.has("write")) return this._error(id, MCP_ERROR_CODES.PERMISSION_DENIED, "Workspace write permission required", "PERMISSION_DENIED", correlationId, {}, reply);
+    // Scope comes from the explicit per-tool table, not from destructiveHint:
+    // additive writers such as minitok_knowledge_record must not run under the
+    // read-only default scope.
+    const requiredScope = requiredScopeFor(params.name);
+    if (!this._permissions.has(requiredScope)) return this._error(id, MCP_ERROR_CODES.PERMISSION_DENIED, requiredScope === "write" ? "Workspace write permission required" : "Read permission required", "PERMISSION_DENIED", correlationId, {}, reply);
     if (params.name === "minitok_run" && [...this._runs.values()].filter(run => run.state === "running").length >= this._maxConcurrentRuns) return this._error(id, MCP_ERROR_CODES.RUN_LIMIT_REACHED, "Concurrent run limit reached", "RUN_LIMIT_REACHED", correlationId, {}, reply);
     const runId = params.name === "minitok_run" ? crypto.randomUUID() : null;
     const controller = new AbortController();
@@ -239,7 +247,13 @@ class RuntimeStdio {
        if (run) run.persistence = persistence;
      }
      try {
-      const result = await getToolHandler(params.name, { ...(params.arguments || {}), run_id: runId }, this._services, { safeResult: true, signal: controller.signal, runs: this._runs, recoveredRuns: this._recoveredRuns, persistence: this._persistence, workspaceRoot: this._workspaceRoot, permissions: this._permissions, writeApproval: (file, decision, binding) => { const stat = fs.lstatSync(file); if (!stat.isFile() || stat.isSymbolicLink() || fs.realpathSync.native(file) !== file) throw Object.assign(new Error("Approval request path is not a regular file"), { code: "APPROVAL_INVALID" }); let request; try { request = JSON.parse(fs.readFileSync(file, "utf8")); } catch { throw Object.assign(new Error("Approval request is malformed"), { code: "APPROVAL_INVALID" }); } if (request.type !== "approval_request" || (decision !== "approve" && decision !== "reject") || typeof request.nonce !== "string" || request.nonce !== binding.nonce || request.run_id !== binding.runId || !Number.isFinite(request.expires_at) || Date.now() >= request.expires_at) throw Object.assign(new Error("Approval request is stale or mismatched"), { code: "APPROVAL_INVALID" }); const target = `${file}.response`; try { const targetStat = fs.lstatSync(target); if (targetStat.isSymbolicLink() || !targetStat.isFile()) throw Object.assign(new Error("Approval response path is not a regular file"), { code: "APPROVAL_INVALID" }); } catch (error) { if (error.code !== "ENOENT") throw error; } const temp = `${target}.tmp.${process.pid}.${crypto.randomBytes(6).toString("hex")}`; const fd = fs.openSync(temp, "wx", 0o600); try { fs.writeFileSync(fd, `${JSON.stringify({ decision, nonce: binding.nonce, run_id: binding.runId })}\n`, { encoding: "utf8" }); fs.fsyncSync(fd); } finally { fs.closeSync(fd); } try { fs.renameSync(temp, target); } catch (error) { try { fs.rmSync(temp, { force: true }); } catch {} throw error; } }, onProgress: event => { if (runId && !isNotification) { const progress = Number.isFinite(event.progress) ? event.progress : ({ intel: 1, plan: 2, work: 3, verify: 4, review: 5 }[event.phase] || 0); this._respond({ jsonrpc: "2.0", method: "notifications/progress", params: { progressToken: params._meta?.progressToken ?? params.meta?.progressToken ?? null, progress, total: 5, message: JSON.stringify({ phase: event.phase, state: event.state, run_id: runId, correlation_id: correlationId }) } }); } } });
+      // Inject the server-generated run id for minitok_run only. Spreading the
+      // id over every tool replaced the declared run_id of minitok_run_get,
+      // minitok_run_cancel, minitok_approve_run and minitok_reject_run with
+      // null, so all four failed schema validation through the transport.
+      const toolArguments = { ...(params.arguments || {}) };
+      if (runId) toolArguments.run_id = runId;
+      const result = await getToolHandler(params.name, toolArguments, this._services, { safeResult: true, signal: controller.signal, runs: this._runs, runPipeline: this._runPipeline, recoveredRuns: this._recoveredRuns, persistence: this._persistence, workspaceRoot: this._workspaceRoot, permissions: this._permissions, writeApproval: (file, decision, binding) => { const stat = fs.lstatSync(file); if (!stat.isFile() || stat.isSymbolicLink() || fs.realpathSync.native(file) !== file) throw Object.assign(new Error("Approval request path is not a regular file"), { code: "APPROVAL_INVALID" }); let request; try { request = JSON.parse(fs.readFileSync(file, "utf8")); } catch { throw Object.assign(new Error("Approval request is malformed"), { code: "APPROVAL_INVALID" }); } if (request.type !== "approval_request" || (decision !== "approve" && decision !== "reject") || typeof request.nonce !== "string" || request.nonce !== binding.nonce || request.run_id !== binding.runId || !Number.isFinite(request.expires_at) || Date.now() >= request.expires_at) throw Object.assign(new Error("Approval request is stale or mismatched"), { code: "APPROVAL_INVALID" }); const target = `${file}.response`; try { const targetStat = fs.lstatSync(target); if (targetStat.isSymbolicLink() || !targetStat.isFile()) throw Object.assign(new Error("Approval response path is not a regular file"), { code: "APPROVAL_INVALID" }); } catch (error) { if (error.code !== "ENOENT") throw error; } const temp = `${target}.tmp.${process.pid}.${crypto.randomBytes(6).toString("hex")}`; const fd = fs.openSync(temp, "wx", 0o600); try { fs.writeFileSync(fd, `${JSON.stringify({ decision, nonce: binding.nonce, run_id: binding.runId })}\n`, { encoding: "utf8" }); fs.fsyncSync(fd); } finally { fs.closeSync(fd); } try { fs.renameSync(temp, target); } catch (error) { try { fs.rmSync(temp, { force: true }); } catch {} throw error; } }, onProgress: event => { if (runId && !isNotification) { const progress = Number.isFinite(event.progress) ? event.progress : ({ intel: 1, plan: 2, work: 3, verify: 4, review: 5 }[event.phase] || 0); this._respond({ jsonrpc: "2.0", method: "notifications/progress", params: { progressToken: params._meta?.progressToken ?? params.meta?.progressToken ?? null, progress, total: 5, message: JSON.stringify({ phase: event.phase, state: event.state, run_id: runId, correlation_id: correlationId }) } }); } } });
        if (runId) { const run = this._runs.get(runId); if (run && run.state !== "cancelled" && !controller.signal.aborted) run.state = "completed"; if (run) { run.result = result; run.persistence = this._saveRunState(); } }
         reply({ jsonrpc: "2.0", id, result: { ...result, run_id: runId, correlation_id: correlationId, structuredContent: result.structuredContent || null, persistence: runId ? this._runs.get(runId)?.persistence || this._persistence : undefined, isError: result.isError === true } });
      } catch (error) { if (runId) { const run = this._runs.get(runId); if (run) { run.state = controller.signal.aborted ? "cancelled" : "failed"; run.result = { error: error.message }; run.persistence = this._saveRunState(); } } this._error(id, this._errorCode(error.code), error.message, error.code || "MCP_TOOL_ERROR", correlationId, { run_id: runId, persistence: runId ? this._runs.get(runId)?.persistence || this._persistence : undefined }, reply); }

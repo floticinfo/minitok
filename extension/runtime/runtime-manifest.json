@@ -188,8 +188,8 @@
       "embedded": "ff1d9e38f7e50104e849e7f4bf88d0e1b0c60433d2f3d946144047f2c49d1bc3"
     },
     "mcp/tools.js": {
-      "source": "9552fbe21f7ba87a60f213e0174e0a9b40381a69b4f828fa3aa3abbb38c50d18",
-      "embedded": "9552fbe21f7ba87a60f213e0174e0a9b40381a69b4f828fa3aa3abbb38c50d18"
+      "source": "71dc5b73d51407948db5c9e6da8b22165c5e45e2887fdea9ef36d6560a657f55",
+      "embedded": "71dc5b73d51407948db5c9e6da8b22165c5e45e2887fdea9ef36d6560a657f55"
     },
     "pipeline/check.js": {
       "source": "0c16bda31cfcf6135cda59d54b1bc630e84f6ecb222b51a2758a18dc5f389889",
@@ -280,8 +280,8 @@
       "embedded": "4023e87bc6dd66a33cd8bbaaab20cc07af46584ced03e6093aaa762e097fef02"
     },
     "runtime/stdio.js": {
-      "source": "318d484a89da1050d6bd35d0b1caf42ba2de7d997be1bcb6492335a6e5e1406c",
-      "embedded": "318d484a89da1050d6bd35d0b1caf42ba2de7d997be1bcb6492335a6e5e1406c"
+      "source": "5f94bbd6ab681499aa67a2144c900c9fa738dfa08ac0574056372429167cfd97",
+      "embedded": "5f94bbd6ab681499aa67a2144c900c9fa738dfa08ac0574056372429167cfd97"
     },
     "runtime/workspace.js": {
       "source": "1ccbe48769fd72363230d4a914849ce6b5fc52f5db6496e0b35ce8ac655ff220",

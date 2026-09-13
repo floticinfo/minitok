@@ -51,7 +51,7 @@ describe("M3 stdio MCP integration", () => {
     } finally { p.kill(); await wait(p); }
   });
 
-  it("resources and prompts require a paid entitlement", async () => {
+  it("resources and prompts are rejected before authentication", async () => {
     const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MINITOK_MCP_AUTH"))) } });
     try {
       const init = await send(p, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "test" } } });
@@ -63,18 +63,20 @@ describe("M3 stdio MCP integration", () => {
     } finally { p.kill(); await wait(p); }
   });
 
-  it("tools/list requires a paid entitlement", async () => {
+  it("tools/list is rejected before authentication", async () => {
     const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MINITOK_MCP_AUTH"))) } });
     try {
       await send(p, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "test" } } });
       p.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + "\n");
       const r = await send(p, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
-      assert.equal(r.error.data.type, "AUTH_REQUIRED");
+      // Authentication is checked before the entitlement gate, so an anonymous
+      // client never reaches it. tests/test-mcp-tool-transport.js covers the
+      // authenticated entitlement and scope paths.
       assert.equal(r.error.data.type, "AUTH_REQUIRED");
     } finally { p.kill(); await wait(p); }
   });
 
-  it("tools/call requires a paid entitlement", async () => {
+  it("tools/call is rejected before authentication", async () => {
     const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MINITOK_MCP_AUTH"))) } });
     try {
       await send(p, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "test" } } });
@@ -85,7 +87,7 @@ describe("M3 stdio MCP integration", () => {
     } finally { p.kill(); await wait(p); }
   });
 
-  it("tools/call rejects without a paid entitlement", async () => {
+  it("an anonymous knowledge query is rejected", async () => {
     const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MINITOK_MCP_AUTH"))) } });
     try {
       await send(p, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "test" } } });
@@ -96,10 +98,12 @@ describe("M3 stdio MCP integration", () => {
     } finally { p.kill(); await wait(p); }
   });
 
-  it("unknown method returns error", async () => {
+  it("an unknown method fails before method routing", async () => {
     const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MINITOK_MCP_AUTH"))) } });
     try {
       const r = await send(p, { jsonrpc: "2.0", id: 99, method: "nonexistent", params: {} });
+      // Authentication runs first, so METHOD_NOT_FOUND is only reachable for an
+      // authenticated session (covered in tests/test-mcp-tool-transport.js).
       assert.equal(r.error.data.type, "AUTH_REQUIRED");
     } finally { p.kill(); await wait(p); }
   });

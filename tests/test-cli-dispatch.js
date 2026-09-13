@@ -27,3 +27,24 @@ test("help and version avoid update checks", () => {
     assert.equal(result.status, 0);
   }
 });
+
+test("an unknown command is reported instead of reaching the default action", () => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-cli-"));
+  try {
+    const result = spawnSync(process.execPath, [bin, "statsu"], { env: { ...process.env, HOME: home, USERPROFILE: home, MINITOK_UPDATE_CHECK: "0" }, encoding: "utf8" });
+    const output = `${result.stdout}${result.stderr}`;
+    // commander routes an unmatched command to the default action, which used to
+    // print the bare-invocation hint (or open the GUI on a TTY) for a typo.
+    assert.equal(result.status, 1);
+    assert.match(output, /unknown command 'statsu'/);
+    assert.doesNotMatch(output, /Bare non-TTY usage/);
+    assert.doesNotMatch(output, /minitok gui/);
+  } finally { fs.rmSync(home, { recursive: true, force: true }); }
+});
+
+test("a typo in a valid command name is still rejected", () => {
+  const result = spawnSync(process.execPath, [bin, "runx", "task"], { env: { ...process.env, MINITOK_UPDATE_CHECK: "0" }, encoding: "utf8" });
+  assert.equal(result.status, 1);
+  assert.match(`${result.stdout}${result.stderr}`, /unknown command 'runx'/);
+});
+

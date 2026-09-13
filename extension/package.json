@@ -148,7 +148,7 @@
     "compile": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json",
     "test:host": "npm run compile && node dist/test/run-host.js",
-    "test": "npm run compile && node --test test/process-contract.test.js test/mcp-config.test.js && node dist/test/run-host.js"
+    "test": "npm run compile && node --test test/process-contract.test.js test/mcp-config.test.js test/version.test.js && node dist/test/run-host.js"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",

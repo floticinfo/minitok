@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Fixes
+
+- Fixed the MCP tools that take a `run_id` (`minitok_run_get`, `minitok_run_cancel`, `minitok_approve_run`, `minitok_reject_run`). The server overwrote the client-supplied id with `null`, so all four failed schema validation with `INVALID_PARAMS` on both transports. The file-backed approval flow documented for `minitok_run` works again.
+- Fixed the local MCP `read` scope not being read-only. `minitok_knowledge_record` and `minitok_observe` persist to the home directory but were annotated as non-destructive, so they ran under the default scope. Scope requirements now come from an explicit per-tool table.
+- Fixed unvalidated arguments reaching tool handlers. `minitok_run` accepted a `run_id` that no schema checked, while every other tool silently ignored one; the transport injects the server-generated id for `minitok_run` only, and handlers receive the validated argument object.
+- Fixed `minitok_analyze_failures` and `minitok_recommend_policy` rejecting the `project` argument their handlers read, which made every call analyze all projects instead of the requested one.
+- Fixed `RuntimeStdio` accepting and ignoring an injected `runPipeline`, which sent embedders and tests to the real pipeline.
+- Fixed an unknown command reaching the default CLI action, which opened the terminal interface on a TTY and printed the bare-invocation hint on a pipe.
+- Fixed the Extension CLI version gate: it rejected `minitok 1.3.12` because the CLI prints a product prefix, and rejected every future major release because major and minor were compared independently.
+
+### Extension
+
+- Moved the CLI compatibility check to `extension/src/version.ts` so it can be exercised under Node, with a test that asserts the gate accepts the exact string `minitok --version` prints.
+
+### Tests
+
+- Added transport-level coverage for the MCP tool surface (`tests/test-mcp-tool-transport.js`), which previously only tested unauthenticated requests and therefore never reached the entitlement, scope, or run_id paths.
+- Corrected stdio test names that claimed to verify the paid entitlement gate while asserting pre-authentication rejection.
+
 ## 1.3.12 - 2026-09-11
 
 ### Fixes

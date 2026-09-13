@@ -11,16 +11,36 @@ const TOOLS = [
   { name: "minitok_run_cancel", description: "Cancel an active minitok run", annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, inputSchema: { type: "object", properties: { run_id: { type: "string", minLength: 1, maxLength: 128 } }, required: ["run_id"], additionalProperties: false } },
 { name: "minitok_approve_run", description: "Approve a pending minitok change request", annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, inputSchema: { type: "object", properties: { approval_file: { type: "string", minLength: 1, maxLength: 4096 }, nonce: { type: "string", minLength: 16, maxLength: 128 }, run_id: { type: "string", minLength: 1, maxLength: 128 } }, required: ["approval_file", "nonce", "run_id"], additionalProperties: false } },
    { name: "minitok_reject_run", description: "Reject a pending minitok change request", annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, inputSchema: { type: "object", properties: { approval_file: { type: "string", minLength: 1, maxLength: 4096 }, nonce: { type: "string", minLength: 16, maxLength: 128 }, run_id: { type: "string", minLength: 1, maxLength: 128 } }, required: ["approval_file", "nonce", "run_id"], additionalProperties: false } },
-  { name: "minitok_run", description: "Run the minitok pipeline; repository changes require approval unless an explicitly permitted policy allows auto_accept.", annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, inputSchema: { type: "object", properties: { task: { type: "string", minLength: 1, maxLength: 20000 }, repo: { type: "string", minLength: 1, maxLength: 4096 }, workspace: { type: "string", minLength: 1, maxLength: 256 }, dry_run: { type: "boolean" }, auto_accept: { type: "boolean" }, provider_override: { type: "string", minLength: 1, maxLength: 256 }, approval_file: { type: "string", minLength: 1, maxLength: 4096 }, approval_timeout_ms: { type: "integer", minimum: 1000, maximum: 3600000 } }, required: ["task"], additionalProperties: false } },
+  { name: "minitok_run", description: "Run the minitok pipeline; repository changes require approval unless an explicitly permitted policy allows auto_accept.", annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, inputSchema: { type: "object", properties: { run_id: { type: "string", minLength: 1, maxLength: 128 }, task: { type: "string", minLength: 1, maxLength: 20000 }, repo: { type: "string", minLength: 1, maxLength: 4096 }, workspace: { type: "string", minLength: 1, maxLength: 256 }, dry_run: { type: "boolean" }, auto_accept: { type: "boolean" }, provider_override: { type: "string", minLength: 1, maxLength: 256 }, approval_file: { type: "string", minLength: 1, maxLength: 4096 }, approval_timeout_ms: { type: "integer", minimum: 1000, maximum: 3600000 } }, required: ["task"], additionalProperties: false } },
   { name: "minitok_knowledge_query", description: "Query past minitok outcomes", annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", properties: { limit: { type: "integer", minimum: 0, maximum: 1000 }, project: { type: "string", maxLength: 4096 } }, additionalProperties: false } },
   { name: "minitok_knowledge_record", description: "Record an evolution outcome", annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", properties: { goal: { type: "string", minLength: 1, maxLength: 2000 }, status: { type: "string", enum: ["success", "failure", "partial"] }, cycles: { type: "integer", minimum: 0, maximum: 10000 }, summary: { type: "string", maxLength: 20000 } }, required: ["goal", "status"], additionalProperties: false } },
-  { name: "minitok_analyze_failures", description: "Analyze failure patterns", annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", properties: {}, additionalProperties: false } },
-  { name: "minitok_recommend_policy", description: "Get execution policy recommendations", annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", properties: { current_policy: { type: "object", additionalProperties: false, properties: { max_cycles: { type: "integer", minimum: 0, maximum: 10000 } } } }, additionalProperties: false } },
+  { name: "minitok_analyze_failures", description: "Analyze failure patterns", annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", properties: { project: { type: "string", minLength: 1, maxLength: 4096 } }, additionalProperties: false } },
+  { name: "minitok_recommend_policy", description: "Get execution policy recommendations", annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", properties: { project: { type: "string", minLength: 1, maxLength: 4096 }, current_policy: { type: "object", additionalProperties: false, properties: { max_cycles: { type: "integer", minimum: 0, maximum: 10000 } } } }, additionalProperties: false } },
   { name: "minitok_compact_context", description: "Compact text to fit a token budget", annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", properties: { text: { type: "string", minLength: 1, maxLength: 1000000 }, budget_chars: { type: "integer", minimum: 100, maximum: 1000000 } }, required: ["text"], additionalProperties: false } },
   { name: "minitok_collect_evidence", description: "Collect project evidence", annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", properties: { project: { type: "string", minLength: 1, maxLength: 4096 } }, required: ["project"], additionalProperties: false } },
   { name: "minitok_status", description: "Show minitok status", annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", properties: {}, additionalProperties: false } },
   { name: "minitok_observe", description: "Submit redacted observation events", annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", properties: { project: { type: "string", maxLength: 4096 }, events: { type: "array", maxItems: 100, items: { type: "object", additionalProperties: true } } }, required: ["events"], additionalProperties: false } },
 ];
+
+/**
+ * Explicit scope requirements.
+ *
+ * The gate must not be derived from `annotations.destructiveHint`: MCP
+ * annotations describe whether a tool may perform *destructive* updates, and
+ * `minitok_knowledge_record` and `minitok_observe` are annotated as
+ * non-destructive because they only append. Both persist to the user's home
+ * directory though, so `read` would not mean read-only if destructiveHint were
+ * the only signal. Every tool that writes anything therefore needs `write`.
+ */
+const TOOL_SCOPES = Object.freeze({
+  minitok_run: "write",
+  minitok_run_cancel: "write",
+  minitok_approve_run: "write",
+  minitok_reject_run: "write",
+  minitok_knowledge_record: "write",
+  minitok_observe: "write",
+});
+function requiredScopeFor(name) { return TOOL_SCOPES[name] || "read"; }
 
 function getToolDefinitions() { return TOOLS; }
 function canonical(value) { return fs.realpathSync.native(path.resolve(value)); }
@@ -70,9 +90,14 @@ function validateArgs(name, args) {
   const definition = TOOLS.find(tool => tool.name === name);
   if (!definition) throw Object.assign(new Error(`Unknown tool: ${name}`), { code: "TOOL_NOT_FOUND" });
   const input = { ...args };
+  // Only tools that declare run_id may receive one. The transport injects a
+  // server-generated id for minitok_run; everywhere else a caller-supplied
+  // run_id would be an undeclared argument.
   if (!definition.inputSchema.properties?.run_id) delete input.run_id;
   validateSchema(input, definition.inputSchema, "arguments");
-  return args;
+  // Return the validated copy rather than the original arguments so a field the
+  // schema rejected is not reachable from the handler.
+  return input;
 }
 /**
  * stdout is the JSON-RPC channel for the stdio transport, so pipeline logging
@@ -104,7 +129,10 @@ function releaseStdoutGuard() {
   console.warn = original.warn;
 }
 async function _getToolHandler(name, args, services, runtimeOptions = {}) {
-  validateArgs(name, args);
+  // Handlers must only observe validated arguments, so adopt the sanitized copy.
+  // Previously the validated copy was discarded and the original object was used,
+  // which made the run_id rule below unreachable.
+  args = validateArgs(name, args);
   if (name === "minitok_run_list") return { content: [{ type: "text", text: JSON.stringify([...(runtimeOptions.recoveredRuns || []).map(run => ({ run_id: run.run_id, state: run.state, recovery: run.recovery || undefined })), ...[...runtimeOptions.runs?.values?.() || []].map(run => ({ run_id: run.runId, state: run.state || (run.controller.signal.aborted ? "cancelled" : "running"), persistence: run.persistence || runtimeOptions.persistence || null }))]) }] };
   if (name === "minitok_run_get") { const run = runtimeOptions.runs?.get?.(args.run_id) || (runtimeOptions.recoveredRuns || []).find(item => item.run_id === args.run_id); if (!run) throw Object.assign(new Error("Run not found"), { code: "RUN_NOT_FOUND" }); return { content: [{ type: "text", text: JSON.stringify({ run_id: run.runId || run.run_id, state: run.state || "unknown", recovery: run.recovery || undefined, persistence: run.persistence || runtimeOptions.persistence || null }) }] }; }
   if (name === "minitok_run_cancel") { const run = runtimeOptions.runs?.get?.(args.run_id); if (!run) throw Object.assign(new Error("Run not found"), { code: "RUN_NOT_FOUND" }); run.controller.abort(); run.state = "cancelled"; return { content: [{ type: "text", text: JSON.stringify({ run_id: args.run_id, state: "cancelled" }) }] }; }
@@ -151,4 +179,4 @@ async function getToolHandler(name, args, services, runtimeOptions = {}) {
     return { content: [{ type: "text", text: JSON.stringify(structuredContent) }], structuredContent, isError: true, error: { code, message: error.message } };
   }
 }
-module.exports = { getToolDefinitions, getToolHandler, validateArgs, MCP_ERROR_CODES, requireWorkspacePath, requireApprovalPath, acquireStdoutGuard, releaseStdoutGuard };
+module.exports = { getToolDefinitions, getToolHandler, validateArgs, MCP_ERROR_CODES, TOOL_SCOPES, requiredScopeFor, requireWorkspacePath, requireApprovalPath, acquireStdoutGuard, releaseStdoutGuard };

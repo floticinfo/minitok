@@ -10,6 +10,17 @@ if (process.env.MINITOK_NO_COLOR === "1" || !process.stdout.isTTY) { process.env
 const program = new Command();
 program.name("minitok").description("Repository-aware autonomous coding workflow driver").version(`minitok ${pkg.version}`);
 program.action(async () => {
+  // commander hands an unrecognized command to this default action instead of
+  // reporting it, so reject unknown operands first. Without this a typo such as
+  // `minitok statsu` silently opened the fullscreen interface on a TTY, and
+  // printed the bare-invocation hint on a pipe.
+  const unknownCommand = cliArgs.find(arg => !arg.startsWith("-"));
+  if (unknownCommand) {
+    console.error(`error: unknown command '${unknownCommand}'`);
+    console.error("Run 'minitok --help' to list the available commands.");
+    process.exitCode = 1;
+    return;
+  }
   if (!process.stdin.isTTY || !process.stdout.isTTY) {
     console.error("Bare non-TTY usage does not start the GUI or change files. Use 'minitok gui' in an interactive terminal, or 'minitok gui --task \"your task\"' for an explicit non-interactive run.");
     process.exitCode = 2;

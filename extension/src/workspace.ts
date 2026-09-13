@@ -4,6 +4,7 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import { execFileSync } from "node:child_process";
 import { packagedMcpCommand, parseMcpCommand } from "./mcp";
+import { isCliCompatible as cliVersionCompatible } from "./version";
 
 export function workspacePath() {
   const folders = vscode.workspace.workspaceFolders || [];
@@ -82,7 +83,5 @@ export function autoApprove() {
 }
 
 export function isCliCompatible(version: string) {
-  const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(version.trim());
-  if (!match) return false;
-  return Number(match[1]) >= 1 && Number(match[2]) >= 3;
+  return cliVersionCompatible(version);
 }
