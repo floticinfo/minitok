@@ -98,8 +98,15 @@ async function implement(provider, planResult, repoContext, options = {}) {
       temperature: 0.2,
     });
     result = response;
-    parsedResult = parseResponseJSON(response.text, { error: "No JSON", raw: response.text });
-    if (parsedResult.valid || attempt === attempts) break;
+    parsedResult = parseResponseJSON(response.text, {
+      // The provider's stop reason is preserved so a truncated body is reported as
+      // a truncation instead of as malformed output.
+      error: response.truncated ? `The model stopped at its output token limit (finish_reason: ${response.finish_reason}) before it produced valid JSON` : "No JSON",
+      raw: response.text,
+    });
+    // Retrying a token-limit overflow with the same budget costs another call and
+    // truncates again; fail with the real reason instead.
+    if (parsedResult.valid || response.truncated || attempt === attempts) break;
     messages.push({ role: "user", content: "Your previous response was not valid JSON. Return only the strict JSON object with a changes array; do not include markdown or explanation." });
   }
 

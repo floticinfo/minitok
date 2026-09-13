@@ -326,4 +326,82 @@ describe("provider reasoning parameters", () => {
     assert.equal(plain.reasoning_effort, undefined);
   });
 });
+describe("provider finish reason", () => {
+  function stubFetch(body) {
+    const calls = [];
+    const original = global.fetch;
+    global.fetch = async (url, options) => {
+      calls.push({ url, options });
+      return new Response(JSON.stringify(body), { status: 200, headers: { "content-type": "application/json" } });
+    };
+    return { calls, restore: () => { global.fetch = original; } };
+  }
+
+  /** Complete one request against a stubbed provider response. */
+  async function completeWith(name, config, body, options = {}) {
+    const originalLookup = dns.lookup;
+    dns.lookup = async () => [{ address: "93.184.216.34", family: 4 }];
+    const stub = stubFetch(body);
+    try {
+      const provider = createProvider(name, config);
+      return await provider.complete([{ role: "user", content: "hi" }], options);
+    } finally {
+      stub.restore();
+      dns.lookup = originalLookup;
+    }
+  }
+
+  // Without the stop reason a reply cut off by the output budget was
+  // indistinguishable from a model that ignored the requested format, so the run
+  // retried, escalated, and paid for the same overflow again.
+
+  it("reports an Anthropic reply cut off by max_tokens", async () => {
+    const truncated = await completeWith("anthropic", { model: "claude-sonnet-5", api_key: "key" }, { model: "claude-sonnet-5", stop_reason: "max_tokens", content: [{ type: "text", text: "{\"changes\":[" }], usage: { input_tokens: 1, output_tokens: 2 } });
+    assert.equal(truncated.finish_reason, "max_tokens");
+    assert.equal(truncated.truncated, true);
+    const complete = await completeWith("anthropic", { model: "claude-sonnet-5", api_key: "key" }, { model: "claude-sonnet-5", stop_reason: "end_turn", content: [{ type: "text", text: "{}" }] });
+    assert.equal(complete.finish_reason, "end_turn");
+    assert.equal(complete.truncated, false);
+  });
+
+  it("reports an OpenAI reply cut off by the output budget", async () => {
+    const truncated = await completeWith("openai", { model: "gpt-4o", api_key: "key" }, { model: "gpt-4o", choices: [{ message: { content: "{\"changes\":[" }, finish_reason: "length" }] });
+    assert.equal(truncated.finish_reason, "length");
+    assert.equal(truncated.truncated, true);
+    const complete = await completeWith("openai", { model: "gpt-4o", api_key: "key" }, { model: "gpt-4o", choices: [{ message: { content: "{}" }, finish_reason: "stop" }] });
+    assert.equal(complete.truncated, false);
+  });
+
+  it("reports a Google reply cut off by MAX_TOKENS", async () => {
+    const truncated = await completeWith("google", { model: "gemini-2.5-pro", api_key: "key" }, { candidates: [{ content: { parts: [{ text: "{\"changes\":[" }] }, finishReason: "MAX_TOKENS" }] });
+    assert.equal(truncated.finish_reason, "MAX_TOKENS");
+    assert.equal(truncated.truncated, true);
+    const complete = await completeWith("google", { model: "gemini-2.5-pro", api_key: "key" }, { candidates: [{ content: { parts: [{ text: "{}" }] }, finishReason: "STOP" }] });
+    assert.equal(complete.truncated, false);
+  });
+
+  it("reports an OpenAI-compatible gateway reply cut off by the output budget", async () => {
+    const truncated = await completeWith("custom", { base_url: "https://gateway.example/v1", model: "local", api_key: "key" }, { model: "local", choices: [{ message: { content: "{\"changes\":[" }, finish_reason: "length" }] });
+    assert.equal(truncated.finish_reason, "length");
+    assert.equal(truncated.truncated, true);
+  });
+
+  it("surfaces the stop reason instead of an empty successful response", async () => {
+    // A refusal, a tool-only turn, and a Google safety block all arrive with an
+    // empty text: returning "" surfaced downstream as "No JSON in response".
+    await assert.rejects(
+      () => completeWith("anthropic", { model: "claude-sonnet-5", api_key: "key" }, { stop_reason: "tool_use", content: [{ type: "tool_use", id: "t", name: "x", input: {} }] }),
+      /returned no text \(stop_reason: tool_use\)/
+    );
+    await assert.rejects(
+      () => completeWith("openai", { model: "gpt-4o", api_key: "key" }, { choices: [{ message: { content: "" }, finish_reason: "content_filter" }] }),
+      /returned no text \(finish_reason: content_filter\)/
+    );
+    await assert.rejects(
+      () => completeWith("google", { model: "gemini-2.5-pro", api_key: "key" }, { promptFeedback: { blockReason: "SAFETY" }, candidates: [] }),
+      /blocked \(blockReason: SAFETY\)/
+    );
+  });
+});
+
 

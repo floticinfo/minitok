@@ -44,6 +44,9 @@ async function plan(provider, task, repoContext, options = {}) {
   let plan;
   const { parsed, valid } = parseResponseJSON(result.text, { error: "No JSON in response", raw: result.text });
   plan = valid ? parsed : { error: parsed.error || "Invalid JSON", raw: parsed.raw || result.text };
+  // A reply cut off by the output token limit is not a formatting mistake. Say so
+  // instead of letting the run retry, escalate and pay for the same overflow.
+  if (!valid && result.truncated) plan = { error: `The model stopped at its output token limit (finish_reason: ${result.finish_reason}) before it produced valid JSON`, raw: plan.raw, truncated: true };
 
   return { plan, tokens: result.tokens, model: result.model, usage: result.usage };
 }

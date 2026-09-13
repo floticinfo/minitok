@@ -400,7 +400,14 @@ class AnthropicProvider extends LLMProvider {
     if (!res.ok) throw providerError("Anthropic", res.status, await providerErrorDetail(res));
     const data = await res.json();
     const textBlocks = (data.content || []).filter(b => b.type === "text");
-    return { text: textBlocks.map((b) => b.text).join("") || "", model: data.model, usage: data.usage || {}, tokens: _countTokens(data.usage) };
+    const text = textBlocks.map((b) => b.text).join("") || "";
+    // The provider's own stop reason is the only place the real cause of an
+    // unusable response lives. Without it a refusal (or a turn that produced only
+    // tool calls) surfaced downstream as "No JSON in response", and a body cut off
+    // by max_tokens was indistinguishable from a model that ignored the format.
+    const finishReason = data.stop_reason || null;
+    if (!text && finishReason) throw providerError("Anthropic", 200, `the model returned no text (stop_reason: ${finishReason})`);
+    return { text, model: data.model, usage: data.usage || {}, tokens: _countTokens(data.usage), finish_reason: finishReason, truncated: finishReason === "max_tokens" };
   }
 }
 
@@ -448,7 +455,14 @@ class OpenAIProvider extends LLMProvider {
     });
     if (!res.ok) throw providerError("OpenAI", res.status, await providerErrorDetail(res));
     const data = await res.json();
-    return { text: data.choices?.[0]?.message?.content || "", model: data.model, usage: data.usage || {}, tokens: _countTokens(data.usage) };
+    const choice = data.choices?.[0];
+    // `length` means the reply was cut off by the output token budget. Reasoning
+    // models bill their reasoning tokens against the same budget, so a truncated
+    // answer is common and used to be reported as malformed JSON.
+    const finishReason = choice?.finish_reason || null;
+    const text = choice?.message?.content || "";
+    if (!text && finishReason) throw providerError("OpenAI", 200, `the model returned no text (finish_reason: ${finishReason})`);
+    return { text, model: data.model, usage: data.usage || {}, tokens: _countTokens(data.usage), finish_reason: finishReason, truncated: finishReason === "length" };
   }
 }
 
@@ -495,10 +509,19 @@ class GoogleProvider extends LLMProvider {
     });
     if (!res.ok) throw providerError("Google", res.status, await providerErrorDetail(res));
     const data = await res.json();
+    // A request that Gemini refuses is answered with no candidates at all and a
+    // prompt-level blockReason. Returning an empty string turned a safety block
+    // into "No JSON in response" and hid the actual reason from the operator.
+    const blockReason = data.promptFeedback?.blockReason || null;
+    if (blockReason) throw providerError("Google", 200, `the request was blocked (blockReason: ${blockReason})`);
+    const candidate = data.candidates?.[0];
+    const finishReason = candidate?.finishReason || null;
     // Filter out thought parts from candidates
-    const parts = data.candidates?.[0]?.content?.parts || [];
+    const parts = candidate?.content?.parts || [];
     const textParts = parts.filter(p => !p.thought);
-    return { text: textParts.map((p) => p.text).join("") || "", model, usage: data.usageMetadata || {}, tokens: _countTokens(data.usageMetadata) };
+    const text = textParts.map((p) => p.text).join("") || "";
+    if (!text && finishReason) throw providerError("Google", 200, `the model returned no text (finishReason: ${finishReason})`);
+    return { text, model, usage: data.usageMetadata || {}, tokens: _countTokens(data.usageMetadata), finish_reason: finishReason, truncated: finishReason === "MAX_TOKENS" };
   }
 }
 
@@ -561,7 +584,11 @@ class CustomProvider extends LLMProvider {
     const res = await fetchWithTimeout(`${endpointTransport.url}${apiPath}`, { method: "POST", headers: requestHeaders, body: JSON.stringify(body), signal: options.signal, timeout_ms: options.timeout_ms, ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}) });
     if (!res.ok) throw providerError(this.name, res.status, await providerErrorDetail(res));
     const data = await res.json();
-    return { text: data.choices?.[0]?.message?.content || "", model: data.model || model, usage: data.usage || {}, tokens: _countTokens(data.usage) };
+    const choice = data.choices?.[0];
+    const finishReason = choice?.finish_reason || null;
+    const text = choice?.message?.content || "";
+    if (!text && finishReason) throw providerError(this.name, 200, `the model returned no text (finish_reason: ${finishReason})`);
+    return { text, model: data.model || model, usage: data.usage || {}, tokens: _countTokens(data.usage), finish_reason: finishReason, truncated: finishReason === "length" };
   }
   static async fetchModels(baseUrl, apiKey, auth = {}, providerName = "custom") {
     if (!baseUrl) return [];

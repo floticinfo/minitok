@@ -7,6 +7,9 @@ const os = require("node:os");
 const path = require("node:path");
 const { intel } = require("./intel");
 const { verifyCommand } = require("./check");
+const { plan } = require("./planner");
+const { implement } = require("./implementer");
+const { verify } = require("./verifier");
 const { buildRepairTask } = require("./repair");
 const { approvalRequest, validateApprovalResponse, writeApprovalRequest, buildRoleOptions } = require("./loop");
 
@@ -148,5 +151,45 @@ describe("Pipeline stages", () => {
     } finally {
       fs.rmSync(directory, { recursive: true, force: true });
     }
+  });
+
+  // A reply cut off by the output token budget is not a formatting mistake: it
+  // used to be reported as "Invalid JSON", which sent the operator (and the repair
+  // loop) after the wrong problem and paid for the same overflow again.
+
+  const truncatedReply = finish_reason => ({ text: "{\"steps\": [", tokens: { input: 1, output: 2 }, model: "mock", finish_reason, truncated: true });
+
+  it("reports a truncated planner reply as a token limit instead of invalid JSON", async () => {
+    const provider = { complete: async () => truncatedReply("max_tokens") };
+    const result = await plan(provider, "task", "context");
+    assert.match(result.plan.error, /stopped at its output token limit \(finish_reason: max_tokens\)/);
+    assert.equal(result.plan.truncated, true);
+    assert.doesNotMatch(result.plan.error, /Invalid JSON|No JSON/);
+  });
+
+  it("reports a truncated review as a token limit as well", async () => {
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-review-"));
+    try {
+      const provider = { complete: async () => truncatedReply("length") };
+      const result = await verify(provider, "task", { changes: { changes: [] }, check: { passed: true } }, repo);
+      assert.match(result.review.error, /stopped at its output token limit \(finish_reason: length\)/);
+      assert.equal(result.review.truncated, true);
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("does not retry a truncated implementation, but still retries malformed JSON", async () => {
+    let truncatedCalls = 0;
+    const truncatedProvider = { complete: async () => { truncatedCalls += 1; return { ...truncatedReply("length"), text: "{\"changes\": [" }; } };
+    const truncated = await implement(truncatedProvider, { plan: { steps: [] } }, "context");
+    assert.equal(truncatedCalls, 1, "retrying a token-limit overflow with the same budget only truncates again");
+    assert.match(truncated.changes.error, /stopped at its output token limit \(finish_reason: length\)/);
+
+    let attempts = 0;
+    const flakyProvider = { complete: async () => { attempts += 1; return { text: attempts === 1 ? "not json at all" : JSON.stringify({ changes: [] }), tokens: { input: 1, output: 1 }, model: "mock", finish_reason: "stop", truncated: false }; } };
+    const repaired = await implement(flakyProvider, { plan: { steps: [] } }, "context");
+    assert.equal(attempts, 2, "a malformed reply is still worth one retry");
+    assert.deepEqual(repaired.changes.changes, []);
   });
 });

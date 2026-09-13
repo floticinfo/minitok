@@ -47,6 +47,9 @@ async function verify(provider, task, changesResult, repoRoot, options = {}) {
   let review;
   const { parsed, valid } = parseResponseJSON(result.text, { error: "No JSON", raw: result.text });
   review = valid ? parsed : { error: parsed.error || "Invalid JSON", raw: parsed.raw || result.text };
+  // Keep the provider's stop reason: a review recorded as "Invalid JSON" because
+  // the answer was truncated points the operator at the wrong problem.
+  if (!valid && result.truncated) review = { error: `The model stopped at its output token limit (finish_reason: ${result.finish_reason}) before it produced valid JSON`, raw: review.raw, truncated: true };
 
   return { review, tokens: result.tokens, model: result.model };
 }
