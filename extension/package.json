@@ -6,7 +6,7 @@
   "version": "0.2.6",
   "minitok": {
     "cliPackage": "@flotic/minitok",
-    "cliVersion": "1.3.12"
+    "cliVersion": "1.3.13"
   },
   "author": "Flotic",
   "license": "SEE LICENSE IN LICENSE",
