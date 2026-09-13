@@ -94,7 +94,7 @@ export function validateApprovalManifest(manifest, { packageData: expectedPackag
 }
 
 export function readApprovalManifest(manifestPath = process.env[manifestEnvironmentVariable]) {
-  if (!manifestPath) return { state: "MISSING", errors: ["approval manifest path was not supplied"] };
+  if (!manifestPath) return { state: "MISSING", errors: [`approval manifest path was not supplied (${manifestEnvironmentVariable}); start from scripts/approval-manifest.example.json`] };
   const resolvedPath = path.resolve(manifestPath);
   try {
     const manifest = JSON.parse(fs.readFileSync(resolvedPath, "utf8"));
@@ -113,7 +113,7 @@ export function evaluateCommercialReadiness(documentReader = file => fs.readFile
     const structured = !requirement.structured || Object.values(approval?.[requirement.structured] || {}).every(value => typeof value === "string" && value.trim());
     const approved = approval?.status === "APPROVED" && approval.owner.trim() && approval.decision.trim() && structured;
     const status = markers.length && requirement.status === "BLOCKED" ? "BLOCKED" : approved ? "PASS" : "UNVERIFIED";
-    const detail = approved ? "explicit approval manifest evidence supplied" : manifest.state === "MALFORMED" ? "approval manifest is malformed" : manifest.state === "MISSING" ? "approval manifest was not supplied" : "explicit approval is not recorded";
+    const detail = approved ? "explicit approval manifest evidence supplied" : manifest.state === "MALFORMED" ? "approval manifest is malformed" : manifest.state === "MISSING" ? "approval manifest was not supplied; start from scripts/approval-manifest.example.json" : "explicit approval is not recorded";
     return { id: requirement.id, status, markers, approvalState: approved ? "APPROVED" : manifest.state, detail };
   });
 }
