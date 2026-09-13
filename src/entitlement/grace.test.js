@@ -111,3 +111,38 @@ describe("offline grace (server unreachable)", () => {
     assert.ok(state.last_validated_at, "last_validated_at must be persisted on success");
   });
 });
+describe("gate state persistence", () => {
+  it("overwrites the stored state with the latest write", () => {
+    const stateDir = tmpDir();
+    saveGateState({ latest_observed_at: 1, last_validated_at: null }, stateDir);
+    saveGateState({ latest_observed_at: 2, last_validated_at: "2026-01-01T00:00:00Z" }, stateDir);
+    const state = loadGateState(stateDir);
+    assert.equal(state.latest_observed_at, 2);
+    assert.equal(state.last_validated_at, "2026-01-01T00:00:00Z");
+    fs.rmSync(stateDir, { recursive: true, force: true });
+  });
+
+  it("replaces the target without removing it first (Windows)", { skip: process.platform !== "win32" }, () => {
+    const stateDir = tmpDir();
+    saveGateState({ latest_observed_at: 1, last_validated_at: null }, stateDir);
+    const originalRename = fs.renameSync;
+    let renames = 0;
+    // The first replace is refused the way Windows refuses a busy target: the
+    // code must retry through its fallback instead of unlinking first. Counting
+    // renames proves the order — a pre-emptive unlink would rename only once.
+    fs.renameSync = (...args) => {
+      renames += 1;
+      if (renames === 1) throw Object.assign(new Error("EPERM: operation not permitted"), { code: "EPERM" });
+      return originalRename(...args);
+    };
+    try {
+      saveGateState({ latest_observed_at: 3, last_validated_at: null }, stateDir);
+    } finally {
+      fs.renameSync = originalRename;
+    }
+    assert.equal(renames, 2, "the atomic replace is attempted before any fallback");
+    assert.equal(loadGateState(stateDir).latest_observed_at, 3);
+    fs.rmSync(stateDir, { recursive: true, force: true });
+  });
+});
+

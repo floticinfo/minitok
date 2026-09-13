@@ -82,10 +82,20 @@ function saveGateState(state, entitlementDir) {
   const tmp = `${fp}.tmp.${process.pid}.${Date.now()}.${require("crypto").randomBytes(8).toString("hex")}`;
   try {
     fs.writeFileSync(tmp, JSON.stringify(state, null, 2), { encoding: "utf-8", flag: "wx", mode: 0o600 });
-    if (process.platform === "win32") {
-      try { fs.unlinkSync(fp); } catch (error) { if (error.code !== "ENOENT") throw error; }
+    try {
+      // rename() replaces the destination atomically on every platform (Windows
+      // MOVEFILE_REPLACE_EXISTING). This used to unlink the target first on
+      // win32, which opened a window with no gate state on disk and threw EPERM
+      // whenever another handle held the file — aborting the entitlement check
+      // itself. Same pattern as entitlement/store.js.
+      fs.renameSync(tmp, fp);
+    } catch (error) {
+      if (process.platform !== "win32") throw error;
+      // Windows can refuse to replace a file another handle has open; clear the
+      // target instead of failing the write.
+      try { fs.unlinkSync(fp); } catch (unlinkError) { if (unlinkError.code !== "ENOENT") throw unlinkError; }
+      fs.renameSync(tmp, fp);
     }
-    fs.renameSync(tmp, fp);
     setOwnerOnlyPermissions(fp);
   } catch (error) {
     try { fs.unlinkSync(tmp); } catch {}
