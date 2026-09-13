@@ -376,12 +376,12 @@ remains is the install command, which follows the npm publish.
 production copy is the `website/` directory of the server repository
 (`floticinfo/minitok-server`), bind-mounted read-only into the Caddy container as
 `/opt/minitok/website`, so a page is changed by editing that directory on the VM. The
-server repository's copies were updated with the same legal text on 2026-09-13, keeping
-its own markup, and its website contract tests were updated with them; its tree still
-carries unrelated in-progress work, so those edits are left uncommitted there. The
-website workspace (`minitok-website/`) keeps its own `static/` prototype, which
-`deployment/deploy.sh` marks obsolete, and the uploaded files, backups, before/after
-strings, and rollback commands are kept in
+server repository's copies carry the same legal text and the cancellation naming (the
+address, section 9, and the dates were already aligned there, and the naming was applied
+to them on 2026-09-13); those edits are left uncommitted in its working tree, which also
+holds unrelated in-progress work. The website workspace (`minitok-website/`) keeps its
+own `static/` prototype, which `deployment/deploy.sh` marks obsolete, and the uploaded
+files, backups, before/after strings, and rollback commands are kept in
 `minitok-website/legal-consistency-20260913/`. The floticinfo.com footer was aligned and
 deployed to Firebase Hosting the same day.
 
