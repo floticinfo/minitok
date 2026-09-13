@@ -1,7 +1,10 @@
 {
   "_howTo": [
-    "This is a template, not an approval. Copy it outside the repository, replace",
-    "every PENDING/TODO/TBD/REPLACE_ME value, then verify with:",
+    "This is a template, not an approval. Prefer the helper, which fills the",
+    "machine values for you:",
+    "  node scripts/approval-manifest-prepare.mjs --out <path outside the repository>",
+    "Otherwise copy this file outside the repository, replace every",
+    "PENDING/TODO/TBD/REPLACE_ME value, then verify with:",
     "  MINITOK_COMMERCIAL_APPROVAL_MANIFEST=<path to filled copy> npm run release:verify",
     "  npm run commercial:readiness -- --manifest <path to filled copy>",
     "Where each value comes from:",

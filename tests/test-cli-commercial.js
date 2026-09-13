@@ -43,5 +43,23 @@ test("the approval manifest example is fail-closed until the owners record decis
   assert.deepEqual(validateApprovalManifest(filled), [], "a copy filled in as documented validates");
 });
 
+test("the preparation helper fills machine values and stays fail-closed", async () => {
+  const { execFileSync } = require("node:child_process");
+  const { validateApprovalManifest } = await import("../scripts/commercial-readiness.mjs");
+  const dir = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "minitok-approval-prep-"));
+  const out = path.join(dir, "approvals.json");
+  const output = execFileSync(process.execPath, [path.join(__dirname, "..", "scripts", "approval-manifest-prepare.mjs"), "--out", out], { encoding: "utf8" });
+  assert.match(output, /notAnApproval/);
+  const releaseManifest = JSON.parse(fs.readFileSync(path.join(__dirname, "..", "release-manifest.json"), "utf8"));
+  const prepared = JSON.parse(fs.readFileSync(out, "utf8"));
+  assert.equal(prepared.release.version, pkg.version, "the CLI version is filled in");
+  assert.equal(prepared.release.artifacts.cli.version, pkg.version);
+  assert.equal(prepared.release.artifacts.cli.sha256, releaseManifest.release.artifact.sha256, "the recorded tarball hash is filled in");
+  // The VSIX hash is only knowable once the extension has been packaged.
+  assert.ok([extensionPkg.version, "PENDING"].includes(prepared.release.artifacts.vsix.version), "the Extension version is filled in or explicitly unresolved");
+  assert.ok(validateApprovalManifest(prepared).includes("manifest contains unresolved placeholder values"), "unfinished decisions must be rejected");
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
 
 test("release verification includes unresolved commercial readiness", () => { const source = fs.readFileSync(path.join(__dirname, "..", "scripts", "release-verify.mjs"), "utf8"); assert.match(source, /evaluateCommercialReadiness/); assert.match(source, /BLOCKED|UNVERIFIED/); });
