@@ -13,11 +13,23 @@ const ISOLATION_TMP_PREFIX = "minitok-isolation-";
 // Workspaces are removed in a `finally` block, so anything untouched for this
 // long belongs to a run that no longer exists.
 const ISOLATION_RETENTION_MS = 6 * 60 * 60 * 1000;
+/** Upper bound for any git command this module runs, in milliseconds. */
+const GIT_TIMEOUT_MS = 30000;
 
 const workspaceBaselines = new Map();
 
 function runGit(repo, args) {
-  return execFileSync("git", args, { cwd: repo, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+  // A git command that waits for credentials (a private remote, a credential
+  // helper prompt) would otherwise hang the pipeline forever while it holds the
+  // run lock. The same guard already exists for the other git wrapper
+  // (src/git/operations.js), which caps every call at 30s.
+  return execFileSync("git", args, {
+    cwd: repo,
+    encoding: "utf8",
+    stdio: ["pipe", "pipe", "pipe"],
+    timeout: GIT_TIMEOUT_MS,
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+  }).trim();
 }
 
 function sameWorkspacePath(left, right) {
