@@ -13,7 +13,7 @@ const { intel } = require("./intel");
 const { plan } = require("./planner");
 const { implement, applyChanges, DEFAULT_BLOCKED_EXTENSIONS } = require("./implementer");
 const { verify } = require("./verifier");
-const { verifyCommand } = require("./check");
+const { verifyCommandAsync } = require("./check");
 const { buildRepairTask } = require("./repair");
 const { writeContract, writeContextManifest, readContract } = require("../state/contracts");
 const { recordRunEvidence } = require("../run-evidence");
@@ -565,7 +565,11 @@ async function runPipelineInWorkspace(task, opts = {}) {
     const checkResult = opts.dryRun
       ? { passed: true, evidence: { status: "skipped", command: "dry-run", output: "" } }
       : validationEnabled
-        ? verifyCommand(repoRoot, { script_path: config.validation?.script_path, timeout_ms: config.validation?.timeout_ms })
+        // Awaited, not execFileSync: this pipeline can also run inside the
+        // long-lived host process (the MCP stdio server), where a synchronous gate
+        // would freeze /health, /status and every other MCP session (and its
+        // request timeout) for the whole gate run.
+        ? await verifyCommandAsync(repoRoot, { script_path: config.validation?.script_path, timeout_ms: config.validation?.timeout_ms })
         : { passed: true, evidence: { status: "skipped", command: "validation.enabled=false", output: "Verification command skipped by configuration." } };
     opts.onProgress?.({ phase: "verify", state: "completed", cycle, passed: checkResult.passed, total_tokens: results.totalTokens, total_cost: results.totalCost });
 

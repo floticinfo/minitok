@@ -2,7 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { execFileSync } = require("child_process");
+const { execFileSync, execFile } = require("child_process");
 
 function getVerifyCommandPath(repoRoot, configuredPath) {
   const relativePath = configuredPath || "VERIFY_CMD.sh";
@@ -135,6 +135,110 @@ function syncCanonicalRuntime(repoRoot) {
   }
 }
 
+/**
+ * Asynchronous twin of `runProcess`.
+ *
+ * The verification gate is repository-controlled code that may legitimately take
+ * minutes. Running it with `execFileSync` inside the runtime/MCP server blocks
+ * the single event loop that also serves `/health`, `/readyz`, `/status`, other
+ * MCP sessions and their request timeouts, so one cycle of the pipeline looked
+ * like an outage to every other client of the same process. The pipeline uses
+ * this variant; the synchronous one stays for callers that need the old
+ * contract.
+ */
+function runProcessAsync(command, args, repoRoot, options = {}) {
+  const started = Date.now();
+  const commandLine = [command, ...args].join(" ");
+  // Built before the call because `execFile`'s TypeScript overloads omit `stdio`
+  // even though Node forwards it to spawn; a hoisted object is not subject to the
+  // excess-property check that a literal would trip. The sync twin above passes the
+  // same stdio so both variants ignore repository stdin and capture both streams.
+  const spawnOptions = { cwd: repoRoot, env: options.env || verificationEnvironment(), encoding: "utf-8", timeout: options.timeout_ms || 120000, stdio: ["ignore", "pipe", "pipe"] };
+  return new Promise(resolve => {
+    let child;
+    try {
+      child = execFile(command, args, spawnOptions, (error, stdout, stderr) => {
+        const output = `${stdout || ""}${stderr || ""}`.slice(-4000);
+        if (error) resolve({ status: "failed", command: commandLine, output, duration_ms: Date.now() - started, exit_code: typeof error.code === "number" ? error.code : 1 });
+        else resolve({ status: "passed", command: commandLine, output: String(stdout || "").slice(-4000), duration_ms: Date.now() - started, exit_code: 0 });
+      });
+    } catch (error) {
+      resolve({ status: "failed", command: commandLine, output: error.message, duration_ms: Date.now() - started, exit_code: 1 });
+      return;
+    }
+    child.on("error", error => resolve({ status: "failed", command: commandLine, output: error.message, duration_ms: Date.now() - started, exit_code: 1 }));
+  });
+}
+
+async function syncCanonicalRuntimeAsync(repoRoot) {
+  try {
+    const packagePath = path.join(repoRoot, "package.json");
+    if (!fs.existsSync(packagePath)) return null;
+    const packageJson = JSON.parse(fs.readFileSync(packagePath, "utf8"));
+    if (packageJson.name !== "@flotic/minitok") return null;
+    const script = path.join(repoRoot, "scripts", "sync-extension-runtime.mjs");
+    if (!fs.existsSync(script)) return null;
+    return await runProcessAsync(process.execPath, [script], repoRoot, { timeout_ms: 120000, env: verificationEnvironment() });
+  } catch (error) {
+    return { status: "failed", command: "sync-extension-runtime", output: error.message, exit_code: 1, duration_ms: 0 };
+  }
+}
+
+async function runVerificationAsync(repoRoot, options = {}) {
+  const configuredPath = options.script_path || "VERIFY_CMD.sh";
+  const scriptPath = getVerifyCommandPath(repoRoot, configuredPath);
+  const isNodeGate = configuredPath.endsWith(".mjs");
+  if (isNodeGate) {
+    if (!fs.existsSync(scriptPath)) {
+      return {
+        status: "missing",
+        command: scriptPath,
+        output: `Verification script was not found: ${scriptPath}. Run 'minitok migrate' to create one, or set validation.script_path in minitok.yml.`,
+        duration_ms: 0,
+        exit_code: 1,
+      };
+    }
+    const bundledRoot = path.resolve(__dirname, "../../scripts");
+    const canonicalScript = fs.realpathSync(scriptPath);
+    if (canonicalScript === path.join(bundledRoot, "verify.mjs") || canonicalScript === path.join(bundledRoot, "release-verify.mjs")) {
+      return { status: "failed", command: scriptPath, output: "Bundled minitok verification scripts cannot be used as the customer gate. Set validation.script_path to a repo-local VERIFY_CMD.mjs.", duration_ms: 0, exit_code: 1 };
+    }
+    return runProcessAsync(process.execPath, [scriptPath], repoRoot, options);
+  }
+  if (!fs.existsSync(scriptPath)) {
+    return { status: "missing", command: scriptPath, output: "Verification script was not found", duration_ms: 0, exit_code: 1 };
+  }
+  if (process.platform === "win32" && !(options.command && options.command !== "bash") && !bashAvailable()) {
+    const mjsPath = path.join(repoRoot, "VERIFY_CMD.mjs");
+    if (fs.existsSync(mjsPath)) {
+      const fallback = await runVerificationAsync(repoRoot, { ...options, script_path: "VERIFY_CMD.mjs" });
+      return { ...fallback, output: `[Windows fallback: VERIFY_CMD.sh requires Git Bash; used VERIFY_CMD.mjs instead]\n${fallback.output}`.slice(-4000) };
+    }
+    return {
+      status: "failed",
+      command: "bash",
+      output: "VERIFY_CMD.sh requires a bash runtime on Windows. Install Git Bash (and add it to PATH) or switch the gate to VERIFY_CMD.mjs in minitok.yml (validation.script_path).",
+      duration_ms: 0,
+      exit_code: 1,
+    };
+  }
+  const command = options.command || "bash";
+  const executablePath = process.platform === "win32" && path.isAbsolute(scriptPath)
+    ? `/${scriptPath[0].toLowerCase()}${scriptPath.slice(2).replace(/\\/g, "/")}`
+    : scriptPath;
+  const args = options.args || [executablePath];
+  return runProcessAsync(command, args, repoRoot, options);
+}
+
+async function verifyCommandAsync(repoRoot, options = {}) {
+  // Same contract as verifyCommand, but every child process is spawned
+  // asynchronously so the event loop keeps serving the runtime's other clients.
+  const sync = await syncCanonicalRuntimeAsync(repoRoot);
+  if (sync && sync.status !== "passed") return { passed: false, evidence: sync };
+  const evidence = await runVerificationAsync(repoRoot, options);
+  return { passed: evidence.status === "passed" && evidence.exit_code === 0, evidence };
+}
+
 function verifyCommand(repoRoot, options = {}) {
   const sync = syncCanonicalRuntime(repoRoot);
   if (sync && sync.status !== "passed") return { passed: false, evidence: sync };
@@ -142,4 +246,4 @@ function verifyCommand(repoRoot, options = {}) {
   return { passed: evidence.status === "passed" && evidence.exit_code === 0, evidence };
 }
 
-module.exports = { runVerification, verifyCommand, bashAvailable, bashRuntime, verificationEnvironment, syncCanonicalRuntime };
+module.exports = { runVerification, runVerificationAsync, verifyCommand, verifyCommandAsync, runProcessAsync, bashAvailable, bashRuntime, verificationEnvironment, syncCanonicalRuntime, syncCanonicalRuntimeAsync };
