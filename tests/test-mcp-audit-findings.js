@@ -5,7 +5,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { RuntimeStdio } = require("../src/runtime/test-seam");
-const { requireApprovalPath, getToolHandler } = require("../src/mcp/tools");
+const { requireApprovalPath, getToolHandler, getToolDefinitions, requiredScopeFor } = require("../src/mcp/tools");
 const { writeConfig, planChange } = require("../src/cli/commands/mcp");
 
 test("stdio auth accepts bearer and rotated tokens with expiry and revoke", () => {
@@ -82,7 +82,7 @@ test("stdio authenticates a session from the installation token file", async () 
     const init = await request({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05" } });
     const tools = await request({ jsonrpc: "2.0", id: 2, method: "tools/list", params: { authToken: "fixture-auth-token" } });
     assert.equal(init.result.protocolVersion, "2024-11-05");
-    assert.equal(tools.result.tools.length >= 14, true);
+    assert.equal(tools.result.tools.length, getToolDefinitions().filter(tool => requiredScopeFor(tool.name) === "read").length, "an unconfigured grant is read-only, and tools/list must say so");
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 

@@ -6,6 +6,10 @@ const path = require("node:path");
 const { RuntimeStdio } = require("../src/runtime/test-seam");
 const script = path.resolve(__dirname, "../src/runtime/stdio-entry.js");
 const authToken = "compat-test-token";
+const { getToolDefinitions, requiredScopeFor } = require("../src/mcp/tools");
+// The default grant is `read`, and tools/list advertises exactly what the session
+// may call, so a compatibility probe expects the read-only subset.
+const READ_ONLY_TOOL_COUNT = getToolDefinitions().filter(tool => requiredScopeFor(tool.name) === "read").length;
 
 async function request(runtime, message) {
   const responses = [];
@@ -24,7 +28,8 @@ test("MCP compatibility contract", async () => {
   const init = await request(service, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "compat" }, ...params() } });
   assert.equal(init.result.protocolVersion, "2024-11-05");
   const tools = await request(service, { jsonrpc: "2.0", id: 2, method: "tools/list", params: params() });
-  assert.ok(tools.result.tools.length >= 14);
+  assert.ok(tools.result.tools.length >= READ_ONLY_TOOL_COUNT);
+  assert.equal(tools.result.tools.some(tool => requiredScopeFor(tool.name) === "write"), false, "a read-only grant must not advertise a writing tool");
   const resources = await request(service, { jsonrpc: "2.0", id: 3, method: "resources/list", params: params() });
   assert.ok(resources.result.resources.length >= 2);
   const prompts = await request(service, { jsonrpc: "2.0", id: 4, method: "prompts/list", params: params() });

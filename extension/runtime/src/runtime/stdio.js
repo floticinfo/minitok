@@ -421,7 +421,12 @@ class RuntimeStdio {
     if (method === "resources/read") { if (!["minitok://status", "minitok://runs"].includes(params.uri)) return this._error(id, MCP_ERROR_CODES.NOT_FOUND, "Resource not found", "RESOURCE_NOT_FOUND", correlationId, {}, reply); const value = params.uri === "minitok://runs" ? [...this._runs.values(), ...this._recoveredRuns].map(run => ({ run_id: run.runId || run.run_id, state: run.state })) : await this._services.entitlement.status(); return reply({ jsonrpc: "2.0", id, result: { contents: [{ uri: params.uri, mimeType: "application/json", text: JSON.stringify(value) }] } }); }
     if (method === "prompts/list") return reply({ jsonrpc: "2.0", id, result: { prompts: [{ name: "minitok_task", description: "Start a verified autonomous minitok task", arguments: [{ name: "task", required: true }] }] } });
      if (method === "prompts/get") { if (params.name !== "minitok_task") return this._error(id, MCP_ERROR_CODES.NOT_FOUND, "Prompt not found", "PROMPT_NOT_FOUND", correlationId, {}, reply); return reply({ jsonrpc: "2.0", id, result: { description: "Verified minitok task", messages: [{ role: "user", content: { type: "text", text: String(params.arguments?.task || "") } }] } }); }
-    if (method === "tools/list") return reply({ jsonrpc: "2.0", id, result: { tools: getToolDefinitions() } });
+    // Advertise only what this session may actually call. The default grant is
+    // read-only, so listing all 14 tools taught every client to attempt
+    // `minitok_run` and collect PERMISSION_DENIED; scopes are opt-in
+    // (`mcp connect --scopes write,verify_exec`), and the list now reflects the
+    // grant instead of the catalogue.
+    if (method === "tools/list") return reply({ jsonrpc: "2.0", id, result: { tools: getToolDefinitions().filter(tool => this._toolAllowed(tool.name)) } });
     if (method !== "tools/call") return this._error(id, -32601, `Method not found: ${method}`, "METHOD_NOT_FOUND", correlationId, {}, reply);
     const definition = getToolDefinitions().find(tool => tool.name === params.name);
     if (!definition) return this._error(id, MCP_ERROR_CODES.NOT_FOUND, "Tool not found", "TOOL_NOT_FOUND", correlationId, {}, reply);
