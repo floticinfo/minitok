@@ -268,6 +268,28 @@ function planChange(file, action, options = {}) {
   data[container.key] = servers;
   return { file, data, changed: before !== JSON.stringify(data), schema: container.key, backup: `${file}.bak` };
 }
+/**
+ * Token files still referenced by any other host configuration.
+ *
+ * `minitok mcp disconnect` used to remove the server entry and nothing else, so
+ * the runtime token stayed valid for the application it had just been removed
+ * from (and for the whole TTL). Revoking the shared record is only correct once
+ * no remaining host points at it — otherwise disconnecting one editor would sign
+ * out the others.
+ */
+function configuredTokenFiles(exceptFile) {
+  const files = new Set();
+  for (const file of Object.values(configs())) {
+    if (file === exceptFile) continue;
+    let data;
+    try { data = readConfig(file); } catch { continue; }
+    const servers = serverContainer(data).value;
+    const entry = servers && typeof servers === "object" && !Array.isArray(servers) ? servers.minitok : null;
+    const tokenFile = entry && typeof entry === "object" ? entry.env?.MINITOK_MCP_AUTH_TOKEN_FILE : null;
+    if (typeof tokenFile === "string" && tokenFile) files.add(tokenFile);
+  }
+  return files;
+}
 async function remoteStatus(url, token, options = {}) {
   const { remoteHealth } = require("../../mcp/remote");
   return remoteHealth({ url, token, allowOAuth: options.allowOAuth !== false, accountOptions: options });
@@ -349,6 +371,15 @@ function register(program) {
           return;
         }
         writeConfig(file, plan.data, { backup: opts.backup !== false, keepBackup: opts.keepBackup === true, rollback: opts.rollback === true });
+        if (action === "disconnect") {
+          // Only the last host holding the record revokes it: the token file is
+          // shared, so disconnecting one editor must not sign out the others.
+          const { revokeRuntimeToken } = require("../../mcp/runtime-token");
+          const tokenFile = process.env.MINITOK_MCP_AUTH_TOKEN_FILE || runtimeTokenPath();
+          if (!configuredTokenFiles(file).has(tokenFile) && revokeRuntimeToken(tokenFile)) {
+            console.log(`MCP auth token revoked (${tokenFile}). Run "minitok mcp token" before connecting a host again.`);
+          }
+        }
         console.log(`${action === "connect" ? "Connected" : "Disconnected"} minitok ${action === "connect" ? "to" : "from"} ${host} (${file})`);
         if (opts.keepBackup === true && fs.existsSync(plan.backup)) console.log(`Backup: ${plan.backup}`);
       });
@@ -371,4 +402,4 @@ function register(program) {
       console.log(JSON.stringify({ status: "ok", path: record.path, expires_at: new Date(record.expires_at).toISOString() }));
     });
 }
-module.exports = { register, detect, readConfig, writeConfig, configs, serverContainer, planChange, readLock, processIsRunning, hostCandidates, resolveHost };
+module.exports = { register, detect, readConfig, writeConfig, configs, serverContainer, planChange, readLock, processIsRunning, hostCandidates, resolveHost, configuredTokenFiles };

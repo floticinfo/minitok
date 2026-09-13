@@ -141,7 +141,21 @@ class RuntimeStdio {
     this._permissions = new Set(parseLocalMcpScopes(options.permissions || process.env.MINITOK_MCP_SCOPES || "read"));
     this._authRequired = true;
     this._entitlementRequired = true;
-    this._authToken = options.authToken || process.env.MINITOK_MCP_AUTH_TOKEN || loadAuthTokenFile(options.authTokenFile || process.env.MINITOK_MCP_AUTH_TOKEN_FILE, this._fs);
+    // Which file the startup credential came from, when that file is the rotating
+    // runtime token. Every host configuration passes MINITOK_MCP_AUTH_TOKEN_FILE
+    // and nothing else, so this file is the only durable source of the record's
+    // expires_at / revoked_at — see `_refreshRuntimeAuth()`. An explicit token
+    // wins and disables the refresh (the caller stated the credential), and a
+    // legacy installation-token file is not tracked at all: it carries no TTL and
+    // has to keep behaving as a static credential.
+    const authTokenFile = options.authTokenFile || process.env.MINITOK_MCP_AUTH_TOKEN_FILE || null;
+    const explicitAuthToken = options.authToken || process.env.MINITOK_MCP_AUTH_TOKEN || null;
+    this._runtimeAuthFile = !explicitAuthToken && typeof authTokenFile === "string" && authTokenFile.endsWith("runtime-token.json") ? authTokenFile : null;
+    this._runtimeAuthCheckedAt = 0;
+    // 0 is a valid, explicit setting: check the file on every authentication.
+    const refreshMs = options.authTokenFileRefreshMs ?? (process.env.MINITOK_MCP_AUTH_TOKEN_FILE_REFRESH_MS ? Number(process.env.MINITOK_MCP_AUTH_TOKEN_FILE_REFRESH_MS) : undefined);
+    this._runtimeAuthRefreshMs = Number.isFinite(refreshMs) && refreshMs >= 0 ? refreshMs : 5000;
+    this._authToken = explicitAuthToken || loadAuthTokenFile(authTokenFile, this._fs);
     this._bindingId = runtimeBinding(options, this._authToken);
     this._nextAuthToken = options.nextAuthToken || process.env.MINITOK_MCP_AUTH_TOKEN_NEXT || null;
     this._authExpiresAt = Number(options.authExpiresAt || process.env.MINITOK_MCP_AUTH_TOKEN_EXPIRES_AT || 0) || 0;
@@ -157,7 +171,22 @@ class RuntimeStdio {
     this._maxConcurrentRuns = Math.max(1, Number(options.maxConcurrentRuns || process.env.MINITOK_MCP_MAX_CONCURRENT_RUNS || 1));
     this._clientInfo = null;
     this._sessionToken = null;
+    // Whether the session authenticates with the process credential (the file
+    // below). A standard host has no per-request token, so only such a session
+    // follows a rotated record — see `_refreshRuntimeAuth`.
+    this._sessionFromTransport = false;
     this._initialized = false;
+  }
+  /**
+   * Whether the granted scopes allow calling this tool.
+   *
+   * Shared with `tools/list` so the advertised surface matches what `tools/call`
+   * enforces (TOOL_SCOPES / TOOL_EXTRA_SCOPES in mcp/tools.js): a tool can never be
+   * listed without the scopes its call path requires.
+   */
+  _toolAllowed(name) {
+    if (!this._permissions.has(requiredScopeFor(name))) return false;
+    return requiredExtraScopesFor(name).every(scope => this._permissions.has(scope));
   }
   _loadRunState() {
     try {
@@ -228,12 +257,84 @@ class RuntimeStdio {
   revokeAuthToken(token) {
     if (token) this._revokedTokens.add(token);
   }
+  /**
+   * Re-read the runtime token file this process was launched with.
+   *
+   * `readRuntimeToken` refuses an expired or revoked record, but the transport
+   * consulted it exactly once, at startup, and left `_authExpiresAt` at 0 for the
+   * env-file path. A host configuration therefore kept a session alive long after
+   * the 15-minute TTL had passed, and `minitok mcp disconnect` — which revokes the
+   * record — ended nothing until the editor was restarted. The file is re-read on
+   * authentication (throttled), so a rotation (`minitok mcp token`) reaches a
+   * running server and a revocation fails the session closed.
+   */
+  _refreshRuntimeAuth() {
+    if (!this._runtimeAuthFile) return;
+    const now = Date.now();
+    if (this._runtimeAuthCheckedAt && now - this._runtimeAuthCheckedAt < this._runtimeAuthRefreshMs) return;
+    this._runtimeAuthCheckedAt = now;
+    const record = readRuntimeToken(this._runtimeAuthFile, now);
+    if (record) {
+      // Adopt the current record: the file is owner-only and written by this
+      // installation, so it is the same trust anchor the process started with.
+      this._authToken = record.token;
+      this._authExpiresAt = Number(record.expires_at) || this._authExpiresAt;
+      this._authTtlMs = 0;
+      // A session that authenticates with the process credential follows the
+      // record: without this the token it echoes back no longer matches and the
+      // host is locked out until it restarts, which is the failure rotation was
+      // meant to fix. A client that supplied its own token is never upgraded.
+      if (this._sessionFromTransport && this._sessionToken !== record.token) this._sessionToken = record.token;
+      return;
+    }
+    let raw = null;
+    try { raw = JSON.parse(this._fs.readFileSync(this._runtimeAuthFile, "utf8")); } catch {}
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+      // Unreadable, mid-rewrite or not a record at all: stop honouring the startup
+      // credential, but do not blacklist it — a later successful read restores the
+      // session, which is what a transient lock or a rewrite needs.
+      this._authToken = null;
+      this._authExpiresAt = 0;
+      this._authTtlMs = 0;
+      return;
+    }
+    // A parseable record the reader refused is expired, revoked, or no longer
+    // bound to this installation: all three mean the credential itself is done, so
+    // the value is blacklisted as well.
+    if (this._authToken) this._revokedTokens.add(this._authToken);
+    this._authToken = null;
+    this._authExpiresAt = 0;
+    this._authTtlMs = 0;
+  }
   _authValue(params) {
     const value = params.authToken || params.auth_token || params.authorization || params.headers?.Authorization || params.headers?.authorization;
     if (typeof value !== "string") return null;
     return value.replace(/^Bearer\s+/i, "").trim() || null;
   }
+  /**
+   * Credential this process was started with.
+   *
+   * The HTTP transport injects the transport credential into `params` before it
+   * dispatches a request (server.js), so an HTTP client authenticates with a
+   * header alone. stdio had no such layer: the token from
+   * MINITOK_MCP_AUTH_TOKEN / MINITOK_MCP_AUTH_TOKEN_FILE only seeded the session
+   * and every later request had to echo it back inside `params`. Standard hosts
+   * (VS Code, Claude Desktop, Cursor) cannot do that — they pass env and args
+   * only — so `initialize` succeeded and then every `tools/list` / `tools/call`
+   * failed with AUTH_REQUIRED. Falling back to the startup credential gives
+   * stdio the same guarantee HTTP has (it is the credential the server was
+   * deliberately launched with), while an explicit per-request token still takes
+   * precedence and is still validated.
+   */
+  _transportToken() {
+    // Refresh before falling back to the startup credential: this is the path a
+    // standard host takes (it cannot echo a token per request), so it is the one
+    // that has to observe a rotation or a revocation.
+    this._refreshRuntimeAuth();
+    return this._authToken || this._nextAuthToken || null;
+  }
   _authValid(token) {
+    this._refreshRuntimeAuth();
     if (!token || this._revokedTokens.has(token)) return false;
     const currentExpired = this._authExpiresAt > 0 ? Date.now() >= this._authExpiresAt : this._authTtlMs > 0 && Date.now() - this._authIssuedAt >= this._authTtlMs;
     const nextExpired = this._nextAuthExpiresAt > 0 && Date.now() >= this._nextAuthExpiresAt;
@@ -285,8 +386,13 @@ class RuntimeStdio {
     const reply = value => { if (!isNotification) respond(value); };
     const { id, method, params = {} } = msg;
     const correlationId = params.correlation_id || crypto.randomUUID();
+    // A revoked or expired token file has to fail closed, and a rotated one has to
+    // be picked up without restarting the host: both are decided here, before the
+    // "no credential configured at all" shortcut below.
+    if (this._authRequired) this._refreshRuntimeAuth();
     if (this._authRequired && !this._authToken && !this._nextAuthToken && method !== "initialize") return this._error(id, MCP_ERROR_CODES.AUTH_REQUIRED, "Authentication required", "AUTH_REQUIRED", correlationId, {}, reply);
-    if (this._authRequired && method !== "initialize" && (!this._initialized || !this._authValid(this._authValue(params)) || this._authValue(params) !== this._sessionToken)) return this._error(id, MCP_ERROR_CODES.AUTH_REQUIRED, "Authentication required", "AUTH_REQUIRED", correlationId, {}, reply);
+    const suppliedToken = this._authValue(params) || this._transportToken();
+    if (this._authRequired && method !== "initialize" && (!this._initialized || !this._authValid(suppliedToken) || suppliedToken !== this._sessionToken)) return this._error(id, MCP_ERROR_CODES.AUTH_REQUIRED, "Authentication required", "AUTH_REQUIRED", correlationId, {}, reply);
     if (method === "initialize") {
       const requested = Array.isArray(params.protocolVersions) ? params.protocolVersions : [params.protocolVersion];
       const protocolVersion = requested.find(version => SUPPORTED_PROTOCOLS.includes(version));
@@ -299,7 +405,9 @@ class RuntimeStdio {
         return this._error(id, MCP_ERROR_CODES.AUTH_REQUIRED, "Authentication required", "AUTH_REQUIRED", correlationId, {}, reply);
       }
        this._clientInfo = params.clientInfo && typeof params.clientInfo === "object" ? { name: String(params.clientInfo.name || "unknown").slice(0, 128), version: String(params.clientInfo.version || "").slice(0, 64) } : null;
-       this._sessionToken = this._authValue(params) || this._authToken || this._nextAuthToken;
+       const requestToken = this._authValue(params);
+       this._sessionToken = requestToken || this._transportToken();
+       this._sessionFromTransport = !requestToken;
         this._initialized = true;
           reply({ jsonrpc: "2.0", id, result: { protocolVersion, capabilities: { tools: { listChanged: false }, resources: { subscribe: false, listChanged: false }, prompts: { listChanged: false } }, serverInfo: { name: "minitok-runtime", version } } }); return;
     }
