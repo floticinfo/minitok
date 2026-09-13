@@ -3,15 +3,15 @@
   "release": {
     "package": "@flotic/minitok",
     "version": "1.3.16",
-    "commit": "1be7a879d20f4a16f29ab862afc3088df1c5f46c",
-    "tree": "5599ddd7a7c3e27f0058336b9ecaccef95100f6e",
+    "commit": "9440fd30d8b01ca647a35b598f11d453b402783b",
+    "tree": "6521f1f4081fbdf320121054ee740b8dd88e9e0b",
     "tag": "v1.3.16",
     "changelog": "## 1.3.16",
     "artifact": {
       "filename": "flotic-minitok-1.3.16.tgz",
-      "size": 191419,
-      "sha256": "2c4699557d8654e826df576e45f100041e842a996810c739baf154bfe63d9866",
-      "integrity": "sha512-0TGwdXLHMBmu4sxKHN5HJKM0pHn+D+OQZ3DwtZAyTvf1nIubitZnRxOaq1Miabk4uf1fedst1cVBYW3q0VJncg==",
+      "size": 191425,
+      "sha256": "9ace95ee3fd93d3518a7ca287537a708debff81587576e17a32ee27f4fef2bbb",
+      "integrity": "sha512-Ald+RK7rktS60/oby49+L560r0XMd2xmJsh64qjAGBpQDnbBBJ5/QKnk6hoiqAezOf6UZsAS5AhAPCa/fPRHhQ==",
       "files": [
         {
           "path": "BENCHMARK_EVIDENCE.json",
@@ -555,8 +555,8 @@
         },
         {
           "path": "src/runtime/stdio.js",
-          "size": 24782,
-          "sha256": "56db69695b0f673d69c68f15dc5f989aeb3d2cba453defe8339536546b419e86"
+          "size": 24790,
+          "sha256": "33c8da52ab96e52acaee0222cd3861a94200df01fa8f340a536cdf217cea7e24"
         },
         {
           "path": "src/runtime/workspace.js",
