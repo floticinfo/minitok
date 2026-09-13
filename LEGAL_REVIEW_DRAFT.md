@@ -1,4 +1,4 @@
-# Legal review draft — EULA.md and POLICY.md review notes
+# Legal review record — EULA.md and POLICY.md review notes and the applied text
 
 **Status: APPLIED on 2026-09-13. The owner approved the text, so this is no longer a draft.**
 The review notes were replaced in `EULA.md`, `POLICY.md`, and
@@ -81,7 +81,7 @@ No "last reviewed" line was added: the published agreement ends with the support
 contact line instead, and the approval record lives in the approval manifest.
 ```
 
-### 2.2 Replace section 4 (billing and entitlement)
+### 2.2 Applied section 4 (billing and entitlement)
 
 ```markdown
 ## 4. Billing and entitlement
@@ -182,54 +182,21 @@ The bracketed samples below are kept as the record of what was proposed; the app
 text is the version inside `POLICY.md`, and the values behind it are listed in
 section 5.
 
-### 3.1 Replace the review sentence in the header block
+### 3.1 Header block
 
-Current:
+The review sentence was replaced by the applied wording: "It is not a legal notice,
+data-processing agreement, or legal advice; the published positions that govern the
+commercial service are recorded in section 10 and in the privacy notice at
+https://minitok.dev/privacy." The document stays a technical policy, so it does not
+claim to be the privacy notice; the notice itself is the published page.
 
-```text
-This is a technical description of current implementation behavior. It is not a
-privacy notice, data-processing agreement, or legal advice. Legal review is
-required before publication as a legal policy.
-```
+### 3.2 Section 10
 
-Approved replacement (drops the review note and names the owner):
-
-```markdown
-This document is the minitok privacy notice for the current `@flotic/minitok`
-client and the compatible `minitok-server` API. It is reviewed by [PRIVACY OWNER
-NAME AND ROLE] and approved for publication on [APPROVAL DATE]. It describes
-implemented behaviour and is not legal advice; business customers can request a
-data-processing agreement at [DPA CONTACT OR URL].
-```
-
-### 3.2 Replace section 10 with the recorded decisions
-
-```markdown
-## 10. Published legal positions
-
-- **Controller.** [CONTROLLER LEGAL ENTITY AND ADDRESS] is the controller for
-  account, subscription, installation, and billing data (D1/D2). [PROCESSOR ROLE,
-  e.g. "Flotic acts as a processor for telemetry a customer enables"].
-- **Legal bases.** Contract performance for account, entitlement, and billing
-  data; consent for telemetry (D3), withdrawable at any time with
-  `minitok evolution disable`; legitimate interests, balanced against data-subject
-  rights, for security and abuse-prevention records.
-- **International transfers.** Data is processed in [PROCESSING REGIONS]. Transfers
-  outside [REGION GROUP] rely on [TRANSFER MECHANISM, e.g. "the EU Standard
-  Contractual Clauses"].
-- **Rights.** Access, correction, export, and deletion requests are actioned within
-  [RESPONSE PERIOD, e.g. "30 days"] through the export and deletion endpoints
-  documented on the server, or by writing to [RIGHTS CONTACT, e.g.
-  "privacy@minitok.dev"].
-- **Retention.** Account and installation records: [PERIOD]. Billing records:
-  [PERIOD] (often set by tax law). Telemetry records: [PERIOD]; the 90-day cleanup
-  in the implementation is a setting, not the policy, and it must be at least as
-  short as the client policies published with the plans. Audit records: [PERIOD].
-  Backups: [PERIOD].
-- **Contact and effective date.** The authoritative support and privacy contact is
-  [SUPPORT ADDRESS, e.g. "support@minitok.dev"]. This policy takes effect on
-  [EFFECTIVE DATE] as version [VERSION].
-```
+Section 10 is now "Published Legal Positions" and records the controller and
+address, the provider roles, the privacy officer, the legal bases, jurisdiction and
+international transfers, rights handling, and retention, ending with the contact,
+version (1.2.0), and effective date (2026-09-13). The values behind each item are
+listed in section 5.
 
 ### 3.3 What removing these notes does and does not do
 
