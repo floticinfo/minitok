@@ -9,8 +9,27 @@ const { authManager } = require("../auth");
 const { Agent } = require("undici");
 const { getProxyDispatcher, shouldBypassProxy } = require("../core/http");
 
-function providerError(name, status) {
-  return new Error(`${name} API request failed (${status})`);
+function providerError(name, status, detail = "") {
+  return new Error(`${name} API request failed (${status})${detail ? `: ${detail}` : ""}`);
+}
+
+/**
+ * Extract the API's own error message from an already-buffered response.
+ *
+ * The status code alone cannot distinguish an invalid model name, a quota
+ * problem or an oversized request, which left every failure undiagnosable.
+ */
+async function providerErrorDetail(res) {
+  try {
+    const text = await res.text();
+    if (!text) return "";
+    try {
+      const parsed = JSON.parse(text);
+      const message = parsed?.error?.message || parsed?.error || parsed?.message || parsed?.detail;
+      if (typeof message === "string" && message.trim()) return message.trim().slice(0, 200);
+    } catch { /* not JSON — fall through to the raw body */ }
+    return text.replace(/\s+/g, " ").trim().slice(0, 200);
+  } catch { return ""; }
 }
 
 function validateProviderEndpoint(raw, label = "Provider endpoint", options = {}) {
@@ -339,7 +358,7 @@ class AnthropicProvider extends LLMProvider {
     const endpointTransport = await resolvePublicEndpoint(this.baseUrl, "Anthropic endpoint");
     const headers = { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" };
     const res = await fetchWithTimeout(`${endpointTransport.url}/v1/messages`, { method: "POST", headers, body: JSON.stringify(body), signal: options.signal, ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}) });
-    if (!res.ok) throw providerError("Anthropic", res.status);
+    if (!res.ok) throw providerError("Anthropic", res.status, await providerErrorDetail(res));
     const data = await res.json();
     const textBlocks = (data.content || []).filter(b => b.type === "text");
     return { text: textBlocks.map((b) => b.text).join("") || "", model: data.model, usage: data.usage || {}, tokens: _countTokens(data.usage) };
@@ -379,7 +398,7 @@ class OpenAIProvider extends LLMProvider {
       signal: options.signal,
       ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}),
     });
-    if (!res.ok) throw providerError("OpenAI", res.status);
+    if (!res.ok) throw providerError("OpenAI", res.status, await providerErrorDetail(res));
     const data = await res.json();
     return { text: data.choices?.[0]?.message?.content || "", model: data.model, usage: data.usage || {}, tokens: _countTokens(data.usage) };
   }
@@ -426,7 +445,7 @@ class GoogleProvider extends LLMProvider {
       signal: options.signal,
       ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}),
     });
-    if (!res.ok) throw providerError("Google", res.status);
+    if (!res.ok) throw providerError("Google", res.status, await providerErrorDetail(res));
     const data = await res.json();
     // Filter out thought parts from candidates
     const parts = data.candidates?.[0]?.content?.parts || [];
@@ -535,7 +554,7 @@ class CustomProvider extends LLMProvider {
     const apiPath = this.baseUrl.endsWith("/v1") ? "/chat/completions" : "/v1/chat/completions";
     const requestHeaders = { ...headers, ...endpointTransport.headers };
     const res = await fetchWithTimeout(`${endpointTransport.url}${apiPath}`, { method: "POST", headers: requestHeaders, body: JSON.stringify(body), signal: options.signal, ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}) });
-    if (!res.ok) throw providerError(this.name, res.status);
+    if (!res.ok) throw providerError(this.name, res.status, await providerErrorDetail(res));
     const data = await res.json();
     return { text: data.choices?.[0]?.message?.content || "", model: data.model || model, usage: data.usage || {}, tokens: _countTokens(data.usage) };
   }

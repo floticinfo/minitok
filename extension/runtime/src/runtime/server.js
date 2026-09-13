@@ -245,9 +245,22 @@ class RuntimeServer {
   _resetIdleTimer() {
     if (this._idleTimer) clearTimeout(this._idleTimer);
     if (this._activeRequests === 0 && this._idleTimeoutMs > 0) {
-      this._idleTimer = setTimeout(() => { this.stop().catch(() => {}); process.exit(0); }, this._idleTimeoutMs);
+      this._idleTimer = setTimeout(() => { this._shutdownForIdle(); }, this._idleTimeoutMs);
       if (this._idleTimer.unref) this._idleTimer.unref();
     }
+  }
+
+  /**
+   * Idle shutdown.
+   *
+   * The process exit has to wait for stop(): the runtime lock is released from
+   * inside the server close callback and the pid/token files are cleaned up
+   * there too, so a bare process.exit() aborted that cleanup and left a stale
+   * lock behind for the next start.
+   */
+  async _shutdownForIdle() {
+    try { await this.stop(); } catch { /* fall through and exit anyway */ }
+    process.exit(0);
   }
 
   _readLock() {

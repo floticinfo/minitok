@@ -41,6 +41,30 @@ const node_child_process_1 = require("node:child_process");
 const node_crypto_1 = require("node:crypto");
 const workspace_1 = require("./workspace");
 const entitlement_1 = require("./entitlement");
+const CLI_TIMEOUT_MS = 1800000;
+/**
+ * Kill a child process and everything it spawned.
+ * Windows needs taskkill /t; POSIX children are started detached so the whole
+ * process group can be signalled.
+ */
+function killProcessTree(child) {
+    if (process.platform === "win32") {
+        try {
+            (0, node_child_process_1.execFileSync)("taskkill", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true, timeout: 10000 });
+        }
+        catch {
+            child.kill();
+        }
+    }
+    else {
+        try {
+            process.kill(-child.pid, "SIGTERM");
+        }
+        catch {
+            child.kill("SIGTERM");
+        }
+    }
+}
 function runCli(cliPath, args, cwd, onProcess) {
     return new Promise((resolve, reject) => {
         const processSpec = (0, workspace_1.spawnSpec)(cliPath, args);
@@ -48,31 +72,34 @@ function runCli(cliPath, args, cwd, onProcess) {
         onProcess(child);
         let stdout = "";
         let stderr = "";
-        const timeout = setTimeout(() => {
-            if (process.platform === "win32") {
-                try {
-                    (0, node_child_process_1.execFileSync)("taskkill", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true, timeout: 10000 });
-                }
-                catch {
-                    child.kill();
-                }
-            }
-            else {
-                try {
-                    process.kill(-child.pid, "SIGTERM");
-                }
-                catch {
-                    child.kill("SIGTERM");
-                }
-            }
-        }, 1800000);
+        let settled = false;
+        let timer;
+        const finish = (error) => {
+            if (settled)
+                return;
+            settled = true;
+            if (timer)
+                clearTimeout(timer);
+            onProcess(undefined);
+            if (error)
+                reject(error);
+            else
+                resolve(stdout);
+        };
+        timer = setTimeout(() => {
+            killProcessTree(child);
+            // Settle from the timeout as well. If the kill cannot be delivered (a
+            // detached tree on Windows, an unkillable handle) no close event ever
+            // fires and the panel would stay "run active" forever.
+            finish(new Error("minitok timed out after 30 minutes"));
+        }, CLI_TIMEOUT_MS);
         child.stdout.on("data", chunk => { stdout += chunk.toString(); });
         child.stderr.on("data", chunk => { stderr += chunk.toString(); });
-        child.on("error", error => { clearTimeout(timeout); reject(error); });
-        child.on("close", code => { clearTimeout(timeout); onProcess(undefined); if (code === 0)
-            resolve(stdout);
+        child.on("error", error => finish(error));
+        child.on("close", code => { if (code === 0)
+            finish();
         else
-            reject(new Error(stderr || stdout || `minitok exited with code ${code}`)); });
+            finish(new Error(stderr || stdout || `minitok exited with code ${code}`)); });
     });
 }
 class minitokPanel {
@@ -108,6 +135,11 @@ class minitokPanel {
         const cwd = (0, workspace_1.workspacePath)();
         const cli = (0, workspace_1.cliPath)();
         try {
+            // The workspace trust check has to live inside the try: the panel's
+            // onDidReceiveMessage callback ignores the promise this method returns,
+            // so a throw here became an unhandled rejection and the webview never
+            // received any feedback at all.
+            (0, workspace_1.requireTrustedWorkspace)(cwd);
             if (message.command === "stop") {
                 this.stopProcess();
                 this.post(true, "Run stopped.");
@@ -115,14 +147,13 @@ class minitokPanel {
             }
             await (0, entitlement_1.requireEntitlement)();
             if (message.command === "status")
-                this.post(true, await runCli(cli, ["status"], cwd, child => { this.process = child; }));
+                this.post(true, await runCli(cli, ["status", "--repo", cwd], cwd, child => { this.process = child; }));
             else {
-                (0, workspace_1.requireTrustedWorkspace)(cwd);
                 if (!message.task?.trim())
                     throw new Error("Task description required");
                 if (this.process)
                     throw new Error("A minitok run is already active");
-                const args = ["run", message.task];
+                const args = ["run", message.task, "--repo", cwd];
                 if (message.command === "dry-run")
                     args.push("--dry-run");
                 else if ((0, workspace_1.autoApprove)())
@@ -156,22 +187,7 @@ class minitokPanel {
         const child = this.process;
         if (!child || child.killed)
             return;
-        if (process.platform === "win32") {
-            try {
-                (0, node_child_process_1.execFileSync)("taskkill", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true, timeout: 10000 });
-            }
-            catch {
-                child.kill();
-            }
-        }
-        else {
-            try {
-                process.kill(-child.pid, "SIGTERM");
-            }
-            catch {
-                child.kill("SIGTERM");
-            }
-        }
+        killProcessTree(child);
     }
     post(ok, text) { this.panel.webview.postMessage({ ok, text }); }
     html() { const nonce = (0, node_crypto_1.randomBytes)(16).toString("base64"); const source = fs.readFileSync(path.join(this.extensionUri.fsPath, "src", "panel.html"), "utf8"); return source.replaceAll("{{nonce}}", nonce).replace("{{cspSource}}", this.panel.webview.cspSource); }

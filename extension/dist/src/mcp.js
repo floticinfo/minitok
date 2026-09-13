@@ -33,9 +33,11 @@ var __importStar = (this && this.__importStar) || (function () {
     };
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.QUOTED_ESCAPES = void 0;
 exports.parseMcpCommand = parseMcpCommand;
 exports.packagedMcpCommand = packagedMcpCommand;
 const path = __importStar(require("node:path"));
+exports.QUOTED_ESCAPES = "\"'\\";
 function parseMcpCommand(value) {
     const result = [];
     let token = "";
@@ -43,10 +45,14 @@ function parseMcpCommand(value) {
     let escaped = false;
     for (const character of value.trim()) {
         if (escaped) {
-            token += character;
+            // Only a quote, a backslash or whitespace is escapable. A backslash before
+            // anything else is a literal path separator: treating every backslash as an
+            // escape silently turned "C:\Program Files\node.exe" into
+            // "C:Program Filesnodejsnode.exe". Single quotes never escape, as in a shell.
+            token += exports.QUOTED_ESCAPES.includes(character) || /\s/.test(character) ? character : `\\${character}`;
             escaped = false;
         }
-        else if (character === "\\") {
+        else if (character === "\\" && quote !== "'") {
             escaped = true;
         }
         else if (quote) {

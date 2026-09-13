@@ -17,7 +17,17 @@ const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
 const MAX_OUTCOMES = 100; // rolling window
 const LOCK_TIMEOUT_MS = 30000;
 const LOCK_STALE_MS = 120000;
+const LOCK_RETRY_DELAY_MS = 50;
 const DEFAULT_PATH = path.join(os.homedir(), ".minitok", "evolution", "outcomes.json");
+
+/**
+ * Blocking sleep used by the lock retry loop. The loop is synchronous, and
+ * re-reading the lock file with no delay burned a full CPU core for the whole
+ * LOCK_TIMEOUT_MS whenever another run held the lock.
+ */
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
 
 class KnowledgeStore {
   constructor(filePath) {
@@ -35,11 +45,11 @@ class KnowledgeStore {
     }
   }
 
-  _acquireLock() {
+  _acquireLock(timeoutMs = LOCK_TIMEOUT_MS) {
     const lock = this._file + ".lock";
     const started = Date.now();
     fs.mkdirSync(path.dirname(this._file), { recursive: true });
-    while (Date.now() - started < LOCK_TIMEOUT_MS) {
+    while (Date.now() - started < timeoutMs) {
       try {
         const token = randomUUID();
         const fd = fs.openSync(lock, "wx", 0o600);
@@ -74,6 +84,9 @@ class KnowledgeStore {
         } catch (staleError) {
           if (staleError.code !== "ENOENT") throw staleError;
         }
+        // Back off instead of spinning: the holder keeps the lock for the whole
+        // duration of its write.
+        sleepSync(LOCK_RETRY_DELAY_MS);
       }
     }
     throw new Error("KnowledgeStore lock acquisition timed out");
@@ -86,7 +99,9 @@ class KnowledgeStore {
       const owner = JSON.parse(fs.readFileSync(lockState.lock, "utf8"));
       if (owner.pid === process.pid && owner.host === os.hostname() && owner.token === lockState.token) fs.unlinkSync(lockState.lock);
     } catch (error) {
-      if (error.code !== "ENOENT") throw error;
+      // A corrupt lock file (crash mid-write) parses as a syntax error with no
+      // `code`; it must not mask the caller's real error path.
+      if (error.code && error.code !== "ENOENT") throw error;
     }
   }
 
@@ -167,4 +182,4 @@ class KnowledgeStore {
   }
 }
 
-module.exports = { KnowledgeStore, MAX_OUTCOMES, DEFAULT_PATH };
+module.exports = { KnowledgeStore, MAX_OUTCOMES, DEFAULT_PATH, sleepSync, LOCK_RETRY_DELAY_MS };

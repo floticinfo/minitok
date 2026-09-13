@@ -69,6 +69,7 @@ class minitokSidebar {
         view.webview.onDidReceiveMessage(message => this.handle(message));
     }
     async execute(args, cwd) {
+        (0, workspace_1.requireTrustedWorkspace)(cwd);
         const cli = (0, workspace_1.cliPath)();
         const provider = this.context.workspaceState.get("minitok.setting.provider", "");
         const model = this.context.workspaceState.get("minitok.setting.model", "");
@@ -299,6 +300,7 @@ class minitokSidebar {
             return;
         }
         if (message.command === "mcp-connect") {
+            (0, workspace_1.requireTrustedWorkspace)((0, workspace_1.workspacePath)());
             await this.connectMcp(message.target);
             return;
         }
@@ -354,6 +356,7 @@ class minitokSidebar {
             return;
         }
         if (message.command === "update") {
+            (0, workspace_1.requireTrustedWorkspace)((0, workspace_1.workspacePath)());
             const release = cliRelease(this.context);
             const answer = await vscode.window.showInformationMessage(`Update minitok to ${release.version}?`, "Update", "Cancel");
             if (answer === "Update")
@@ -375,7 +378,7 @@ class minitokSidebar {
             }
             this.activeRunId = runId;
             this.activeRunStartedAt = startedAt;
-            const args = ["run", message.task];
+            const args = ["run", message.task, "--repo", cwd];
             if (message.command === "dry-run")
                 args.push("--dry-run");
             else if ((0, workspace_1.autoApprove)())
@@ -403,6 +406,7 @@ class minitokSidebar {
         }
     }
     async customerLogin(email, password) {
+        (0, workspace_1.requireTrustedWorkspace)((0, workspace_1.workspacePath)());
         if (!email?.trim() || !password) {
             this.view?.webview.postMessage({ type: "auth-state", ok: false, text: "Email and password are required." });
             return;
@@ -420,6 +424,7 @@ class minitokSidebar {
         });
     }
     async discoverModels(cwd, provider) {
+        (0, workspace_1.requireTrustedWorkspace)(cwd);
         const cli = (0, workspace_1.cliPath)();
         const args = ["models", "--discover"];
         if (provider)
@@ -431,8 +436,9 @@ class minitokSidebar {
         });
     }
     async readInfo(cwd) {
+        (0, workspace_1.requireTrustedWorkspace)(cwd);
         const cli = vscode.workspace.getConfiguration("minitok").get("cliPath", "minitok");
-        const commands = [["status"], ["doctor"], ["evolution", "status"], ["workspace", "current"]];
+        const commands = [["status", "--repo", cwd], ["doctor"], ["evolution", "status"], ["workspace", "current"]];
         const outputs = [];
         for (const args of commands) {
             try {
@@ -516,6 +522,7 @@ class minitokSidebar {
         this.view?.webview.postMessage({ type: "mcp-connect", ok: true, text: `Connected to ${host}. Backup: ${path.basename(backup)}` });
     }
     async checkMcpHealth() {
+        (0, workspace_1.requireTrustedWorkspace)((0, workspace_1.workspacePath)());
         const cli = (0, workspace_1.cliPath)();
         if (this.mcpProcess) {
             this.view?.webview.postMessage({ type: "mcp", ok: false, text: "MCP health check already running" });
@@ -527,6 +534,9 @@ class minitokSidebar {
             return;
         }
         const processSpec = (0, workspace_1.spawnSpec)(configured[0], configured.slice(1));
+        // Refresh the short lived runtime token before spawning the server, so both
+        // sides use the same credential instead of failing 15 minutes after setup.
+        const authToken = await (0, workspace_1.ensureMcpAuthToken)();
         this.output.appendLine(`[spawn] mcp command=${JSON.stringify(processSpec.command)} args=${JSON.stringify(processSpec.args)} cwd=${JSON.stringify((0, workspace_1.workspacePath)())}`);
         let mcp;
         try {
@@ -541,7 +551,7 @@ class minitokSidebar {
         let buffer = "";
         let nextId = 1;
         const timeout = setTimeout(() => { mcp.kill(); this.view?.webview.postMessage({ type: "mcp", ok: false, text: "MCP offline: handshake timed out" }); }, 5000);
-        const send = (method, params = {}) => mcp.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: nextId++, method, params: { ...params, authToken: (0, workspace_1.mcpAuthToken)() } })}\n`);
+        const send = (method, params = {}) => mcp.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: nextId++, method, params: { ...params, authToken } })}\n`);
         const finish = (ok, text) => { clearTimeout(timeout); if (this.mcpProcess === mcp)
             this.mcpProcess = undefined; this.stopChild(mcp); this.view?.webview.postMessage({ type: "mcp", ok, text }); };
         mcp.stdout.on("data", chunk => { buffer += chunk.toString(); const lines = buffer.split(/\r?\n/); buffer = lines.pop() || ""; for (const line of lines) {
@@ -559,9 +569,10 @@ class minitokSidebar {
             }
         } });
         mcp.on("error", error => finish(false, `MCP offline: ${error.message}`));
-        send("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "minitok-sidebar", version: String(this.context.extension.packageJSON.version) }, authToken: (0, workspace_1.mcpAuthToken)() });
+        send("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "minitok-sidebar", version: String(this.context.extension.packageJSON.version) } });
     }
     execGit(cwd, args) {
+        (0, workspace_1.requireTrustedWorkspace)(cwd);
         return new Promise((resolve, reject) => (0, node_child_process_1.execFile)("git", args, { cwd, timeout: 30000, windowsHide: true }, (error, stdout, stderr) => error ? reject(new Error(stderr || error.message)) : resolve(stdout)));
     }
     async captureCheckpoint(cwd, checkpoint, metadata) {
@@ -629,6 +640,7 @@ class minitokSidebar {
         this.view?.webview.postMessage({ type: "settings-saved" });
     }
     async checkUpdate() {
+        (0, workspace_1.requireTrustedWorkspace)((0, workspace_1.workspacePath)());
         const release = cliRelease(this.context);
         (0, node_child_process_1.execFile)("npm", ["view", release.packageName, "version", "--json"], { timeout: 10000, windowsHide: true }, (error, stdout) => this.view?.webview.postMessage({ type: "update", current: release.version, latest: error ? null : String(stdout).trim().replace(/^\"|\"$/g, "") }));
     }

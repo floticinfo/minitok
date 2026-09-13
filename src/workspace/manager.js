@@ -8,6 +8,7 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const crypto = require("crypto");
 const { WorkspaceError } = require("../core/errors");
 const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
 
@@ -65,7 +66,7 @@ class WorkspaceManager {
     fs.mkdirSync(this._home, { recursive: true });
     const lockPath = this._file + ".lock";
     let lockFd;
-    const token = `${process.pid}-${Math.random().toString(16).slice(2)}`;
+    const token = crypto.randomBytes(8).toString("hex");
     for (let attempt = 0; attempt < 100; attempt++) {
       try { lockFd = fs.openSync(lockPath, "wx", 0o600); fs.writeFileSync(lockFd, JSON.stringify({ pid: process.pid, host: os.hostname(), token, createdAt: Date.now() })); break; } catch (error) {
         if (error.code !== "EEXIST") throw error;
@@ -85,7 +86,7 @@ class WorkspaceManager {
       const merged = { ...current, workspaces: { ...current.workspaces, ...registry.workspaces }, current: registry.current };
       for (const name of this._removedNames) delete merged.workspaces[name];
       this._removedNames.clear();
-      const tmp = `${this._file}.tmp.${process.pid}.${Math.random().toString(16).slice(2)}`;
+      const tmp = `${this._file}.tmp.${process.pid}.${crypto.randomBytes(6).toString("hex")}`;
       try {
         fs.writeFileSync(tmp, JSON.stringify(merged, null, 2), { encoding: "utf-8", flag: "wx", mode: 0o600 });
         setOwnerOnlyPermissions(tmp); fs.renameSync(tmp, this._file); setOwnerOnlyPermissions(this._file);

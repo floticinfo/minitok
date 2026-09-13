@@ -166,11 +166,22 @@ function resolveProviderName(config, role, override) {
   return override || roleConfig.provider || roleConfig.adapter || config?.default_provider || Object.keys(providers)[0] || "";
 }
 
+// Provider names reach storage paths, keychain commands and shell arguments.
+// Nothing legitimate needs quotes, backticks or statement separators, so reject
+// them at the configuration boundary in addition to escaping every call site.
+const UNSAFE_PROVIDER_NAME_PATTERN = /['"`$;|&()<>\r\n\t\\]|\.\./;
+
+function assertSafeProviderName(name, label) {
+  if (typeof name !== "string" || !name.trim()) return; // unset values fall through to the next source
+  if (UNSAFE_PROVIDER_NAME_PATTERN.test(name)) throw new ConfigError(`${label} ${JSON.stringify(name.slice(0, 40))} contains characters that are not allowed in a provider name`);
+}
+
 function validateConfig(config) {
   if (!config || typeof config !== "object" || Array.isArray(config)) throw new ConfigError("Configuration must be a mapping");
   if (config.providers !== undefined && (typeof config.providers !== "object" || Array.isArray(config.providers))) throw new ConfigError("providers must be a mapping");
   if (config.providers) for (const [name, provider] of Object.entries(config.providers)) {
     if (!provider || typeof provider !== "object" || Array.isArray(provider)) throw new ConfigError(`providers.${name} must be a mapping`);
+    assertSafeProviderName(name, "providers key");
     if (provider.model !== undefined && (typeof provider.model !== "string" || !provider.model.trim())) throw new ConfigError(`providers.${name}.model must be a non-empty string`);
     if (provider.models !== undefined && (!Array.isArray(provider.models) || provider.models.some(model => !model || typeof model !== "object" || typeof model.id !== "string" || !model.id.trim()))) throw new ConfigError(`providers.${name}.models must contain model objects with non-empty id`);
   }
@@ -178,7 +189,9 @@ function validateConfig(config) {
   for (const [role, value] of Object.entries(config.roles || {})) {
     if (!_ROLE_KEYS.has(role) || !value || typeof value !== "object" || Array.isArray(value)) continue;
     for (const key of ["provider", "model", "fallback_model"]) if (value[key] !== undefined && typeof value[key] !== "string") throw new ConfigError(`roles.${role}.${key} must be a string`);
+    for (const key of ["provider", "adapter"]) assertSafeProviderName(value[key], `roles.${role}.${key}`);
   }
+  assertSafeProviderName(config.default_provider, "default_provider");
   if (config.validation?.script_path !== undefined && typeof config.validation.script_path !== "string") throw new ConfigError("validation.script_path must be a string");
   if (config.security?.blocked_extensions !== undefined && (!Array.isArray(config.security.blocked_extensions) || config.security.blocked_extensions.some(value => typeof value !== "string"))) throw new ConfigError("security.blocked_extensions must be an array of strings");
   return config;

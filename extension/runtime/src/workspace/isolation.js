@@ -3,6 +3,7 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const crypto = require("crypto");
 const { execFileSync } = require("child_process");
 const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
 const { packageManagerCommand } = require("../core/package-manager");
@@ -34,12 +35,24 @@ function sameWorkspacePath(left, right) {
   }
 }
 
+/**
+ * Compare two canonical paths.
+ *
+ * Windows paths are case-insensitive, and realpathSync.native returns the
+ * on-disk casing, which need not match the casing the caller typed
+ * (c:\src\app vs C:\src\app). A strict string comparison therefore rejected
+ * perfectly safe workspaces with "Unsafe workspace path".
+ */
+function sameResolvedPath(left, right) {
+  return process.platform === "win32" ? left.toLowerCase() === right.toLowerCase() : left === right;
+}
+
 function assertNoLinks(root) {
   const resolvedRoot = path.resolve(root);
   const visit = current => {
     const stat = fs.lstatSync(current);
     const real = fs.realpathSync.native(current);
-    if (stat.isSymbolicLink() || real !== path.resolve(current)) throw new Error(`Unsafe workspace path: ${path.relative(resolvedRoot, current)}`);
+    if (stat.isSymbolicLink() || !sameResolvedPath(real, path.resolve(current))) throw new Error(`Unsafe workspace path: ${path.relative(resolvedRoot, current)}`);
     if (!stat.isDirectory()) return;
     for (const entry of fs.readdirSync(current)) visit(path.join(current, entry));
   };
@@ -224,7 +237,10 @@ function applyWorkspaceDiff(repoRoot, isolatedRoot) {
   const pipelineTree = runGit(isolatedRoot, ["write-tree"]);
   const patch = (runGit(isolatedRoot, ["diff-tree", "--binary", "--full-index", "-p", baseline.trackedTree, pipelineTree, "--"]) + "\n").replace(/\r\n/g, "\n");
   if (!patch.trim()) return { applied: false, files: [] };
-  const patchFile = path.join(os.tmpdir(), `minitok-patch-${process.pid}.diff`);
+  // Per-call unique name: two runs inside one process (MCP runtime) would
+  // otherwise share this path, and the first `finally` unlink would delete the
+  // other run's patch before it is applied.
+  const patchFile = path.join(os.tmpdir(), `minitok-patch-${process.pid}-${crypto.randomBytes(6).toString("hex")}.diff`);
   // Persist the patch next to run evidence so a failed apply does NOT
   // destroy paid pipeline output — the user can re-apply it manually.
   const keptPatch = path.join(repoRoot, ".minitok", "last-run.patch");
@@ -283,4 +299,4 @@ function preserveWorkspaceDiff(repoRoot, isolatedRoot) {
   }
 }
 
-module.exports = { createIsolatedWorkspace, prepareCanonicalVerification, installWorkspaceDependencies, applyWorkspaceDiff, removeIsolatedWorkspace, preserveWorkspaceDiff };
+module.exports = { createIsolatedWorkspace, prepareCanonicalVerification, installWorkspaceDependencies, applyWorkspaceDiff, removeIsolatedWorkspace, preserveWorkspaceDiff, assertNoLinks, sameResolvedPath };

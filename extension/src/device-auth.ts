@@ -31,11 +31,27 @@ function expiry(session: ExtensionAuthState) {
   return session.expires_at || (Number.isFinite(Number(session.expires_in)) ? new Date(Date.now() + Number(session.expires_in) * 1000).toISOString() : undefined);
 }
 
+const REQUEST_TIMEOUT_MS = 15000;
+
+/**
+ * POST a JSON body with a hard deadline.
+ *
+ * A bare fetch has no timeout: a stalled connection left device login and token
+ * refresh pending forever, and the extension surfaced nothing to the user.
+ */
 async function request(path: string, body: Record<string, string>) {
   let response: Response;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   try {
-    response = await fetch(`${serverUrl()}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
-  } catch (error) { throw Object.assign(new Error(error instanceof Error ? error.message : String(error)), { kind: "network" as const }); }
+    response = await fetch(`${serverUrl()}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: controller.signal });
+  } catch (error) {
+    const aborted = error instanceof Error && error.name === "AbortError";
+    const message = aborted ? `minitok request timed out after ${REQUEST_TIMEOUT_MS / 1000}s` : (error instanceof Error ? error.message : String(error));
+    throw Object.assign(new Error(message), { kind: "network" as const });
+  } finally {
+    clearTimeout(timer);
+  }
   let value: any = null;
   try { value = await response.json(); } catch {}
   if (!response.ok) {
@@ -78,14 +94,17 @@ export async function deviceLogin(context: vscode.ExtensionContext, onStatus: (t
   onStatus(`Waiting for browser authorization at ${start.verification_uri}`);
   await vscode.env.openExternal(vscode.Uri.parse(verificationUrl));
   const deadline = Date.now() + Math.min(Number(start.expires_in || 600) * 1000, 10 * 60 * 1000);
-  const interval = Math.max(2000, Number(start.interval || 5) * 1000);
+  let interval = Math.max(2000, Number(start.interval || 5) * 1000);
   while (Date.now() < deadline) {
     await new Promise(resolve => setTimeout(resolve, interval));
     try {
       const result = await request("/v1/auth/device/token", { device_code: start.device_code });
       if (result.access_token || result.accessToken) { await save(context, result); return normalizeCustomerSession(result); }
     } catch (error: any) {
+      // RFC 8628: "authorization_pending" means keep polling, "slow_down" means
+      // poll less often. Treating slow_down as fatal aborted valid logins.
       if (error?.message === "authorization_pending") continue;
+      if (error?.message === "slow_down") { interval += 5000; continue; }
       throw Object.assign(error instanceof Error ? error : new Error(String(error)), { kind: error?.kind || "login" });
     }
   }

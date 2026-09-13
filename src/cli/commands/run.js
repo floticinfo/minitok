@@ -121,7 +121,7 @@ async function cmdRun(task, opts) {
       const evidenceDir = path.join(repoRoot, ".minitok");
       fs.mkdirSync(evidenceDir, { recursive: true });
       const lastRunPath = path.join(evidenceDir, "last-run.json");
-      const tmpPath = `${lastRunPath}.tmp.${process.pid}`;
+      const tmpPath = `${lastRunPath}.tmp.${process.pid}.${require("crypto").randomBytes(6).toString("hex")}`;
       // Redact the same way run evidence is sanitized — plans/review LLM
       // output may contain whatever the user pasted into the task.
       fs.writeFileSync(tmpPath, JSON.stringify(redact({ task, timestamp: new Date().toISOString(), ...result }), null, 2), "utf-8");

@@ -12,6 +12,13 @@ async function requireEntitlement() {
 }
 function checkEntitlement() {
     return new Promise(resolve => {
+        try {
+            (0, workspace_1.requireTrustedWorkspace)((0, workspace_1.workspacePath)());
+        }
+        catch (error) {
+            resolve({ checked: true, allowed: false, message: error instanceof Error ? error.message : String(error) });
+            return;
+        }
         const spec = (0, workspace_1.spawnSpec)((0, workspace_1.cliPath)(), ["status", "--json"]);
         const child = (0, node_child_process_1.spawn)(spec.command, spec.args, { cwd: (0, workspace_1.workspacePath)(), shell: spec.shell, windowsHide: true });
         let stdout = "";

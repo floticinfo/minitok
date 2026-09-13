@@ -41,6 +41,7 @@ exports.mcpCommand = mcpCommand;
 exports.mcpEnvironment = mcpEnvironment;
 exports.mcpAuthToken = mcpAuthToken;
 exports.autoApprove = autoApprove;
+exports.ensureMcpAuthToken = ensureMcpAuthToken;
 exports.isCliCompatible = isCliCompatible;
 const vscode = __importStar(require("vscode"));
 const path = __importStar(require("node:path"));
@@ -48,6 +49,7 @@ const fs = __importStar(require("node:fs"));
 const os = __importStar(require("node:os"));
 const node_child_process_1 = require("node:child_process");
 const mcp_1 = require("./mcp");
+const version_1 = require("./version");
 function workspacePath() {
     const folders = vscode.workspace.workspaceFolders || [];
     if (!folders.length)
@@ -66,9 +68,12 @@ function requireTrustedWorkspace(cwd) {
     if (!vscode.workspace.isTrusted)
         throw new Error("Trust this workspace before running minitok");
 }
+// Probing the CLI runs synchronously on the extension host thread, so keep the
+// cap short: a responsive CLI answers `--version` in well under a second.
+const CLI_PROBE_TIMEOUT_MS = 3000;
 function isNodeCli(candidate) {
     try {
-        const version = (0, node_child_process_1.execFileSync)(candidate, ["--version"], { stdio: ["ignore", "pipe", "ignore"], timeout: 10000, windowsHide: true }).toString();
+        const version = (0, node_child_process_1.execFileSync)(candidate, ["--version"], { stdio: ["ignore", "pipe", "ignore"], timeout: CLI_PROBE_TIMEOUT_MS, windowsHide: true }).toString();
         return /^minitok\s+\d+\.\d+\.\d+/i.test(version) || /^\d+\.\d+\.\d+/.test(version.trim());
     }
     catch {
@@ -86,11 +91,16 @@ function defaultCliPath() {
         return fallback;
     return candidates[0];
 }
+let cachedCliPath;
 function cliPath() {
     const configured = vscode.workspace.getConfiguration("minitok").get("cliPath", "").trim();
-    if (configured && isNodeCli(configured))
-        return configured;
-    return defaultCliPath();
+    // isNodeCli blocks the extension host, so probe at most once per setting
+    // instead of up to three synchronous probes on every call.
+    if (cachedCliPath && cachedCliPath.configured === configured)
+        return cachedCliPath.resolved;
+    const resolved = configured && isNodeCli(configured) ? configured : defaultCliPath();
+    cachedCliPath = { configured, resolved };
+    return resolved;
 }
 function quoteCmdArg(value) { return `"${value.replace(/"/g, '\\"')}"`; }
 function spawnSpec(command, args) {
@@ -131,9 +141,41 @@ function mcpAuthToken() {
 function autoApprove() {
     return vscode.workspace.getConfiguration("minitok").get("autoApprove", false);
 }
+/**
+ * A usable MCP auth token for a handshake.
+ *
+ * The runtime token expires after 15 minutes and only `minitok mcp connect` used
+ * to rotate it, so MCP access silently stopped working 15 minutes after setup.
+ * Refresh through the CLI (which owns the installation binding) when the file is
+ * missing, expired or revoked. Uses spawn rather than execFileSync so the
+ * extension host is never blocked while the CLI runs.
+ */
+async function ensureMcpAuthToken() {
+    const current = mcpAuthToken();
+    if (current)
+        return current;
+    await refreshRuntimeToken();
+    return mcpAuthToken();
+}
+function refreshRuntimeToken() {
+    return new Promise(resolve => {
+        const spec = spawnSpec(cliPath(), ["mcp", "token"]);
+        let settled = false;
+        const done = () => { if (!settled) {
+            settled = true;
+            resolve();
+        } };
+        try {
+            const child = (0, node_child_process_1.spawn)(spec.command, spec.args, { cwd: workspacePath(), shell: spec.shell, windowsHide: true, stdio: "ignore" });
+            const timer = setTimeout(() => { child.kill(); done(); }, 30000);
+            child.on("error", () => { clearTimeout(timer); done(); });
+            child.on("close", () => { clearTimeout(timer); done(); });
+        }
+        catch {
+            done();
+        }
+    });
+}
 function isCliCompatible(version) {
-    const match = /^v?(\d+)\.(\d+)\.(\d+)/.exec(version.trim());
-    if (!match)
-        return false;
-    return Number(match[1]) >= 1 && Number(match[2]) >= 3;
+    return (0, version_1.isCliCompatible)(version);
 }

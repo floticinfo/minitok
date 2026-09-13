@@ -14,6 +14,7 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const crypto = require("crypto");
 const { minitokVersion } = require("./version");
 const { readEnv } = require("./env");
 
@@ -85,7 +86,7 @@ function writeCacheAtomic(cachePath, data) {
   fs.mkdirSync(path.dirname(cachePath), { recursive: true });
   const lockPath = `${cachePath}.lock`;
   let lockFd;
-  const token = `${process.pid}-${Math.random().toString(16).slice(2)}`;
+  const token = crypto.randomBytes(8).toString("hex");
   for (let attempt = 0; attempt < 100; attempt++) {
     try {
       lockFd = fs.openSync(lockPath, "wx", 0o600);
@@ -116,7 +117,7 @@ function writeCacheAtomic(cachePath, data) {
   try {
     const current = readCache(cachePath) || {};
     const merged = { ...current, ...data };
-    const tmp = `${cachePath}.tmp.${process.pid}.${Math.random().toString(16).slice(2)}`;
+    const tmp = `${cachePath}.tmp.${process.pid}.${crypto.randomBytes(6).toString("hex")}`;
     try {
       fs.writeFileSync(tmp, JSON.stringify(merged, null, 2), { encoding: "utf-8", flag: "wx" });
       fs.renameSync(tmp, cachePath);

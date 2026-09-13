@@ -169,3 +169,43 @@ describe("runtime PID cleanup", () => {
     } finally { await server.stop(); }
   });
 });
+describe("runtime idle shutdown", () => {
+  let files;
+  afterEach(() => { if (files) fs.rmSync(files.root, { recursive: true, force: true }); });
+
+  it("waits for stop() before exiting", async () => {
+    files = runtimeFiles();
+    const server = new RuntimeServer({ ...files, authRequired: false, entitlementRequired: false });
+    const order = [];
+    server.stop = async () => {
+      order.push("stop:start");
+      await new Promise(resolve => setTimeout(resolve, 20));
+      order.push("stop:end");
+    };
+    const originalExit = process.exit;
+    process.exit = code => { order.push(`exit:${code}`); };
+    try {
+      await server._shutdownForIdle();
+    } finally {
+      process.exit = originalExit;
+    }
+    // The lock release lives inside stop(), so exiting first left a stale lock.
+    assert.deepEqual(order, ["stop:start", "stop:end", "exit:0"]);
+  });
+
+  it("still exits when stop() fails", async () => {
+    files = runtimeFiles();
+    const server = new RuntimeServer({ ...files, authRequired: false, entitlementRequired: false });
+    const order = [];
+    server.stop = async () => { throw new Error("stop failed"); };
+    const originalExit = process.exit;
+    process.exit = code => { order.push(`exit:${code}`); };
+    try {
+      await server._shutdownForIdle();
+    } finally {
+      process.exit = originalExit;
+    }
+    assert.deepEqual(order, ["exit:0"]);
+  });
+});
+

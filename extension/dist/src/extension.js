@@ -46,6 +46,8 @@ function extensionVersion(context) {
     return String(context.extension.packageJSON.version);
 }
 function runCli(cliPath, args) {
+    const cwd = (0, workspace_2.workspacePath)();
+    (0, workspace_1.requireTrustedWorkspace)(cwd);
     return new Promise((resolve, reject) => {
         const spec = (0, workspace_1.spawnSpec)(cliPath, args);
         const child = (0, node_child_process_1.spawn)(spec.command, spec.args, { cwd: (0, workspace_2.workspacePath)(), shell: spec.shell, windowsHide: true });
@@ -74,6 +76,7 @@ function activate(context) {
     context.subscriptions.push(vscode.commands.registerCommand("minitok.mcpStatus", async () => {
         try {
             await requireEntitlement();
+            (0, workspace_1.requireTrustedWorkspace)((0, workspace_2.workspacePath)());
         }
         catch (error) {
             vscode.window.showErrorMessage(String(error));
@@ -86,6 +89,9 @@ function activate(context) {
             return;
         }
         const processSpec = (0, workspace_1.spawnSpec)(command[0], command.slice(1));
+        // Refresh the short lived runtime token before spawning the server, so both
+        // sides read the same credential.
+        const authToken = await (0, workspace_2.ensureMcpAuthToken)();
         output.appendLine(`[spawn] mcp command=${JSON.stringify(processSpec.command)} args=${JSON.stringify(processSpec.args)} cwd=${JSON.stringify((0, workspace_2.workspacePath)())}`);
         let child;
         try {
@@ -107,7 +113,7 @@ function activate(context) {
                     finish(`minitok MCP error: ${message.error.message}`);
                 }
                 else if (message.id === 1)
-                    child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: { authToken: (0, workspace_2.mcpAuthToken)() } })}\n`);
+                    child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: { authToken } })}\n`);
                 else if (message.id === 2) {
                     clearTimeout(timer);
                     finish(`minitok MCP online: ${message.result?.tools?.length || 0} tools`);
@@ -116,7 +122,7 @@ function activate(context) {
             catch { }
         } });
         child.on("error", (error) => { clearTimeout(timer); finish(`minitok MCP offline: ${error.message}`); });
-        child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "minitok-extension", version: extensionVersion(context) }, authToken: (0, workspace_2.mcpAuthToken)() } })}\n`);
+        child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "minitok-extension", version: extensionVersion(context) }, authToken } })}\n`);
     }));
     context.subscriptions.push(vscode.commands.registerCommand("minitok.run", async () => {
         try {
@@ -129,7 +135,8 @@ function activate(context) {
         const task = await vscode.window.showInputBox({ prompt: "minitok task" });
         if (!task)
             return;
-        if (!(0, workspace_2.workspacePath)()) {
+        const cwd = (0, workspace_2.workspacePath)();
+        if (!cwd) {
             vscode.window.showErrorMessage("Open a workspace folder before running minitok");
             return;
         }
@@ -145,7 +152,9 @@ function activate(context) {
         }
         output.show(true);
         try {
-            output.appendLine(await runCli((0, workspace_2.cliPath)(), ["run", task, ...(autoApproveSetting ? ["--auto-accept"] : [])]));
+            // Pass --repo explicitly: without it cmdRun targets the globally registered
+            // workspace, which may be a different repository than the open folder.
+            output.appendLine(await runCli((0, workspace_2.cliPath)(), ["run", task, "--repo", cwd, ...(autoApproveSetting ? ["--auto-accept"] : [])]));
         }
         catch (error) {
             output.appendLine(String(error));
@@ -159,7 +168,9 @@ function activate(context) {
             const version = await runCli((0, workspace_2.cliPath)(), ["--version"]);
             if (!(0, workspace_2.isCliCompatible)(version))
                 throw new Error(`Unsupported minitok CLI version: ${version.trim()}`);
-            output.appendLine(await runCli((0, workspace_2.cliPath)(), ["status"]));
+            // Inspect the open folder, not the globally registered workspace.
+            const statusCwd = (0, workspace_2.workspacePath)();
+            output.appendLine(await runCli((0, workspace_2.cliPath)(), statusCwd ? ["status", "--repo", statusCwd] : ["status"]));
         }
         catch (error) {
             output.appendLine(String(error));

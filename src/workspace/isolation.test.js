@@ -135,3 +135,38 @@ describe("isolation: diff apply failure keeps the paid output", () => {
     assert.equal(fs.readFileSync(path.join(repo, "feature.txt"), "utf8").replace(/\r\n/g, "\n"), "feature\n");
   });
 });
+describe("isolation: workspace link safety", () => {
+  it("accepts a normal workspace tree", () => {
+    const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "mt-links-")));
+    fs.mkdirSync(path.join(dir, "src"));
+    fs.writeFileSync(path.join(dir, "src", "app.js"), "ok\n");
+    const { assertNoLinks } = require("./isolation");
+    assert.doesNotThrow(() => assertNoLinks(dir));
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("accepts the same directory when only the path casing differs (Windows)", { skip: process.platform !== "win32" }, () => {
+    const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "mt-links-case-")));
+    fs.writeFileSync(path.join(dir, "app.js"), "ok\n");
+    const { assertNoLinks } = require("./isolation");
+    // realpathSync.native returns the on-disk casing, so a lowercase drive letter
+    // (c:\repo) never matched a strict string comparison against C:\repo and the
+    // whole run was refused with "Unsafe workspace path".
+    const lowered = dir.replace(/^([A-Za-z]):/, (_, drive) => `${drive.toLowerCase()}:`);
+    assert.notEqual(lowered, dir);
+    assert.doesNotThrow(() => assertNoLinks(lowered));
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("compares canonical paths case-insensitively only on Windows", () => {
+    const { sameResolvedPath } = require("./isolation");
+    assert.equal(sameResolvedPath("C:\\Repo\\App", "C:\\Repo\\App"), true);
+    assert.equal(sameResolvedPath("/repo/app", "/repo/app"), true);
+    if (process.platform === "win32") {
+      assert.equal(sameResolvedPath("c:\\repo\\app", "C:\\Repo\\App"), true);
+    } else {
+      assert.equal(sameResolvedPath("/repo/app", "/repo/App"), false);
+    }
+  });
+});
+

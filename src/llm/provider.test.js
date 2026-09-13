@@ -183,3 +183,34 @@ describe("generic custom provider", () => {
     assert.doesNotThrow(() => createProvider("openai", { endpoint: "http://127.0.0.1:8080/v1" }));
   });
 });
+describe("provider error reporting", () => {
+  it("surfaces the API error message instead of only the status code", async () => {
+    const originalFetch = global.fetch;
+    global.fetch = async () => new Response(JSON.stringify({ error: { message: "model 'ghost-1' does not exist" } }), { status: 404, headers: { "content-type": "application/json" } });
+    try {
+      const provider = createProvider("custom", { base_url: "http://localhost:11434/v1", api_key: "key", allow_insecure_local_endpoint: true });
+      await assert.rejects(
+        () => provider.complete([{ role: "user", content: "hi" }]),
+        error => {
+          assert.match(error.message, /API request failed \(404\)/);
+          assert.match(error.message, /model 'ghost-1' does not exist/);
+          return true;
+        }
+      );
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("falls back to a truncated body when the error is not JSON", async () => {
+    const originalFetch = global.fetch;
+    global.fetch = async () => new Response("upstream\n   gateway   timeout", { status: 400, headers: { "content-type": "text/plain" } });
+    try {
+      const provider = createProvider("custom", { base_url: "http://localhost:11434/v1", api_key: "key", allow_insecure_local_endpoint: true });
+      await assert.rejects(() => provider.complete([{ role: "user", content: "hi" }]), /upstream gateway timeout/);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+});
+

@@ -11,6 +11,8 @@
 - Fixed `RuntimeStdio` accepting and ignoring an injected `runPipeline`, which sent embedders and tests to the real pipeline.
 - Fixed an unknown command reaching the default CLI action, which opened the terminal interface on a TTY and printed the bare-invocation hint on a pipe.
 - Fixed the Extension CLI version gate: it rejected `minitok 1.3.12` because the CLI prints a product prefix, and rejected every future major release because major and minor were compared independently.
+- Fixed arbitrary PowerShell execution through a provider name on Windows. `TokenStore` interpolated the provider name from `minitok.yml` into a `powershell.exe -Command` script, so a name such as `x') ; <payload> ; ('y` ran the payload while resolving OAuth credentials (reproduced: the injected statement created a file). Names are escaped for the single-quoted literal, and `validateConfig` rejects provider names containing shell or path metacharacters.
+- Fixed `minitok run` refusing a workspace whose path casing differs from the on-disk casing. `realpathSync.native()` returns the on-disk casing while `path.resolve()` keeps the caller's, so `--repo c:\src\app` failed the link check with `Unsafe workspace path` before the run started.
 
 ### Hardening
 
@@ -31,6 +33,12 @@
 - Fixed the global configuration being read only from the hardcoded `~/.config/minitok/config.yml`, which ignored Windows (`%APPDATA%`) and `$XDG_CONFIG_HOME`; the platform path, the legacy path and `~/.minitok/config.yml` are all honored.
 - Fixed entitlement timestamps requiring milliseconds: an issuer signing a valid instant such as `2026-01-01T00:00:00Z` would have made every entitlement MALFORMED.
 - Fixed the Extension probing the CLI synchronously on every call (up to three 10 second `execFileSync` probes); the result is cached per setting and the probe is capped at 3 seconds.
+- Fixed the knowledge-store lock spinning a full CPU core for the whole 30 second timeout whenever another run held it; retries now back off 50 ms, and a lock file corrupted by a crash no longer masks the caller's error.
+- Fixed the runtime idle shutdown calling `process.exit()` without waiting for `stop()`. The lock release runs inside the server close callback, so the exit aborted it and left a stale lock behind.
+- Temporary and lock file names are now derived from `crypto.randomBytes()` instead of `Math.random()`/pid (isolation patch, `last-run.json.tmp`, change temporaries, keychain temporary, update-cache lock, workspace registry lock), so two runs inside one process can no longer unlink each other's in-flight file.
+- `applyChanges` records `overwrote: true` on the audit entry when a `create` replaces an existing file, instead of replacing it silently.
+- Provider failures include the API's own error message (invalid model, quota, oversized request) instead of only the HTTP status code.
+
 
 ### Added
 
@@ -40,6 +48,9 @@
 ### Extension
 
 - Moved the CLI compatibility check to `extension/src/version.ts` so it can be exercised under Node, with a test that asserts the gate accepts the exact string `minitok --version` prints.
+- The panel's workspace trust check now runs inside the handler's `try`: it threw before the `catch`, which became an unhandled rejection with no feedback in the webview. The 30 minute run timeout also settles its promise, so a kill that cannot be delivered no longer leaves the panel stuck on "A minitok run is already active".
+- Device authorization requests have a 15 second deadline (`fetch` had none) and `slow_down` is honored per RFC 8628 instead of failing an otherwise valid login.
+
 
 ### Tests
 
@@ -50,6 +61,8 @@
 - Added remote MCP coverage: an expired cached OAuth token is never reused and a 401 starts the OAuth refresh path.
 - Added extension coverage: Windows paths survive `parseMcpCommand`, the MCP handshake can refresh the runtime token, and `run`/`status` target the open folder.
 - Added `src/entitlement/model.test.js` (timestamp acceptance) and `tests/test-migrate-output.js` (generated configuration and `.gitignore` preservation).
+- Added regression coverage for the provider-name injection (a marker file that must not be created on Windows), provider-name validation, acceptance of a workspace whose path casing differs, the knowledge-store lock back-off (with a CPU assertion), idle-shutdown ordering, the create-overwrite audit entry, and provider error details.
+
 
 ## 1.3.12 - 2026-09-11
 

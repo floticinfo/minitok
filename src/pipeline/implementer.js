@@ -7,6 +7,7 @@
 const fs = require("fs");
 const path = require("path");
 const { auditLog } = require("../core/audit");
+const { randomBytes } = require("crypto");
 
 /**
  * Files/directories protected from autonomous pipeline modification.
@@ -147,6 +148,17 @@ function isBlockedExtension(filePath, blockedExtensions) {
   return { blocked: false };
 }
 
+/**
+ * Temporary sibling path for an atomic write.
+ *
+ * The suffix must be unique per call, not just per process: the MCP runtime can
+ * apply changes inside one process, and a shared temporary name lets one writer
+ * unlink another writer's in-flight file.
+ */
+function temporaryWritePath(filePath) {
+  return `${filePath}.tmp.${process.pid}.${randomBytes(6).toString("hex")}`;
+}
+
 function applyChanges(repoRoot, changesResult, dryRun = false, options = {}) {
   if (changesResult.error) return { applied: 0, errors: [changesResult.error] };
 
@@ -199,10 +211,15 @@ function applyChanges(repoRoot, changesResult, dryRun = false, options = {}) {
       }
       if (change.action === "create") {
         fs.mkdirSync(path.dirname(filePath), { recursive: true });
-        const temporary = `${filePath}.tmp.${process.pid}.${Math.random().toString(16).slice(2)}`;
+        // "create" is allowed to replace an existing file (a repair cycle may
+        // re-emit create for a file it wrote earlier), but the overwrite is
+        // audited so evidence never hides a replaced file.
+        const replacedExisting = fs.existsSync(filePath);
+        const temporary = temporaryWritePath(filePath);
         fs.writeFileSync(temporary, change.content, { encoding: "utf-8", flag: "wx" });
         try { fs.renameSync(temporary, filePath); } catch (error) { try { fs.unlinkSync(temporary); } catch {} throw error; }
-        recordAudit({ action: "create", file: change.file, result: "applied" });
+        if (replacedExisting) results.audit.warnings.push(`Overwrote existing file: ${change.file}`);
+        recordAudit(replacedExisting ? { action: "create", file: change.file, result: "applied", overwrote: true } : { action: "create", file: change.file, result: "applied" });
         results.applied++;
       } else if (change.action === "modify") {
         if (!fs.existsSync(filePath)) {
@@ -211,7 +228,7 @@ function applyChanges(repoRoot, changesResult, dryRun = false, options = {}) {
         }
         const current = fs.lstatSync(filePath);
         if (current.isSymbolicLink() || !current.isFile()) throw new Error("Modify target must be a regular file");
-        const temporary = `${filePath}.tmp.${process.pid}.${Math.random().toString(16).slice(2)}`;
+        const temporary = temporaryWritePath(filePath);
         fs.writeFileSync(temporary, change.content, { encoding: "utf-8", flag: "wx" });
         try { fs.renameSync(temporary, filePath); } catch (error) { try { fs.unlinkSync(temporary); } catch {} throw error; }
         recordAudit({ action: "modify", file: change.file, result: "applied" });
@@ -291,4 +308,4 @@ function validateChanges(changesResult) {
   return { valid: errors.length === 0, errors, validatedChanges: validated };
 }
 
-module.exports = { implement, applyChanges, safePath, isProtectedPath, isBlockedExtension, validateChange, validateChanges, PROTECTED_PATHS, RELEASE_PROTECTED_PATHS, VERIFICATION_PROTECTED_PATHS, DEFAULT_BLOCKED_EXTENSIONS, IMPLEMENT_SYSTEM_PROMPT };
+module.exports = { implement, applyChanges, safePath, isProtectedPath, isBlockedExtension, validateChange, validateChanges, temporaryWritePath, PROTECTED_PATHS, RELEASE_PROTECTED_PATHS, VERIFICATION_PROTECTED_PATHS, DEFAULT_BLOCKED_EXTENSIONS, IMPLEMENT_SYSTEM_PROMPT };

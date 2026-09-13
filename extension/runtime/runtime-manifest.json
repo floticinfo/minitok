@@ -80,16 +80,16 @@
       "embedded": "a7325f28c1e5ec6f9d9e7261c4213582171d63f4fcd7cb528c92fc7afde8ef53"
     },
     "auth/token-store.js": {
-      "source": "cad9c19501d129150a84e586f8da1ac5a199deeb484ce9ae40da09c27ded9d00",
-      "embedded": "cad9c19501d129150a84e586f8da1ac5a199deeb484ce9ae40da09c27ded9d00"
+      "source": "acbb3ee037a663fafef49f8b44b2c29d1afb7ff52ee51d13edc32c72492b0461",
+      "embedded": "acbb3ee037a663fafef49f8b44b2c29d1afb7ff52ee51d13edc32c72492b0461"
     },
     "cli/commands/server-config.js": {
       "source": "043c5f1bd9d5444e221068f946fe90b3914df730a37d8a0213ca52ced89eb5da",
       "embedded": "043c5f1bd9d5444e221068f946fe90b3914df730a37d8a0213ca52ced89eb5da"
     },
     "config/loader.js": {
-      "source": "da63abb36467f36944dbb13c17e5b55929ba27de038d664c222bc84747bbc035",
-      "embedded": "da63abb36467f36944dbb13c17e5b55929ba27de038d664c222bc84747bbc035"
+      "source": "19517dd18427ab702a4ab31825af8bb23c1b7e5ae26a1c979a308f7aa92445bd",
+      "embedded": "19517dd18427ab702a4ab31825af8bb23c1b7e5ae26a1c979a308f7aa92445bd"
     },
     "context/compaction.js": {
       "source": "0475f4c5ed57462603366a047689064c136cf596822394fff72f0c456bb27cdf",
@@ -148,8 +148,8 @@
       "embedded": "269a707b54ebf4cae43d998ba46f639371078874d1057ff1cb405b7609e27e5e"
     },
     "evolution/knowledge.js": {
-      "source": "95d81ec14d7ec0e8af38588e80c5972d67cb6c556bc7f0e8226869a570a6624d",
-      "embedded": "95d81ec14d7ec0e8af38588e80c5972d67cb6c556bc7f0e8226869a570a6624d"
+      "source": "679f09ac8bb8e648a39870093681c00eee1014bd377eae373f7d3daa50bfc3bc",
+      "embedded": "679f09ac8bb8e648a39870093681c00eee1014bd377eae373f7d3daa50bfc3bc"
     },
     "evolution/optin.js": {
       "source": "9aa278bd76ecb1fc08a58955a8934486b609d021eb9da2577d992d90df176c23",
@@ -180,8 +180,8 @@
       "embedded": "34f63b0632f2740a83c239536a69e1e72ee5230c1ce7b76598fe8408f638ce27"
     },
     "llm/provider.js": {
-      "source": "0e374b8b5c7cf6ea68a9bd810eed24842bc756187c3d06e9f70edaf36256606d",
-      "embedded": "0e374b8b5c7cf6ea68a9bd810eed24842bc756187c3d06e9f70edaf36256606d"
+      "source": "c7fe431ec1204f155f70c6eb93cdaf69ce240277c171e6994b0fcfc8830f4951",
+      "embedded": "c7fe431ec1204f155f70c6eb93cdaf69ce240277c171e6994b0fcfc8830f4951"
     },
     "mcp/runtime-token.js": {
       "source": "ff1d9e38f7e50104e849e7f4bf88d0e1b0c60433d2f3d946144047f2c49d1bc3",
@@ -196,8 +196,8 @@
       "embedded": "0c16bda31cfcf6135cda59d54b1bc630e84f6ecb222b51a2758a18dc5f389889"
     },
     "pipeline/implementer.js": {
-      "source": "cafcf95077c6001f3677754ba98b9116dbe7781504f3f8978b6d76484afd82d9",
-      "embedded": "cafcf95077c6001f3677754ba98b9116dbe7781504f3f8978b6d76484afd82d9"
+      "source": "14afa410288ba512176088f69e4fb1a0a19e4801c1e53ff48c2a89751e888806",
+      "embedded": "14afa410288ba512176088f69e4fb1a0a19e4801c1e53ff48c2a89751e888806"
     },
     "pipeline/intel.js": {
       "source": "156f608704bbfde60702b53b83647612b49f28f98d7b2fc010986c27d517a442",
@@ -272,8 +272,8 @@
       "embedded": "4af7b96185ee48e397a768d4cbff53a6dfc925f3019d655646959c8a56e676c3"
     },
     "runtime/server.js": {
-      "source": "ead5c7db916805deec9c60506d4f58f0d4aedf423c687b21997f30e3e8e702bb",
-      "embedded": "ead5c7db916805deec9c60506d4f58f0d4aedf423c687b21997f30e3e8e702bb"
+      "source": "180e738c8336bca92c4da2093aedaa2d87c9df48eaf542274d21c3c1818c91ae",
+      "embedded": "180e738c8336bca92c4da2093aedaa2d87c9df48eaf542274d21c3c1818c91ae"
     },
     "runtime/stdio-entry.js": {
       "source": "4023e87bc6dd66a33cd8bbaaab20cc07af46584ced03e6093aaa762e097fef02",
@@ -304,12 +304,12 @@
       "embedded": "5af5bf05d14b898c4823681c438fb4ccf6763d8f4466cb6b0104eca802b3fb36"
     },
     "workspace/isolation.js": {
-      "source": "d910b1b76bfa2da53ba1091a1c2b9bbb1cf455f1f65b447b61f338aa9542e7af",
-      "embedded": "d910b1b76bfa2da53ba1091a1c2b9bbb1cf455f1f65b447b61f338aa9542e7af"
+      "source": "e6c8291dc6a24ac6cfb0f9d0098362cea8a01e8ac88d6dfa7303c31997110e98",
+      "embedded": "e6c8291dc6a24ac6cfb0f9d0098362cea8a01e8ac88d6dfa7303c31997110e98"
     },
     "workspace/manager.js": {
-      "source": "c554dcc5b4b0cbcf17cd66304ce35b4478fc52d400aaf06abc7e0582f4e4bc12",
-      "embedded": "c554dcc5b4b0cbcf17cd66304ce35b4478fc52d400aaf06abc7e0582f4e4bc12"
+      "source": "46a45e4c0d5b6b521f60a876b6af0f5176176c9351f203a0a1e054005fdd65f6",
+      "embedded": "46a45e4c0d5b6b521f60a876b6af0f5176176c9351f203a0a1e054005fdd65f6"
     }
   }
 }

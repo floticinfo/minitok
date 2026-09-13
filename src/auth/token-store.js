@@ -8,6 +8,7 @@
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
+const crypto = require("crypto");
 const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
 const { execFileSync } = require("child_process");
 
@@ -33,11 +34,36 @@ class TokenStore {
    * @returns {string}
    */
    _keychainName(provider) { return `minitok:${provider}`; }
+  /**
+   * Escape a value for interpolation inside a single-quoted PowerShell string.
+   *
+   * Provider names come from minitok.yml (a repository-controlled file) and from
+   * CLI arguments, so they must never reach a -Command script verbatim: a name
+   * such as  x') ; <payload> ; ('y  closes the string literal and runs the
+   * injected statements. Doubling single quotes is the complete escape for a
+   * single-quoted PowerShell literal ($(), backticks and " stay inert).
+   */
+  _escapePowerShellString(value) { return String(value).replace(/'/g, "''"); }
+
+  /** PowerShell -Command script that reads a stored secret. */
+  _powerShellLoadCommand(provider) {
+    return `(Get-Secret -Name '${this._escapePowerShellString(this._keychainName(provider))}' -AsPlainText -ErrorAction Stop | ConvertFrom-Json) | ConvertTo-Json -Compress`;
+  }
+
+  /** PowerShell -Command script that stores a secret. */
+  _powerShellSaveCommand(provider, payload) {
+    return `$secret = ConvertTo-SecureString '${this._escapePowerShellString(payload)}' -AsPlainText -Force; Set-Secret -Name '${this._escapePowerShellString(this._keychainName(provider))}' -Secret $secret -ErrorAction Stop`;
+  }
+
+  /** PowerShell -Command script that removes a stored secret. */
+  _powerShellRemoveCommand(provider) {
+    return `Remove-Secret -Name '${this._escapePowerShellString(this._keychainName(provider))}' -ErrorAction SilentlyContinue`;
+  }
 
   /** @returns {Record<string, unknown> | null} */
   _keychainLoad(provider) {
     try {
-      if (process.platform === "win32") return JSON.parse(execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", `(Get-Secret -Name '${this._keychainName(provider)}' -AsPlainText -ErrorAction Stop | ConvertFrom-Json) | ConvertTo-Json -Compress`], { encoding: "utf8", timeout: 5000, windowsHide: true }).trim());
+      if (process.platform === "win32") return JSON.parse(execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", this._powerShellLoadCommand(provider)], { encoding: "utf8", timeout: 5000, windowsHide: true }).trim());
       if (process.platform === "darwin") return JSON.parse(execFileSync("security", ["find-generic-password", "-s", this._keychainName(provider), "-w"], { encoding: "utf8", timeout: 5000 }).trim());
       return JSON.parse(execFileSync("secret-tool", ["lookup", "service", "minitok", "provider", provider], { encoding: "utf8", timeout: 5000 }).trim());
     } catch { return null; }
@@ -47,7 +73,7 @@ class TokenStore {
   _keychainSave(provider, record) {
     const payload = JSON.stringify(record);
     try {
-      if (process.platform === "win32") { execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", `$secret = ConvertTo-SecureString '${payload.replace(/'/g, "''")}' -AsPlainText -Force; Set-Secret -Name '${this._keychainName(provider)}' -Secret $secret -ErrorAction Stop`], { stdio: "ignore", timeout: 5000, windowsHide: true }); return true; }
+      if (process.platform === "win32") { execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", this._powerShellSaveCommand(provider, payload)], { stdio: "ignore", timeout: 5000, windowsHide: true }); return true; }
       if (process.platform === "darwin") { execFileSync("security", ["add-generic-password", "-U", "-s", this._keychainName(provider), "-a", process.env.USER || "minitok", "-w", payload], { stdio: "ignore", timeout: 5000 }); return true; }
       execFileSync("secret-tool", ["store", "--label", this._keychainName(provider), "service", "minitok", "provider", provider], { input: payload, stdio: ["pipe", "ignore", "ignore"], timeout: 5000 }); return true;
     } catch { return false; }
@@ -55,7 +81,7 @@ class TokenStore {
 
   _keychainRemove(provider) {
     try {
-      if (process.platform === "win32") execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", `Remove-Secret -Name '${this._keychainName(provider)}' -ErrorAction SilentlyContinue`], { stdio: "ignore", timeout: 5000, windowsHide: true });
+      if (process.platform === "win32") execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", this._powerShellRemoveCommand(provider)], { stdio: "ignore", timeout: 5000, windowsHide: true });
       else if (process.platform === "darwin") execFileSync("security", ["delete-generic-password", "-s", this._keychainName(provider)], { stdio: "ignore", timeout: 5000 });
       else execFileSync("secret-tool", ["clear", "service", "minitok", "provider", provider], { stdio: "ignore", timeout: 5000 });
     } catch {}
@@ -81,7 +107,9 @@ class TokenStore {
     const fp = this._filePath(provider);
     const record = { provider, ...tokenData, saved_at: new Date().toISOString() };
     if (this._keychainSave(provider, record)) { try { fs.unlinkSync(this._filePath(provider)); } catch {} return; }
-    const tmp = `${fp}.tmp.${process.pid}.${Math.random().toString(16).slice(2)}`;
+    // Random suffix (not Math.random): two runs in one process must never pick
+    // the same temporary name, or one would unlink the other's in-flight write.
+    const tmp = `${fp}.tmp.${process.pid}.${crypto.randomBytes(6).toString("hex")}`;
     try {
       fs.writeFileSync(tmp, JSON.stringify(record, null, 2), { encoding: "utf-8", flag: "wx", mode: 0o600 });
       fs.renameSync(tmp, fp);

@@ -39,22 +39,57 @@ exports.deviceLogin = deviceLogin;
 exports.logoutExtension = logoutExtension;
 exports.authErrorText = authErrorText;
 const vscode = __importStar(require("vscode"));
+function normalizeCustomerSession(value) {
+    const accessToken = value?.access_token || value?.accessToken;
+    const refreshToken = value?.refresh_token || value?.refreshToken;
+    if (!accessToken || !refreshToken)
+        return undefined;
+    const expiresIn = Number(value.expires_in ?? value.expiresIn);
+    const expiresAt = value.expires_at || value.expiresAt || (Number.isFinite(expiresIn) && expiresIn > 0 ? new Date(Date.now() + expiresIn * 1000).toISOString() : undefined);
+    return { access_token: accessToken, refresh_token: refreshToken, customer_id: value.customer_id || value.customerId, token_type: value.token_type || value.tokenType || "Bearer", ...(Number.isFinite(expiresIn) && expiresIn > 0 ? { expires_in: expiresIn } : {}), ...(expiresAt ? { expires_at: expiresAt } : {}) };
+}
 const SESSION_KEY = "minitok.secret.accountSession";
 const DEFAULT_SERVER = "https://api.minitok.dev";
 function serverUrl() {
     const configured = vscode.workspace.getConfiguration("minitok").get("serverUrl", DEFAULT_SERVER).trim();
-    return configured.replace(/\/$/, "");
+    let url;
+    try {
+        url = new URL(configured);
+    }
+    catch {
+        throw new Error("minitok.serverUrl must be a valid HTTPS URL");
+    }
+    const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+    if ((url.protocol !== "https:" && !(loopback && url.protocol === "http:")) || url.username || url.password || url.search || url.hash || (url.pathname !== "/" && url.pathname !== ""))
+        throw new Error("minitok.serverUrl must use HTTPS and contain only an origin");
+    if (!loopback && url.hostname !== "api.minitok.dev")
+        throw new Error("minitok.serverUrl is not an allowed authentication origin");
+    return url.origin;
 }
 function expiry(session) {
     return session.expires_at || (Number.isFinite(Number(session.expires_in)) ? new Date(Date.now() + Number(session.expires_in) * 1000).toISOString() : undefined);
 }
+const REQUEST_TIMEOUT_MS = 15000;
+/**
+ * POST a JSON body with a hard deadline.
+ *
+ * A bare fetch has no timeout: a stalled connection left device login and token
+ * refresh pending forever, and the extension surfaced nothing to the user.
+ */
 async function request(path, body) {
     let response;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-        response = await fetch(`${serverUrl()}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+        response = await fetch(`${serverUrl()}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: controller.signal });
     }
     catch (error) {
-        throw Object.assign(new Error(error instanceof Error ? error.message : String(error)), { kind: "network" });
+        const aborted = error instanceof Error && error.name === "AbortError";
+        const message = aborted ? `minitok request timed out after ${REQUEST_TIMEOUT_MS / 1000}s` : (error instanceof Error ? error.message : String(error));
+        throw Object.assign(new Error(message), { kind: "network" });
+    }
+    finally {
+        clearTimeout(timer);
     }
     let value = null;
     try {
@@ -81,7 +116,10 @@ async function readExtensionSession(context) {
     }
 }
 async function save(context, session) {
-    await context.secrets.store(SESSION_KEY, JSON.stringify({ ...session, expires_at: expiry(session) }));
+    const normalized = normalizeCustomerSession(session);
+    if (!normalized)
+        throw new Error("Account session is incomplete");
+    await context.secrets.store(SESSION_KEY, JSON.stringify({ ...normalized, expires_at: expiry(normalized) }));
 }
 async function refreshExtensionSession(context) {
     const session = await readExtensionSession(context);
@@ -93,7 +131,7 @@ async function refreshExtensionSession(context) {
     try {
         const next = await request("/v1/auth/token/refresh", { refresh_token: session.refresh_token });
         await save(context, next);
-        return next;
+        return normalizeCustomerSession(next);
     }
     catch {
         return undefined;
@@ -111,19 +149,25 @@ async function deviceLogin(context, onStatus) {
     onStatus(`Waiting for browser authorization at ${start.verification_uri}`);
     await vscode.env.openExternal(vscode.Uri.parse(verificationUrl));
     const deadline = Date.now() + Math.min(Number(start.expires_in || 600) * 1000, 10 * 60 * 1000);
-    const interval = Math.max(2000, Number(start.interval || 5) * 1000);
+    let interval = Math.max(2000, Number(start.interval || 5) * 1000);
     while (Date.now() < deadline) {
         await new Promise(resolve => setTimeout(resolve, interval));
         try {
             const result = await request("/v1/auth/device/token", { device_code: start.device_code });
-            if (result.access_token && result.refresh_token) {
+            if (result.access_token || result.accessToken) {
                 await save(context, result);
-                return result;
+                return normalizeCustomerSession(result);
             }
         }
         catch (error) {
+            // RFC 8628: "authorization_pending" means keep polling, "slow_down" means
+            // poll less often. Treating slow_down as fatal aborted valid logins.
             if (error?.message === "authorization_pending")
                 continue;
+            if (error?.message === "slow_down") {
+                interval += 5000;
+                continue;
+            }
             throw Object.assign(error instanceof Error ? error : new Error(String(error)), { kind: error?.kind || "login" });
         }
     }
