@@ -15,6 +15,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const { execSync } = require("node:child_process");
 
 const ROOT = path.join(__dirname, "..");
 const { promptConfirmation, approvalRequest, validateApprovalResponse } = require(path.join(ROOT, "src", "pipeline", "loop.js"));
@@ -107,6 +108,34 @@ test("without an approval file a non-TTY run refuses changes unless auto-accept 
     assert.equal(await promptConfirmation({ changes: [] }, { repoRoot: repo }), true, "an empty change set needs no approval");
     assert.equal(await promptConfirmation(CHANGES, { repoRoot: repo, dryRun: true }), true);
   } finally {
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test("auto-accept takes precedence over an approval file, and says so", async () => {
+  const repo = tempRepo();
+  const approvalFile = path.join(repo, ".minitok", "approval.json");
+  const warnings = [];
+  const originalError = console.error;
+  console.error = (...values) => { warnings.push(values.map(String).join(" ")); };
+  try {
+    // The extension's autoApprove setting passes both flags. With the opposite
+    // order the run polled the approval file for the whole timeout (30 minutes by
+    // default) and then rejected every change, so an explicit "do not wait for a
+    // human" instruction turned into a guaranteed refusal.
+    const started = Date.now();
+    const granted = await promptConfirmation(CHANGES, { repoRoot: repo, approvalFile, autoAccept: true, approvalTimeoutMs: 30000 });
+    assert.equal(granted, true, "an explicit auto-accept must not wait for a human");
+    assert.ok(Date.now() - started < 5000, "the approval timeout must not be consumed");
+    assert.equal(fs.existsSync(approvalFile), false, "no request is written when auto-accept wins");
+    assert.match(warnings.join("\n"), /--auto-accept takes precedence over --approval-file/, "the ignored file must be announced, not silently dropped");
+
+    // allowAutoAccept:false still refuses the shortcut, so the safety valve that
+    // guards the flag keeps working.
+    warnings.length = 0;
+    assert.equal(await promptConfirmation(CHANGES, { repoRoot: repo, autoAccept: true, allowAutoAccept: false }), false);
+  } finally {
+    console.error = originalError;
     fs.rmSync(repo, { recursive: true, force: true });
   }
 });
@@ -208,4 +237,83 @@ test("cmdRun forwards the approval, run id, and cancellation options into the pi
     }
     fs.rmSync(repo, { recursive: true, force: true });
   }
+/**
+ * The approval path has to survive isolation.
+ *
+ * `minitok run` — and therefore the CLI flags, the editor sidebar, the TUI GUI and
+ * the MCP tools — executes inside a disposable clone. `promptConfirmation`
+ * validated the request path against whatever `repoRoot` it was handed, which
+ * isolation makes the clone, while every caller points at
+ * `<workspace>/.minitok/...`. The combination was never covered, so an isolated
+ * run with an approval file always died with "approval_file must be under
+ * workspace/.minitok" before a single change was reviewed. `runPipeline` now
+ * forwards the operator's repository as `approvalRoot`; this test drives a real
+ * isolated run (mock provider, real clone, real merge) to prove the request is
+ * written where the operator is watching and that the decision still counts.
+ */
+test("an isolated run writes and honours the approval file in the real workspace", async () => {
+  const repo = tempRepo();
+  const approvalFile = path.join(repo, ".minitok", "approval.json");
+  const providerPath = path.join(ROOT, "src", "llm", "provider.js");
+  const providerModule = require(providerPath);
+  const { runPipeline } = require(path.join(ROOT, "src", "pipeline", "loop.js"));
+  const { TEST_AUTHORIZATION } = require(path.join(ROOT, "src", "pipeline", "test-seam.js"));
+  const originalCreateProvider = providerModule.createProvider;
+  const knowledgePath = path.join(os.tmpdir(), `minitok-approval-knowledge-${process.pid}-${Date.now()}.json`);
+
+  class ApprovingProbe extends providerModule.LLMProvider {
+    constructor() { super("approval-probe"); }
+    isAvailable() { return true; }
+    async complete(messages) {
+      const system = messages.find(message => message.role === "system")?.content || "";
+      let text;
+      if (system.includes("architect")) text = JSON.stringify({ task_summary: "Create approved.txt", steps: [{ id: 1, action: "create", file: "approved.txt", description: "Create the approved file", rationale: "test" }], estimated_files: 1, risk_level: "low" });
+      else if (system.includes("engineer")) text = JSON.stringify({ changes: [{ file: "approved.txt", action: "create", content: "approved_by_human\n" }], summary: "Create the approved file", files_changed: 1 });
+      else if ((system.includes("review") || system.includes("code reviewer")) && !system.includes("autonomous")) text = JSON.stringify({ verdict: "APPROVE", confidence: 0.95, summary: "Looks right", findings: [], security_findings: [], risk_level: "low", test_suggestions: [] });
+      else text = JSON.stringify({ done: true, summary: "done" });
+      return { text, model: "mock", usage: {}, tokens: { input: 100, output: 50 } };
+    }
+  }
+
+  try {
+    execSync("git init", { cwd: repo, stdio: "pipe" });
+    execSync("git config user.email t@t.com", { cwd: repo, stdio: "pipe" });
+    execSync("git config user.name T", { cwd: repo, stdio: "pipe" });
+    fs.writeFileSync(path.join(repo, "VERIFY_CMD.mjs"), "process.exit(0);\n");
+    execSync("git add -A && git commit -m init", { cwd: repo, stdio: "pipe" });
+
+    providerModule.createProvider = name => name === "approval-probe" ? new ApprovingProbe() : originalCreateProvider(name);
+
+    const pending = runPipeline("Create approved.txt", {
+      repoRoot: repo,
+      providerOverride: "approval-probe",
+      authorization: TEST_AUTHORIZATION,
+      knowledgePath,
+      approvalFile,
+      approvalTimeoutMs: 15000,
+      overrides: { budget: { max_cycles: 2 } },
+    });
+
+    // The request has to appear inside the operator's workspace while the run is
+    // still waiting: the clone is disposable and nothing there is watched.
+    const request = JSON.parse(await waitForFile(approvalFile, 60000));
+    assert.equal(request.type, "approval_request");
+    fs.writeFileSync(`${approvalFile}.response`, `${JSON.stringify({ decision: "approve", nonce: request.nonce, run_id: request.run_id })}\n`);
+
+    const result = await pending;
+    assert.equal(result.success, true, "an approved isolated run must succeed");
+    assert.equal(result.isolation.applied, true, "the approved diff must reach the real workspace");
+    // Normalise line endings: the patch is applied through git on Windows, which
+    // may rewrite LF as CRLF depending on the checkout configuration.
+    assert.equal(fs.readFileSync(path.join(repo, "approved.txt"), "utf8").replace(/\r\n/g, "\n"), "approved_by_human\n");
+    assert.equal(fs.existsSync(approvalFile), false, "an answered request is consumed");
+    assert.equal(fs.existsSync(`${approvalFile}.response`), false, "the response file is consumed");
+  } finally {
+    providerModule.createProvider = originalCreateProvider;
+    try { fs.rmSync(knowledgePath, { force: true }); } catch {}
+    fs.rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+
 });

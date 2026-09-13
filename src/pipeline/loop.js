@@ -172,9 +172,28 @@ function validateApprovalResponse(response, request, now = Date.now()) {
 async function promptConfirmation(changesResult, opts) {
   if (opts.dryRun) return true;
 
+  // --auto-accept is an explicit "do not wait for a human" instruction, so it has
+  // to win over --approval-file. With the opposite order the combination waited
+  // out the approval timeout (30 minutes by default) and then rejected every
+  // change, which is exactly what the extension's autoApprove setting produced:
+  // it passes both flags. The precedence is announced so the ignored file is
+  // never a silent surprise.
+  if (opts.autoAccept === true && opts.allowAutoAccept !== false) {
+    if (opts.approvalFile) console.error("[warn] --auto-accept takes precedence over --approval-file; no approval request will be written.");
+    return true;
+  }
+
   if (opts.approvalFile) {
     const approvalPath = path.resolve(opts.approvalFile);
-    const workspaceRoot = path.resolve(opts.repoRoot || process.cwd());
+    // The approval file belongs to the workspace the operator launched the run
+    // for, which is NOT always `repoRoot`: an isolated run executes inside a
+    // disposable clone, so `repoRoot` is the clone. Validating the request path
+    // against the clone rejected every path the CLI, the editor sidebar, the TUI
+    // GUI and the MCP tools had been told to watch
+    // (`<workspace>/.minitok/...`), so `minitok run --approval-file` failed
+    // outright whenever isolation was in play. `approvalRoot` carries the
+    // operator-visible workspace through that hop.
+    const workspaceRoot = path.resolve(opts.approvalRoot || opts.repoRoot || process.cwd());
     const allowedRoot = path.join(workspaceRoot, ".minitok");
     const normalized = process.platform === "win32" ? approvalPath.toLowerCase() : approvalPath;
     const normalizedRoot = process.platform === "win32" ? allowedRoot.toLowerCase() : allowedRoot;
@@ -209,8 +228,6 @@ async function promptConfirmation(changesResult, opts) {
     try { fs.rmSync(approvalPath, { force: true }); } catch {}
     return false;
   }
-
-  if (opts.autoAccept === true && opts.allowAutoAccept !== false) return true;
 
   const changes = changesResult.changes || [];
   if (changes.length === 0) return true;

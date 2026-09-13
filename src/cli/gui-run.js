@@ -1,6 +1,5 @@
 "use strict";
 const fs = require("fs");
-const os = require("os");
 const path = require("path");
 const { setTimeout: wait } = require("timers/promises");
 const { runPipeline } = require("../pipeline/loop");
@@ -33,7 +32,11 @@ function writeApprovalResponse(approvalFile, decision) {
 async function runTask(task, repo, rl, state) {
   if (state.activeAbort) throw new Error("A run is already active");
   state.approvalActive = false;
-  const approvalFile = path.join(os.tmpdir(), `minitok-cli-approval-${Date.now()}.json`);
+  // The request must live in the workspace the run belongs to: the pipeline only
+  // accepts an approval file under `<workspace>/.minitok` (loop.promptConfirmation)
+  // and the watcher below polls the very path the pipeline writes, so the request
+  // has to be inside the repository rather than in the OS temp directory.
+  const approvalFile = path.join(repo, ".minitok", `cli-approval-${process.pid}.json`);
   const abort = new AbortController(); state.activeAbort = abort;
   const onSigint = () => { abort.abort(); console.log("\nInterrupting..."); };
   process.once("SIGINT", onSigint);
