@@ -160,7 +160,13 @@ async function _getToolHandler(name, args, services, runtimeOptions = {}) {
       } finally {
         releaseStdoutGuard();
       }
-      return { content: [{ type: "text", text: JSON.stringify({ schema_version: 1, run_id: args.run_id || null, state: result.success ? "completed" : "failed", result }) }] };
+      // A pipeline result that reports failure must not be presented as a
+      // successful tool call: `isError` is the only signal many hosts forward to
+      // the model, and the transport derives the persisted run state from it. The
+      // full result stays inside the envelope either way, so flagging the failure
+      // removes no information.
+      const failed = !result || result.success !== true;
+      return { content: [{ type: "text", text: JSON.stringify({ schema_version: 1, run_id: args.run_id || null, state: failed ? "failed" : "completed", result }) }] , ...(failed ? { isError: true } : {}) };
     }
     case "minitok_knowledge_query": return { content: [{ type: "text", text: JSON.stringify(services.knowledge.query(args)) }] };
     case "minitok_knowledge_record": return { content: [{ type: "text", text: JSON.stringify(services.knowledge.record(args)) }] };
@@ -177,10 +183,12 @@ async function getToolHandler(name, args, services, runtimeOptions = {}) {
   if (!runtimeOptions.safeResult) return _getToolHandler(name, args, services, runtimeOptions);
   try {
     const result = await _getToolHandler(name, args, services, runtimeOptions);
-    const structuredContent = result.structuredContent || (() => {
+    const structuredContent = /** @type {any} */ (result).structuredContent || (() => {
       try { return JSON.parse(result.content?.find(item => item.type === "text")?.text || "null"); } catch { return null; }
     })();
-    return { ...result, structuredContent, isError: false };
+    // A handler that already decided the call failed keeps its flag: overwriting
+    // it unconditionally made `isError` impossible to set from a handler.
+    return { ...result, structuredContent, isError: result.isError === true };
   } catch (error) {
     const code = error.code || "MCP_TOOL_ERROR";
     const structuredContent = { schema_version: 1, error: { code, message: error.message } };
