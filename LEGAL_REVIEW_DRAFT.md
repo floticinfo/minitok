@@ -277,20 +277,20 @@ remains, each line still being the text to search for.
 |---|---|---|
 | `https://minitok.dev/pricing` | Applied: the note ends with "cancellation stops the next renewal. The current paid billing period is not automatically refunded." | — |
 | `https://minitok.dev` FAQ and pricing card | Applied: the FAQ answer and the card describe the cancellation model; no initial-purchase refund is offered | — |
-| `https://minitok.dev/refund` | Applied: the page is cancellation-first ("Subscriptions are not automatically refunded when canceled… subject to applicable law and provider rules") | Optional: rename the page and the footer link to "Cancellation Policy", since EULA §4 offers no refund |
-| Footer, every page | Pending (optional) | Remove or rename the "Refund Policy" link once the page is renamed |
-| `https://minitok.dev/support` | Pending | The contact form offers category "Refund", and the server accepts it (`src/api/support.js`). Keep it as an eligibility question or rename both to "Billing" |
+| `https://minitok.dev/refund` | **Applied** (deployed 2026-09-13) | Cancellation-first content, and the page is named "Cancellation Policy" (title, heading, description). The `/refund` path is kept because it is linked from every footer and indexed |
+| Footer, every page | **Applied** (deployed 2026-09-13) | The legal link now reads "Cancellation Policy" on all eight public pages |
+| `https://minitok.dev/support` | **Applied** (deployed 2026-09-13) | The contact form offers "Billing" instead of "Refund", and the server's allowed-category list was updated with it |
 | `https://minitok.dev/terms` §3 | Applied: "cancel at any time through the Dodo customer portal; access continues through the current paid billing period" | — |
 | `https://minitok.dev/terms` §9 | **Applied** (deployed 2026-09-13) | Governed by the laws of the Republic of Korea, courts of the Republic of Korea, the customer's residence option, and the sentence preserving non-waivable rights |
 | `https://minitok.dev/terms` §10, `/refund`, `/privacy` | **Applied** (deployed 2026-09-13) | One English address form, matching EULA §11 word for word: "3F 301-Na025, Sangik Plaza, 57 Munin-ro, Suji-gu, Yongin-si, Gyeonggi-do, Republic of Korea" |
-| `https://floticinfo.com` footer and privacy policy | Pending | Same single English form in both places, so the EULA notice address has one published twin |
+| `https://floticinfo.com` footer and privacy policy | **Applied** (deployed 2026-09-13) | The footer now prints the same address as the site's own privacy policy and the EULA's Korean original: "경기도 용인시 수지구 문인로 57, 3층 301 - 나025호(풍덕천동, 삼익상가)" |
 | `https://minitok.dev/terms`, `/privacy`, `/refund` | **Applied** (deployed 2026-09-13) | "Last updated: August 2026" → "Last updated: September 2026" |
-| `https://minitok.dev` install command | Pending (follows the publish) | "npm install -g @flotic/minitok@1.3.12" → the version published to npm; 1.3.18 is the version prepared here. The live command is correct until that publish happens |
+| `https://minitok.dev` install command | Pending (follows the publish) | "npm install -g @flotic/minitok@1.3.12" → the version published to npm; 1.3.19 is the version prepared here. The live command is correct until that publish happens |
 | `https://minitok.dev/privacy` §7 vs the server | **Resolved** (2026-09-13) | The page published 30 days for Open telemetry and 14 days for Select while the server retained 90 days and the policy it served said 90. The server now applies the published 30/14 periods (`src/services/evolution-telemetry.js`), its served policy says so, and `DATA_CLASSIFICATION.md` section 9.2 records the alignment |
 
 **Version strings.** The homepage still advertises the 1.3.12 install command while
-this repository prepares 1.3.18, so the command has to follow the publish. The
-Extension was repackaged so its embedded CLI runtime matches 1.3.18 and reports 0.2.9,
+this repository prepares 1.3.19, so the command has to follow the publish. The
+Extension was repackaged so its embedded CLI runtime matches 1.3.19 and reports 0.2.9,
 which is the correct next version: the Marketplace serves
 `…/minitok-extension/0.2.5/vspackage` with HTTP 200 and a 725,989 byte VSIX, while the
 same URL for 0.2.6 through 0.2.9 all return HTTP 404, so 0.2.5 is the published
@@ -367,19 +367,23 @@ Customer sue elsewhere." That is optional and it was not applied.
 The pages were fetched again on 2026-09-13 and re-checked while preparing 1.3.18: the
 refund promise is gone from the pricing page, the plan cards, the FAQ, and the refund
 page, and the footer now lists "Support requests" and "Pre-sales and general inquiries"
-under support@minitok.dev. Of the items that were still open at that point, the
-governing-law paragraph, the notice address, and the last-updated dates were deployed
-the same day (below); the install command follows the npm publish. The shipped
-`CHANGELOG.md` for 1.3.18 was written before that deploy and still lists them as
-remaining, so the next release notes should correct that sentence.
+under support@minitok.dev. The rows that were still open were then deployed the same day
+(governing law and venue, the notice address, the last-updated dates, the cancellation
+naming, the support category, and the floticinfo.com footer), so the only row that
+remains is the install command, which follows the npm publish.
 
-**Where the pages are edited.** The website is not part of this repository. The
+**Where the pages are edited.** The website is not part of this repository. Its
 production copy is the `website/` directory of the server repository
 (`floticinfo/minitok-server`), bind-mounted read-only into the Caddy container as
 `/opt/minitok/website`, so a page is changed by editing that directory on the VM. The
+server repository's copies were updated with the same legal text on 2026-09-13, keeping
+its own markup, and its website contract tests were updated with them; its tree still
+carries unrelated in-progress work, so those edits are left uncommitted there. The
 website workspace (`minitok-website/`) keeps its own `static/` prototype, which
-`deployment/deploy.sh` marks obsolete and which must not be uploaded over the live
-pages, and its `_*_prod.html` copies record an earlier deployment.
+`deployment/deploy.sh` marks obsolete, and the uploaded files, backups, before/after
+strings, and rollback commands are kept in
+`minitok-website/legal-consistency-20260913/`. The floticinfo.com footer was aligned and
+deployed to Firebase Hosting the same day.
 
 **Deployed on 2026-09-13.** Three pages were changed and verified live (`/terms` 8,612
 bytes, `/refund` 6,594 bytes, `/privacy` 9,586 bytes): the section 9 paragraph, the
@@ -391,28 +395,30 @@ One operational consequence matters: because the live tree is mounted from the s
 repository, the next website deploy from that repository would revert these three pages
 until its `website/` copies are updated with the same text.
 
-## 7. Approval record (2026-09-13)
+## 7. Approval record (1.3.19, 2026-09-13)
 
 The commercial release gate reads an approval manifest from outside the repository
 (`MINITOK_COMMERCIAL_APPROVAL_MANIFEST`), because the owner decisions are not part of
 the shipped package. The record for this release is:
 
 ```text
-C:\Users\J1\minitok-release-approvals\approval-manifest-1.3.18.json
+C:\Users\J1\minitok-approvals\approval-manifest-1.3.19.json
 ```
 
 It was prepared with `node scripts/approval-manifest-prepare.mjs --out <path outside the
 repository>`, which fills every machine value and leaves every owner decision
-unresolved, and then completed with the owner's decisions. `npm run release:verify`
-run with that file in the environment passes:
+unresolved, and then completed with the owner's decisions. `npm run release:verify` run
+with that file in the environment passes for @flotic/minitok@1.3.19, and the earlier
+1.3.18 record remains beside it (`approval-manifest-1.3.18.json`) since that version
+shipped a different artifact:
 
 | Item | Status | Recorded decision |
 |---|---|---|
 | `legal-owner-approval` | APPROVED | The applied EULA text for 1.3.18 (sections 4, 5, 6, 11, 12, 13) and POLICY.md 1.2.0 section 10 |
 | `privacy-owner-approval` | APPROVED | POLICY.md 1.2.0 section 10 and the data inventory answers in `DATA_CLASSIFICATION.md` section 9.1 |
 | `support-commitments` | APPROVED | Email to support@minitok.dev, 24–48 hours Monday–Friday (UTC), best effort, no guaranteed service level |
-| `npm-publication-authorization` | APPROVED | Publish `@flotic/minitok@1.3.18`, tarball sha256 `b558742af7f78b9adeca58057dfef35053cc28fd871d837ade97edf55ba7f101` |
-| `marketplace-publisher-authorization` | APPROVED | Publish `minitok-extension@0.2.9` under publisher Flotic, VSIX sha256 `fc0d0119614c6ce6619731d6723542bd368fe8fd5c9f6dea9ccb74f9d8c2415c` |
+| `npm-publication-authorization` | APPROVED | Publish `@flotic/minitok@1.3.18`, tarball sha256 `0500bccb261245c89a51fcc2945d112922e25633857fb423c393155230de9fdb` |
+| `marketplace-publisher-authorization` | APPROVED | Publish `minitok-extension@0.2.9` under publisher Flotic, VSIX sha256 `da0793e048793b375ab36be602b25aa55d8edb885b75bfb13d4e49e602028f50` |
 | `registry-publication-verification` | APPROVED | Checked on 2026-09-13: npm serves 1.3.12 as latest, the Marketplace serves 0.2.5 (HTTP 200, 725,989 bytes) and 0.2.9 returns HTTP 404, so nothing is published twice |
 | `production-operations` | APPROVED | Single-operator production: deployment, database, rollback, monitoring, and signing are held by JOO SUNG PARK |
 
