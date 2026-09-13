@@ -524,49 +524,6 @@ function _countTokens(u) {
 }
 
 /**
- * OpenRouter provider — routes through openrouter.ai.
- * Model IDs use "provider/model" format (e.g. "anthropic/claude-sonnet-5").
- */
-class OpenRouterProvider extends LLMProvider {
-  constructor(config = {}) {
-    super("openrouter", config);
-    this.apiKey = config.api_key || process.env.OPENROUTER_API_KEY || "";
-    this.baseUrl = validateProviderEndpoint(config.endpoint || "https://openrouter.ai/api", "OpenRouter endpoint");
-  }
-  async isAvailable() {
-    try { const { token } = await this._resolveAuth(); return Boolean(token || this.apiKey); }
-    catch { return Boolean(this.apiKey); }
-  }
-  async complete(messages, options = {}) {
-    const auth = await this._resolveAuth();
-    const apiKey = this.apiKey || auth.token || "";
-    if (!apiKey) throw new Error("OpenRouter: no credentials");
-    const model = options.model || this.config.model || "anthropic/claude-sonnet-5";
-    const body = { model, messages: messages.map(m => ({ role: m.role, content: m.content })), max_tokens: options.max_tokens || 4096 };
-    const effort = options.reasoning_effort || options.effort || this.config.effort;
-    if (effort) body.reasoning_effort = effort;
-    const endpointTransport = await resolvePublicEndpoint(this.baseUrl, "OpenRouter endpoint");
-    const headers = this._requestHeaders(auth, apiKey, { Authorization: "Bearer " + apiKey, "HTTP-Referer": "https://github.com/minitok/minitok", "X-Title": "minitok" });
-    const res = await fetchWithTimeout(`${endpointTransport.url}/v1/chat/completions`, { method: "POST", headers, body: JSON.stringify(body), signal: options.signal, timeout_ms: options.timeout_ms, ...(endpointTransport.dispatcher ? { dispatcher: endpointTransport.dispatcher } : {}) });
-    if (!res.ok) throw providerError("OpenRouter", res.status, await providerErrorDetail(res));
-    const data = await res.json();
-    return { text: data.choices?.[0]?.message?.content || "", model: data.model, usage: data.usage || {}, tokens: _countTokens(data.usage) };
-  }
-  static async fetchModels(apiKey, auth = {}) {
-    try {
-      const resolved = await authManager.resolve("openrouter", { api_key: apiKey, ...(Object.keys(auth).length > 0 ? { auth } : {}) });
-      const headers = { ...(resolved.headers || {}) };
-      if (resolved.token && !Object.keys(headers).some(header => header.toLowerCase() === "authorization")) headers.Authorization = `Bearer ${resolved.token}`;
-      if (!resolved.token && !Object.keys(headers).length) return [];
-      const res = await fetchWithTimeout("https://openrouter.ai/api/v1/models", { headers }, 15000);
-      if (!res.ok) return [];
-      const data = await res.json();
-      return (data.data || []).map(m => ({ id: m.id, display: m.name || m.id, context_window: m.context_length || 128000, max_output: m.top_provider?.max_completion_tokens || null, pricing: m.pricing || null, supported_parameters: m.supported_parameters || [] }));
-    } catch { return []; }
-  }
-}
-
-/**
  * Custom provider — generic OpenAI-compatible endpoint.
  * Used for Ollama, vLLM, LiteLLM, Bedrock proxies, enterprise LLMs, etc.
  */
@@ -642,7 +599,6 @@ function createProvider(name, config = {}) {
     case "anthropic": case "claude": return new AnthropicProvider(config);
     case "openai": case "gpt": return new OpenAIProvider(config);
     case "google": case "gemini": return new GoogleProvider(config);
-    case "openrouter": return new OpenRouterProvider(config);
   }
   // Tier 2/3: Custom provider (has base_url or models array)
   if (config.base_url || config.endpoint || config.models) {
@@ -661,7 +617,6 @@ async function detectAvailableProviders(config) {
     ["anthropic", new AnthropicProvider(config.providers?.anthropic || {})],
     ["openai", new OpenAIProvider(config.providers?.openai || {})],
     ["google", new GoogleProvider(config.providers?.google || config.providers?.gemini || {})],
-    ["openrouter", new OpenRouterProvider(config.providers?.openrouter || {})],
   ]);
   for (const [name, cfg] of Object.entries(config.providers || {})) {
     if (!cfg.base_url || checks.has(name)) continue;
@@ -715,11 +670,6 @@ async function _probeProvider(provider) {
       if (!apiKey) return { status: "absent", detail: "GOOGLE_API_KEY / GEMINI_API_KEY not set" };
       headers["x-goog-api-key"] = headers["x-goog-api-key"] || apiKey;
       url = "https://generativelanguage.googleapis.com/v1beta/models";
-      break;
-    case "openrouter":
-      if (!apiKey) return { status: "absent", detail: "OPENROUTER_API_KEY not set" };
-      headers["authorization"] = headers["authorization"] || "Bearer " + apiKey;
-      url = "https://openrouter.ai/api/v1/models";
       break;
     default: {
       if (!provider.baseUrl) return { status: "absent", detail: "custom provider without base_url" };
@@ -792,5 +742,5 @@ async function verifyCredentials(providerName, providerConfig = {}) {
   return result;
 }
 
-module.exports = { LLMProvider, FallbackProvider, AnthropicProvider, OpenAIProvider, GoogleProvider, OpenRouterProvider, CustomProvider, createProvider, detectAvailableProviders, verifyCredentials, resetVerifyCache, fetchWithTimeout, configureRetries, validateProviderModel, _countTokens, _estimateCost };
+module.exports = { LLMProvider, FallbackProvider, AnthropicProvider, OpenAIProvider, GoogleProvider, CustomProvider, createProvider, detectAvailableProviders, verifyCredentials, resetVerifyCache, fetchWithTimeout, configureRetries, validateProviderModel, _countTokens, _estimateCost };
 

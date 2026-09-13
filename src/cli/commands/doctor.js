@@ -65,7 +65,6 @@ async function cmdDoctor(opts = {}) {
     ["Anthropic", "anthropic", "ANTHROPIC_API_KEY"],
     ["OpenAI", "openai", "OPENAI_API_KEY"],
     ["Google", "google", "GOOGLE_API_KEY"],
-    ["OpenRouter", "openrouter", "OPENROUTER_API_KEY"],
   ];
   for (const [label, key, envVar] of providerChecks) {
     check(`  ${label}`, providers.includes(key), providers.includes(key) ? "configured" : `${envVar} not set`);

@@ -29,7 +29,7 @@ project:
   stack: generic
 
 # Configure a provider. Keys are detected from the environment
-# (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY) or from
+# (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY) or from
 # 'minitok auth login <provider>'.
 #
 # Note: with 'provider' left empty, every role resolves to its 'adapter'
@@ -155,7 +155,7 @@ async function cmdMigrate(repoPath, name) {
   console.log(`  repository:  ${ws.repository_root}`);
   console.log(`  project:     ${ws.project_type}`);
   console.log(`\nNext steps:`);
-  console.log(`  1. Set a provider key (ANTHROPIC_API_KEY, OPENAI_API_KEY, GEMINI_API_KEY, or OPENROUTER_API_KEY) or run: minitok auth login <provider>`);
+  console.log(`  1. Set a provider key (ANTHROPIC_API_KEY, OPENAI_API_KEY, or GEMINI_API_KEY) or run: minitok auth login <provider>`);
   console.log(`     Roles default to the 'claude' adapter; for another provider set roles.<role>.provider or pass --provider-override <provider>`);
   console.log(`  2. Run: minitok doctor`);
   console.log(`  3. Preview safely: minitok run --dry-run "your task description"`);

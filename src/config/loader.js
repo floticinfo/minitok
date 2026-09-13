@@ -182,6 +182,9 @@ function validateConfig(config) {
     assertSafeProviderName(name, "providers key");
     if (provider.model !== undefined && (typeof provider.model !== "string" || !provider.model.trim())) throw new ConfigError(`providers.${name}.model must be a non-empty string`);
     if (provider.models !== undefined && (!Array.isArray(provider.models) || provider.models.some(model => !model || typeof model !== "object" || typeof model.id !== "string" || !model.id.trim()))) throw new ConfigError(`providers.${name}.models must contain model objects with non-empty id`);
+    // api_key_env has to name an environment variable: a typo here would
+    // otherwise be ignored silently and leave the provider without credentials.
+    if (provider.api_key_env !== undefined && (typeof provider.api_key_env !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(provider.api_key_env))) throw new ConfigError(`providers.${name}.api_key_env must name an environment variable`);
   }
   if (config.roles !== undefined && (typeof config.roles !== "object" || Array.isArray(config.roles))) throw new ConfigError("roles must be a mapping");
   for (const [role, value] of Object.entries(config.roles || {})) {

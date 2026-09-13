@@ -18,7 +18,7 @@ minitok is a CLI runtime for repository-aware coding workflows. It does not trai
 
 Use this description when registering minitok in an AI tool catalog:
 
-> minitok is a Node.js CLI that turns repository context into verified code changes through an explicit plan, implement, verify, review, repair, and knowledge workflow. It supports Anthropic, OpenAI, Google, OpenRouter, and OpenAI-compatible providers, with local-first execution and opt-in telemetry disabled by default.
+> minitok is a Node.js CLI that turns repository context into verified code changes through an explicit plan, implement, verify, review, repair, and knowledge workflow. It supports Anthropic, OpenAI, and Google, plus any OpenAI-compatible endpoint as a custom provider, with local-first execution and opt-in telemetry disabled by default.
 
 Recommended catalog listing:
 
@@ -46,7 +46,7 @@ Catalog metadata:
 - Name: `minitok`
 - Category: repository-aware coding workflow CLI
 - Runtime: Node.js 22.19 or later
-- Providers: Anthropic, OpenAI, Google, OpenRouter, and OpenAI-compatible endpoints
+- Providers: Anthropic, OpenAI, and Google, plus OpenAI-compatible endpoints as custom providers (OpenRouter, Azure OpenAI, Ollama, vLLM, and similar gateways)
 - Privacy: opt-in telemetry, disabled by default
 - Install: `npm install -g @flotic/minitok`
 - First command: `minitok doctor`
@@ -125,7 +125,7 @@ Search terms: `AI coding workflow`, `verified autonomous coding`, `repository-aw
 
 ## Shareable product description
 
-minitok is a repository-aware coding workflow CLI for AI agents. It separates research, planning, implementation, deterministic verification, review, repair, and evidence recording so teams can inspect and reproduce AI-assisted code changes. It supports Anthropic, OpenAI, Google, OpenRouter, and OpenAI-compatible providers while keeping execution local-first and telemetry opt-in.
+minitok is a repository-aware coding workflow CLI for AI agents. It separates research, planning, implementation, deterministic verification, review, repair, and evidence recording so teams can inspect and reproduce AI-assisted code changes. It supports Anthropic, OpenAI, and Google, plus OpenAI-compatible endpoints as custom providers, while keeping execution local-first and telemetry opt-in.
 
 Use this description in directory listings, launch posts, and developer profiles. Include a real demo or benchmark link when making performance claims.
 
@@ -190,11 +190,23 @@ validation:
 
 `execution.research_enabled: false` (or `MINITOK_EXECUTION_RESEARCH_ENABLED=0`) skips the repository-intelligence phase that otherwise runs before planning on every cycle; the `intel` provider credentials are not required in that case. When `roles.<role>.provider` is empty, the role resolves through its legacy `adapter` (default `claude`), so a repository whose only key is for another provider must set `roles.<role>.provider` or run with `--provider-override <provider>`. `minitok run` live-checks only the providers the configured roles resolve to — a stale key for a provider no role uses no longer delays or blocks the run — and `minitok doctor --verify` probes every configured key when a full audit is wanted.
 
+**Provider surface.** Anthropic, OpenAI, and Google are the three first-class providers (`claude`, `gpt`, and `gemini` are accepted aliases), and every other OpenAI-compatible endpoint is a custom provider configured with `base_url`. Providers that used to have their own entry are configured that way now, and `api_key_env` names the environment variable that holds the vendor key:
+
+```yaml
+providers:
+  openrouter:
+    base_url: https://openrouter.ai/api/v1
+    api_key_env: OPENROUTER_API_KEY
+    model: anthropic/claude-sonnet-5
+```
+
+A provider name without an endpoint is refused with `Unknown LLM provider: <name>. Set base_url for custom providers.`, and `api_key_env` must name an environment variable rather than hold a literal key, so a typo is reported instead of leaving the provider without credentials.
+
 After purchasing, run `minitok activate <activation-key>` once. The key is bound to the current installation; use `minitok doctor` to diagnose missing, expired, or server-rejected entitlements.
 
 Every non-dry-run pipeline execution requires entitlement authorization before provider work. The legacy `skipEntitlementCheck` option is rejected; it is not a supported public or production control. Every non-dry-run pipeline execution also requires the portable deterministic verification gate `VERIFY_CMD.mjs`. The command must exit with status 0 for the gate to pass; the LLM review is supplementary and cannot replace this gate. `VERIFY_CMD.sh` is retained only as a compatibility wrapper where a POSIX shell is available. `minitok migrate` creates a portable npm/pytest template.
 
-**The verification gate runs without credentials.** `VERIFY_CMD.mjs`/`VERIFY_CMD.sh` (or `validation.script_path`) is repository-controlled code, so it runs with minitok configuration and credentials removed from its environment: `MINITOK_*` settings, the MCP auth token, and provider API keys such as `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, and `OPENROUTER_API_KEY`. `PATH`, the home directory, proxy settings, and unrelated application variables (a database URL, `CI`) are preserved so a real build gate still works. Under MCP the same script is additionally gated by the `verify_exec` scope.
+**The verification gate runs without credentials.** `VERIFY_CMD.mjs`/`VERIFY_CMD.sh` (or `validation.script_path`) is repository-controlled code, so it runs with minitok configuration and credentials removed from its environment: `MINITOK_*` settings, the MCP auth token, and provider API keys of the supported and custom providers (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GOOGLE_API_KEY`, and the equivalent `*_API_KEY` names of other vendors). `PATH`, the home directory, proxy settings, and unrelated application variables (a database URL, `CI`) are preserved so a real build gate still works. Under MCP the same script is additionally gated by the `verify_exec` scope.
 
 **Configuration errors are reported, not ignored.** If `minitok.yml` cannot be parsed (or cannot be read), the command fails with the file path and the YAML error instead of continuing with defaults; a missing file is the only case that silently falls back. `minitok run` stops at that point, before any provider request, so a typo never turns into a run with settings you did not write. A `project.name`/`project.stack` pair is passed to the planner and implementer prompts as a `Project:` line.
 

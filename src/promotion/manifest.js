@@ -58,7 +58,7 @@ function buildDiscoveryManifest() {
       packageRegistry: "https://www.npmjs.com/package/@flotic/minitok",
     },
     capabilities: ["repository_intelligence", "explicit_planning", "implementation", "deterministic_verification", "review", "repair", "evidence_recording"],
-    providers: ["anthropic", "openai", "google", "openrouter", "openai_compatible"],
+    providers: ["anthropic", "openai", "google", "openai_compatible"],
     integrations: {
       mcp: { transports: ["stdio", "localhost_http"], setup: "minitok mcp connect <host>", remote: "explicit_opt_in" },
       vscode: { name: extensionPkg.displayName, version: extensionPkg.version, cliVersion: extensionPkg.minitok.cliVersion },

@@ -67,7 +67,8 @@ test("the pipeline consumes the options the CLI and configuration expose", () =>
   // roles.<role>.timeout_sec travels into the request.
   assert.match(loopSource, /roleOptions\.timeout_ms = Number\(timeoutMs\)/);
   assert.match(loopSource, /buildRoleOptions\(config\.roles\[role\], opts\.signal, roleTimeoutMs\(role\)\)/);
-  assert.equal((providerSource.match(/timeout_ms: options\.timeout_ms/g) || []).length, 5, "every provider request carries the role budget");
+  // One occurrence per provider request: Anthropic, OpenAI, Google, and custom.
+  assert.equal((providerSource.match(/timeout_ms: options\.timeout_ms/g) || []).length, 4, "every provider request carries the role budget");
   assert.match(providerSource, /const requestedTimeout = Number\.isFinite\(Number\(opts\.timeout_ms\)\)/);
 });
 

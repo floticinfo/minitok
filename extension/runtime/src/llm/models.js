@@ -72,7 +72,7 @@ function findModel(modelId) {
 /**
  * Catalog models for a given provider that belong to a target tier.
  * Deprecated models are never returned as escalation targets.
- * @param {string} providerName - canonical provider (anthropic/openai/google/openrouter)
+ * @param {string} providerName - canonical provider (anthropic/openai/google) or a configured custom provider
  * @param {string} tier
  * @returns {Array}
  */
@@ -149,18 +149,7 @@ async function discoverModels(providers) {
   // Anthropic has no models list API
   result.live.anthropic = CATALOG.filter(m => m.provider === "anthropic").map(m => m.id);
 
-  // Tier 2: OpenRouter live discovery
-  const openrouter = providers.openrouter || {};
-  if (await authManager.isAvailable("openrouter", openrouter)) {
-    try {
-      const { OpenRouterProvider } = require("./provider");
-      const liveModels = await OpenRouterProvider.fetchModels(openrouter.api_key, openrouter.auth);
-      result.live.openrouter = liveModels;
-      result.openrouter_count = liveModels.length;
-    } catch { result.live.openrouter = []; }
-  }
-
-  // Tier 3: Custom providers (user-defined models + live discovery)
+  // Custom providers (user-defined models + live discovery)
   for (const [name, cfg] of Object.entries(providers)) {
     if (cfg.base_url || cfg.models) {
       const customModels = [];

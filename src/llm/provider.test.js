@@ -143,17 +143,17 @@ describe("generic custom provider", () => {
     }
   });
 
-  it("discovers OpenRouter models through configured auth.key", async () => {
+  it("discovers models from a supported provider through configured auth.key", async () => {
     const originalFetch = global.fetch;
     let authorization;
     global.fetch = async (_url, options) => {
       authorization = options.headers.Authorization;
-      return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ data: [{ id: "router/model" }] }) };
+      return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ data: [{ id: "gpt-5.6-sol" }] }) };
     };
     try {
-      const result = await discoverModels({ openrouter: { auth: { type: "api_key", key: "router-secret", scheme: "Bearer" } } });
-      assert.deepEqual(result.live.openrouter.map(model => model.id), ["router/model"]);
-      assert.equal(authorization, "Bearer router-secret");
+      const result = await discoverModels({ openai: { auth: { type: "api_key", key: "openai-secret", scheme: "Bearer" } } });
+      assert.deepEqual(result.live.openai, ["gpt-5.6-sol"]);
+      assert.equal(authorization, "Bearer openai-secret");
     } finally {
       global.fetch = originalFetch;
     }
@@ -165,7 +165,7 @@ describe("generic custom provider", () => {
     const originalFetch = global.fetch;
     global.fetch = async () => { throw new Error("must not fetch"); };
     try {
-      for (const name of ["anthropic", "openai", "google", "openrouter"]) {
+      for (const name of ["anthropic", "openai", "google"]) {
         const provider = createProvider(name, { api_key: "key", endpoint: "https://public.example" });
         await assert.rejects(() => provider.complete([{ role: "user", content: "test" }]), /blocked internal address/);
       }
@@ -176,7 +176,7 @@ describe("generic custom provider", () => {
   });
 
   it("applies endpoint validation consistently to built-in providers", () => {
-    for (const name of ["anthropic", "openai", "google", "openrouter"]) {
+    for (const name of ["anthropic", "openai", "google"]) {
       assert.throws(() => createProvider(name, { endpoint: "http://remote.example/v1" }), /HTTP endpoints are limited to localhost/);
       assert.throws(() => createProvider(name, { endpoint: "https://example.test/v1?key=secret" }), /query or fragment/);
     }

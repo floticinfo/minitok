@@ -48,9 +48,8 @@ async function cmdRun(task, opts) {
       console.error("  $env:ANTHROPIC_API_KEY='sk-ant-...'   # Claude");
       console.error("  $env:OPENAI_API_KEY='sk-...'          # GPT");
       console.error("  $env:GEMINI_API_KEY='...'             # Gemini");
-      console.error("  $env:OPENROUTER_API_KEY='sk-or-...'   # OpenRouter");
       console.error("");
-      console.error("Or save a key persistently:  minitok auth login <anthropic|openai|google|openrouter>");
+      console.error("Or save a key persistently:  minitok auth login <anthropic|openai|google>");
       console.error("Then verify with:  minitok doctor");
       return 1;
     }

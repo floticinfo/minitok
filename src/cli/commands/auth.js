@@ -38,7 +38,7 @@ async function cmdAuthCustomerLogin(server, email, password) {
 function customerAuthRequest(endpoint, body, server) { return postJson(resolveServerUrl({ cliServer: server }) + endpoint, body, 30000); }
 
 async function cmdAuthLogin(provider) {
-  if (!provider) { console.error("Usage: minitok auth login <provider>"); console.error("  Providers: anthropic, openai, github, google, azure_ad, openrouter"); return 1; }
+  if (!provider) { console.error("Usage: minitok auth login <provider>"); console.error("  Providers: anthropic, openai, google (any other endpoint: configure a custom provider)"); return 1; }
   const name = provider.toLowerCase();
   if (OAUTH_CONFIGS[name]) {
     const oauthConfig = OAUTH_CONFIGS[name];
@@ -78,7 +78,7 @@ function addCustomerLogin(command, description) {
 
 function register(program) {
   const authCmd = program.command("auth").description("Manage provider and customer authentication");
-  authCmd.command("login").description("Log in to an LLM provider (OAuth or API key)").argument("<provider>", "Provider name (anthropic, openai, github, etc.)").action(async provider => { process.exit(await cmdAuthLogin(provider)); });
+  authCmd.command("login").description("Log in to an LLM provider (OAuth or API key)").argument("<provider>", "Provider name (anthropic, openai, google)").action(async provider => { process.exit(await cmdAuthLogin(provider)); });
   addCustomerLogin(authCmd, "Log in to the minitok customer account for billing commands");
   authCmd.command("status").description("Show stored credentials and their validity").action(async () => { process.exit(await cmdAuthStatus()); });
   authCmd.command("logout").description("Remove stored credentials for a provider").argument("<provider>", "Provider name").action(async provider => { process.exit(await cmdAuthLogout(provider)); });

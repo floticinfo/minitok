@@ -84,20 +84,23 @@ class AuthManager {
     }
   }
 
-  // ─── Legacy: api_key from config.api_key or env ───
+  // ─── Legacy: api_key from config.api_key, config.api_key_env, or env ───
   _resolveLegacyApiKey(name, config) {
+    // A provider may name the environment variable that holds its key. minitok.yml
+    // and README documented `api_key_env` without the code ever reading it, so a
+    // custom provider had no way to point at its vendor key.
+    const namedEnv = typeof config.api_key_env === "string" && config.api_key_env.trim() ? config.api_key_env.trim() : "";
+    // Only the supported providers have a conventional environment variable. Any
+    // other endpoint is a custom provider and names its credential explicitly
+    // (api_key, or api_key_env), so this map stays short instead of guessing an
+    // environment variable for every vendor that exists.
     const envMap = {
       anthropic: "ANTHROPIC_API_KEY",
       openai: "OPENAI_API_KEY",
       google: "GOOGLE_API_KEY",
       gemini: "GEMINI_API_KEY",
-      openrouter: "OPENROUTER_API_KEY",
-      xai: "XAI_API_KEY",
-      deepseek: "DEEPSEEK_API_KEY",
-      mistral: "MISTRAL_API_KEY",
-      cohere: "COHERE_API_KEY",
     };
-    const key = config.api_key || process.env[envMap[name]] || "";
+    const key = config.api_key || (namedEnv ? process.env[namedEnv] : "") || process.env[envMap[name]] || "";
     if (!key) return { headers: {}, token: null };
     return { headers: { "x-api-key": key }, token: key };
   }

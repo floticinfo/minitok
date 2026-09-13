@@ -59,7 +59,6 @@ describe("Regression: doctor success message reflects actual check results", () 
       ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,
       GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
-      OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
       CAMEL_STREAM_API_KEY: process.env.CAMEL_STREAM_API_KEY,
     };
     for (const name of Object.keys(originalEnv)) delete process.env[name];
@@ -92,12 +91,17 @@ describe("Regression: doctor success message reflects actual check results", () 
       doctorSrc.includes('allOk = check("LLM provider configured"'),
       "the at-least-one-provider check must be accumulated into allOk"
     );
-    for (const provider of ["Anthropic", "OpenAI", "Google", "OpenRouter"]) {
+    for (const provider of ["Anthropic", "OpenAI", "Google"]) {
       assert.ok(
         doctorSrc.includes(`["${provider}",`),
         `${provider} check must be present (informational)`
       );
     }
+    assert.equal(
+      doctorSrc.includes('"OpenRouter"'),
+      false,
+      "the provider list is the three supported providers plus custom endpoints"
+    );
     // Verify ~/.minitok check is accumulated
     assert.ok(
       doctorSrc.includes('allOk = check("~/.minitok'),

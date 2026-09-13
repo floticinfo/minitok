@@ -7,7 +7,7 @@ const { listModels, discoverModels, formatModel } = require("../../llm/models");
 function register(program) {
   program
     .command("models [provider]")
-    .description("List available LLM models (anthropic, openai, google, openrouter, or custom)")
+    .description("List available LLM models (anthropic, openai, google, or a custom provider)")
     .option("--discover", "Fetch live model list from provider APIs (requires API keys)").option("--json", "output JSON")
     .action(async (provider, opts) => {
       try {
@@ -20,31 +20,19 @@ function register(program) {
           const result = await discoverModels(config.providers || {});
 
           for (const [prov, liveIds] of Object.entries(result.live)) {
-            if (Array.isArray(liveIds) && typeof liveIds[0] === "object") {
-              // OpenRouter: rich model objects
-              console.log(`✅ ${prov.toUpperCase()} (${liveIds.length} models — live from API)`);
-              for (const m of liveIds.slice(0, 50)) {
-                const ctx = m.context_window ? (m.context_window >= 1000000 ? `${(m.context_window/1048576).toFixed(1)}M` : `${(m.context_window/1000).toFixed(0)}K`) : "?";
-                const reasoning = m.supported_parameters?.includes("reasoning_effort") ? " 🧠" : "";
-                console.log(`  ${m.id.padEnd(48)} ${(m.display||m.id).substring(0,24).padEnd(24)} [${ctx}]${reasoning}`);
-              }
-              if (liveIds.length > 50) console.log(`  ... and ${liveIds.length - 50} more`);
-            } else {
-              // Simple string arrays
-              const provAvail = available.includes(prov);
-              const icon = provAvail ? "✅" : "❌";
-              console.log(`${icon} ${prov.toUpperCase()} (${liveIds.length} models)`);
-              const catalogModels = listModels(prov);
-              for (const id of liveIds) {
-                const cat = catalogModels.find(m => m.id === id);
-                if (cat) { console.log(formatModel(cat)); }
-                else { console.log(`  ${id.padEnd(32)} (not in catalog)`); }
-              }
+            const provAvail = available.includes(prov);
+            const icon = provAvail ? "✅" : "❌";
+            console.log(`${icon} ${prov.toUpperCase()} (${liveIds.length} models)`);
+            const catalogModels = listModels(prov);
+            for (const id of liveIds) {
+              const cat = catalogModels.find(m => m.id === id);
+              if (cat) { console.log(formatModel(cat)); }
+              else { console.log(`  ${id.padEnd(32)} (not in catalog)`); }
             }
             console.log();
           }
 
-          // Tier 3: Custom providers
+          // Custom providers (the three supported providers publish only model IDs)
           for (const custom of result.custom) {
             console.log(`🔧 ${custom.provider.toUpperCase()} (${custom.models.length} models — custom)`);
             if (custom.base_url) console.log(`   endpoint: ${custom.base_url}`);

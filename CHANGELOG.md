@@ -1,5 +1,32 @@
 # Changelog
 
+## 1.3.19 - 2026-09-13
+
+### Changed
+
+- **The provider surface is now Anthropic, OpenAI, and Google, plus custom OpenAI-compatible endpoints.** OpenRouter had its own provider class, its own model-discovery tier, its own keychain entry, and its own row in `minitok doctor`, and the legacy credential map carried an environment variable for xAI, DeepSeek, Mistral, and Cohere as if they were shipped providers. All of that is gone: `openrouter`, `xai`, `deepseek`, `mistral`, `cohere`, and the GitHub and Azure AD OAuth logins are no longer first-class, and a configuration that names one of them without an endpoint is refused with `Unknown LLM provider: <name>. Set base_url for custom providers.`
+  Migration for a repository that used one of the removed entries:
+
+  ```yaml
+  providers:
+    openrouter:                      # any name, including the removed ones
+      base_url: https://openrouter.ai/api/v1
+      api_key_env: OPENROUTER_API_KEY
+      model: anthropic/claude-sonnet-5
+  ```
+
+  The endpoint is validated and credential-scrubbed exactly like any other custom provider, and `minitok models --discover` lists it under the custom section. Nothing else changes: the model catalogs, roles, fallbacks, and `roles.<role>.provider` resolution are untouched.
+
+### Fixed
+
+- `providers.<name>.api_key_env` is now read. `minitok.yml` and the README documented the key, but no code path consulted it, so the credential came only from `api_key` or from the four built-in environment variables. A custom provider can now name the vendor's environment variable, which is what makes the endpoint-only configuration above usable.
+- `api_key_env` is validated: a value that is not an environment variable name (a literal key, an empty string) fails configuration loading with `providers.<name>.api_key_env must name an environment variable` instead of silently leaving the provider without credentials.
+
+### Documentation
+
+- The 1.3.18 notes listed the live-page edits as remaining. They were deployed the same day: `/terms` section 9 now states the Republic of Korea governing law and venue with the customer's residence option, `/terms`, `/refund`, and `/privacy` publish the EULA section 11 notice address in one English form, and all three pages carry the September 2026 date.
+- `DATA_CLASSIFICATION.md` no longer lists the telemetry retention mismatch as an open item: the server now applies the published 30-day (Open) and 14-day (Select) periods, so the inventory, `POLICY.md` section 10, and the live privacy notice agree.
+
 ## 1.3.18 - 2026-09-13
 
 ### Documentation

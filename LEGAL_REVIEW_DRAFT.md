@@ -246,9 +246,10 @@ legal wording must not contradict.
 
 One item stays open: a named specific court for EULA §12 (optional — the applied text
 uses the general courts of the Republic of Korea). The data-inventory question that was
-open in `DATA_CLASSIFICATION.md` §9 is answered in its §9.1; the same section now
-records one new open item, the telemetry retention mismatch between the server's 90-day
-cleanup and the published 30/14 days.
+open in `DATA_CLASSIFICATION.md` §9 is answered in its §9.1, and the telemetry retention
+mismatch it recorded is closed: the server now applies the published 30-day (Open) and
+14-day (Select) periods, so the inventory, `POLICY.md` §10, the live privacy notice, and
+the policy the server itself serves all agree.
 
 Verify after applying the text:
 
@@ -285,7 +286,7 @@ remains, each line still being the text to search for.
 | `https://floticinfo.com` footer and privacy policy | Pending | Same single English form in both places, so the EULA notice address has one published twin |
 | `https://minitok.dev/terms`, `/privacy`, `/refund` | **Applied** (deployed 2026-09-13) | "Last updated: August 2026" → "Last updated: September 2026" |
 | `https://minitok.dev` install command | Pending (follows the publish) | "npm install -g @flotic/minitok@1.3.12" → the version published to npm; 1.3.18 is the version prepared here. The live command is correct until that publish happens |
-| `https://minitok.dev/privacy` §7 vs the server | **Open** | The page publishes 30 days for Open telemetry and 14 days for Select; the server retains telemetry for 90 days and the policy the server itself serves says 90. See `DATA_CLASSIFICATION.md` section 9.2 |
+| `https://minitok.dev/privacy` §7 vs the server | **Resolved** (2026-09-13) | The page published 30 days for Open telemetry and 14 days for Select while the server retained 90 days and the policy it served said 90. The server now applies the published 30/14 periods (`src/services/evolution-telemetry.js`), its served policy says so, and `DATA_CLASSIFICATION.md` section 9.2 records the alignment |
 
 **Version strings.** The homepage still advertises the 1.3.12 install command while
 this repository prepares 1.3.18, so the command has to follow the publish. The

@@ -74,4 +74,12 @@ describe("config: provider name validation", () => {
     });
     assert.equal(config.default_provider, "local_ollama");
   });
+
+  it("validates the environment variable name a provider points at", () => {
+    assert.doesNotThrow(() => validateConfig({ providers: { openrouter: { base_url: "https://openrouter.ai/api/v1", api_key_env: "OPENROUTER_API_KEY" } } }));
+    // A value that is not an environment variable name used to be ignored, which
+    // left the provider without credentials and without a message.
+    assert.throws(() => validateConfig({ providers: { openrouter: { base_url: "https://openrouter.ai/api/v1", api_key_env: "sk-or-literal-key" } } }), /api_key_env must name an environment variable/);
+    assert.throws(() => validateConfig({ providers: { openrouter: { base_url: "https://openrouter.ai/api/v1", api_key_env: "" } } }), /api_key_env must name an environment variable/);
+  });
 });

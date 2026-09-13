@@ -22,9 +22,13 @@ describe("OAuth browser launch safety", () => {
 
 
 describe("OAuth response safety", () => {
-  it("rejects unsafe Azure tenant identifiers before URL construction", () => {
-    assert.throws(() => new OAuthFlow({ openBrowser: false })._getConfig("azure_ad", { client_id: "id", tenant_id: "tenant&evil" }), /Invalid Azure tenant_id/);
-    assert.doesNotThrow(() => new OAuthFlow({ openBrowser: false })._getConfig("azure_ad", { client_id: "id", tenant_id: "common" }));
+  it("offers only the shipped provider OAuth flow and rejects the removed ones", () => {
+    const flow = new OAuthFlow({ openBrowser: false });
+    assert.doesNotThrow(() => flow._getConfig("anthropic", { client_id: "id" }));
+    // GitHub and Azure AD were separate OAuth logins; neither is one of the three
+    // supported providers, and both are reachable as a custom provider instead.
+    assert.throws(() => flow._getConfig("azure_ad", { client_id: "id", tenant_id: "common" }), /Unknown OAuth provider: azure_ad/);
+    assert.throws(() => flow._getConfig("github", { client_id: "id" }), /Unknown OAuth provider: github/);
   });
 
   it("passes Windows authorization URLs as a single browser argument", () => {

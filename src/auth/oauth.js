@@ -2,7 +2,9 @@
 
 /**
  * OAuth 2.0 Flow with PKCE support.
- * Handles browser-based authorization for GitHub, Anthropic, Azure AD.
+ * Handles browser-based authorization for the Anthropic OAuth login flow.
+ * OpenAI and Google use API keys, and any other endpoint is reached through a
+ * custom provider, so those flows are not part of the shipped provider list.
  */
 
 const http = require("http");
@@ -13,14 +15,6 @@ const { fetchWithTimeout, readCappedResponse } = require("../core/http");
 
 /** @type {Record<string, object>} */
 const OAUTH_CONFIGS = {
-  github: {
-    name: "GitHub",
-    authorize_url: "https://github.com/login/oauth/authorize",
-    token_url: "https://github.com/login/oauth/access_token",
-    scope: "read:user copilot",
-    client_id: process.env.GITHUB_CLIENT_ID || "",
-    client_secret: process.env.GITHUB_CLIENT_SECRET || "",
-  },
   anthropic: {
     name: "Anthropic",
     authorize_url: "https://console.anthropic.com/oauth/authorize",
@@ -28,16 +22,6 @@ const OAUTH_CONFIGS = {
     scope: "user:inference",
     client_id: process.env.ANTHROPIC_CLIENT_ID || "",
     client_secret: process.env.ANTHROPIC_CLIENT_SECRET || "",
-  },
-  azure_ad: {
-    name: "Azure AD",
-    authorize_url:
-      "https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize",
-    token_url:
-      "https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/token",
-    scope: "https://cognitiveservices.azure.com/.default",
-    client_id: "",
-    client_secret: "",
   },
 };
 
@@ -77,7 +61,7 @@ class OAuthFlow {
 
   /**
    * Run full OAuth 2.0 authorization code flow with PKCE.
-   * @param {string} provider - Provider key (github, anthropic, azure_ad)
+   * @param {string} provider - OAuth provider key (anthropic)
    * @param {object} [authConfig] - Override auth config (client_id, tenant_id, etc.)
    * @returns {Promise<object>} Token data with access_token, refresh_token, expires_at
    */
@@ -167,14 +151,6 @@ class OAuthFlow {
       throw new AuthError(
         "No client_id for " + config.name + ". Set env or auth config."
       );
-    }
-    if (provider === "azure_ad") {
-      const tenantId = overrides.tenant_id;
-      if (typeof tenantId !== "string" || !/^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|common|organizations|consumers)$/i.test(tenantId)) {
-        throw new AuthError("Invalid Azure tenant_id. Use a tenant UUID or one of: common, organizations, consumers.");
-      }
-      config.authorize_url = config.authorize_url.replace("{tenant_id}", tenantId);
-      config.token_url = config.token_url.replace("{tenant_id}", tenantId);
     }
     return config;
   }
