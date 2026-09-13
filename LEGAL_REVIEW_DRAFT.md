@@ -244,8 +244,11 @@ legal wording must not contradict.
 | 13 | support@minitok.dev, effective 2026-09-13, technical policy version 1.2.0 | owner decision | POLICY §10 |
 | 14 | not used: the applied EULA ends with the support contact line instead of a "last reviewed" line, which a published agreement does not need | — | — |
 
-Two items stay open: a named specific court for EULA §12, and the data-inventory
-question recorded in `DATA_CLASSIFICATION.md` §9.
+One item stays open: a named specific court for EULA §12 (optional — the applied text
+uses the general courts of the Republic of Korea). The data-inventory question that was
+open in `DATA_CLASSIFICATION.md` §9 is answered in its §9.1; the same section now
+records one new open item, the telemetry retention mismatch between the server's 90-day
+cleanup and the published 30/14 days.
 
 Verify after applying the text:
 
@@ -373,6 +376,52 @@ directory is marked obsolete in `deployment/deploy.sh` and must not be uploaded 
 the live pages. Edit the production HTML that was last uploaded (the `_*_prod.html`
 copies used by `deployment/deploy_legal_remediation.sh`) or fetch the live pages first,
 then upload only the pages that changed and restart the web container.
+
+## 7. Approval record (2026-09-13)
+
+The commercial release gate reads an approval manifest from outside the repository
+(`MINITOK_COMMERCIAL_APPROVAL_MANIFEST`), because the owner decisions are not part of
+the shipped package. The record for this release is:
+
+```text
+C:\Users\J1\minitok-release-approvals\approval-manifest-1.3.18.json
+```
+
+It was prepared with `node scripts/approval-manifest-prepare.mjs --out <path outside the
+repository>`, which fills every machine value and leaves every owner decision
+unresolved, and then completed with the owner's decisions. `npm run release:verify`
+run with that file in the environment passes:
+
+| Item | Status | Recorded decision |
+|---|---|---|
+| `legal-owner-approval` | APPROVED | The applied EULA text for 1.3.18 (sections 4, 5, 6, 11, 12, 13) and POLICY.md 1.2.0 section 10 |
+| `privacy-owner-approval` | APPROVED | POLICY.md 1.2.0 section 10 and the data inventory answers in `DATA_CLASSIFICATION.md` section 9.1 |
+| `support-commitments` | APPROVED | Email to support@minitok.dev, 24–48 hours Monday–Friday (UTC), best effort, no guaranteed service level |
+| `npm-publication-authorization` | APPROVED | Publish `@flotic/minitok@1.3.18`, tarball sha256 `b558742af7f78b9adeca58057dfef35053cc28fd871d837ade97edf55ba7f101` |
+| `marketplace-publisher-authorization` | APPROVED | Publish `minitok-extension@0.2.9` under publisher Flotic, VSIX sha256 `fc0d0119614c6ce6619731d6723542bd368fe8fd5c9f6dea9ccb74f9d8c2415c` |
+| `registry-publication-verification` | APPROVED | Checked on 2026-09-13: npm serves 1.3.12 as latest, the Marketplace serves 0.2.5 (HTTP 200, 725,989 bytes) and 0.2.9 returns HTTP 404, so nothing is published twice |
+| `production-operations` | APPROVED | Single-operator production: deployment, database, rollback, monitoring, and signing are held by JOO SUNG PARK |
+
+Each item records `owner: "JOO SUNG PARK (Representative, Flotic LC.)"`, the decision
+text, the approval timestamp, and an evidence reference to the artifact that supports
+it. **Basis of the record:** the owner instructed these approvals in the release
+session on 2026-09-13, and no separately signed instrument exists for them; the
+`notes` field of `legal-owner-approval`, `privacy-owner-approval`, and
+`registry-publication-verification` states what the item does and does not cover
+(including that `DATA_CLASSIFICATION.md` section 9.2 and the remaining page edits in
+section 6 are outside it). Replace the record with a signed copy when one exists.
+
+Re-run the gate after any change to the shipped documents, because the CLI artifact
+hash in the manifest and in the approval record has to describe the artifact that will
+actually be published:
+
+```bash
+npm run package:extension                 # VSIX for the current version
+node scripts/release-manifest.mjs generate   # requires a clean tree and a tagged HEAD
+node scripts/approval-manifest-prepare.mjs --out ../approvals.json
+MINITOK_COMMERCIAL_APPROVAL_MANIFEST=../approvals.json npm run release:check
+```
+
 
 
 
