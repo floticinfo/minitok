@@ -1,6 +1,6 @@
 {
   "name": "@flotic/minitok",
-  "version": "1.3.17",
+  "version": "1.3.18",
   "description": "Verified repository-aware coding workflow CLI for AI agents",
   "main": "src/index.js",
   "bin": {

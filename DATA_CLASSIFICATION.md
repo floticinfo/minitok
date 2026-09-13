@@ -1,8 +1,8 @@
 # minitok Data Classification
 
 > **Document type:** Technical data-processing boundary definition
-> **Version:** 1.1.0
-> **Last updated:** 2026-09-04
+> **Version:** 1.2.0
+> **Last updated:** 2026-09-13
 > **Applies to:** the current `@flotic/minitok` client and compatible `minitok-server` v0.1.0 API
 
 This inventory describes implementation boundaries. It does not establish legal classifications, retention obligations, or jurisdiction-specific rights.
@@ -67,4 +67,20 @@ The legal positions for the categories above are recorded in [POLICY.md](./POLIC
 
 - Account and authentication records are kept while the account exists and for the period required by legal and security obligations. Open telemetry records are kept for 30 days, Select aggregate telemetry for 14 days, and Private telemetry is not collected. Billing records are kept as needed to meet tax and accounting obligations, and support and security records as needed to handle the request, prevent abuse, and resolve disputes.
 - Support messages are processed under the support address published in POLICY.md section 10.
-- Open item for the operator: confirm whether hostnames, IP addresses, support messages, Sentry events, and infrastructure logs are part of the public inventory, and record the source that answers it. Until then this document classifies what the client and server implementations send, as described in sections 4 to 8.
+
+### 9.1 Inventory Answers Recorded 2026-09-13
+
+The operator's open question was whether hostnames, IP addresses, support messages, Sentry events, and infrastructure logs are part of the public inventory, and which source answers it. Each row is answered by the implementation that produces the data, audited on 2026-09-13.
+
+| Question | Answer | Source |
+|---|---|---|
+| Hostnames | In the inventory as D1 LICENSE. The shipped client sends only `{ key, installation_id }` to `POST /v1/activate`, so it sends no hostname; the server accepts an optional activation `hostname` (maximum 255 characters) from any client, stores it on the installation record, and the account deletion path clears it. | client `src/cli/commands/activate.js`; server `src/api/activation.js`, `installations.hostname` |
+| IP addresses | The client never sends an IP address. The server derives the requester address for two purposes only: rate limiting (`public:ip:*`, `auth-email:ip:*`, and `mcp:ip:*` buckets, deleted once `expires_at` passes) and the framework request log. Neither is a telemetry field, and neither is inside the D3 allowlist in section 3. | server `src/app.js`, `src/services/mcp.js`, `src/services/rate-limit.js` |
+| Support messages | In the inventory as D2 account and service data. The published support form posts to `POST /api/support`, which validates, rate-limits, and delivers the message by email; the server keeps no support table. The message, the address, and the mailbox copy are handled under the support address published in POLICY.md section 10. | live `/support` page; server `src/api/support.js` |
+| Sentry events | Not in the inventory. Neither the client nor the server source embeds Sentry or any other error-reporting SDK. | client and server source audit 2026-09-13 |
+| Infrastructure logs | In the inventory as operational data. The server enables the framework request logger, so each request emits a log line carrying the method, the URL, and the requester address to the container's standard output, and the production host and reverse proxy keep their own access logs. Log retention is an infrastructure setting; the application configures none. | server `src/index.js` (logger enabled); deployment configuration |
+
+### 9.2 Open Items
+
+- **Telemetry is retained longer than published.** POLICY.md section 10, this section, and the live privacy notice state 30 days for Open telemetry and 14 days for Select aggregate telemetry. The server deletes telemetry on a single 90-day schedule (`RETENTION_DAYS = 90`, `DEFAULT_RETENTION_DAYS = 90`, with no per-plan split), and the privacy policy the server itself serves states "Telemetry and aggregate telemetry data are retained for 90 days then deleted." A decision is required: change the server cleanup to the published periods, or change the published periods to 90 days. Until one of those happens, the implementation keeps telemetry for longer than the published commitment.
+- **Infrastructure log retention** is not configured in the application source, so the position for the host and reverse-proxy logs is recorded by the operator rather than by this repository.

@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.18 - 2026-09-13
+
+### Documentation
+
+- Recorded the operator's data-inventory answers in `DATA_CLASSIFICATION.md` section 9.1, each answered from the implementation that produces the data: hostnames (the shipped client sends only `{ key, installation_id }`; the server accepts an optional activation hostname and the deletion path clears it), IP addresses (derived by the server for rate limiting and the request log, never a telemetry field), support messages (the published form posts to `POST /api/support`, which delivers by email and keeps no support table), Sentry events (no error-reporting SDK in either implementation), and infrastructure logs (framework request logging plus host and proxy access logs). The document is version 1.2.0.
+- Opened one item that the audit of the two implementations raised: the server deletes telemetry on a single 90-day schedule and the privacy policy it serves states 90 days, while `POLICY.md` section 10, `DATA_CLASSIFICATION.md`, and the live privacy notice publish 30 days for Open and 14 days for Select. Either the cleanup or the published periods have to change; until then the implementation retains telemetry longer than the published commitment.
+- Re-verified the legal-consistency table in `LEGAL_REVIEW_DRAFT.md` section 6 against the live pages. The refund promise is gone from the pricing page, the pricing note, the FAQ, and the refund page (the remaining items are the terms governing-law paragraph, one English form for the company address, the last-updated dates, and the install command, which follows the npm publish).
+
+
 ## 1.3.17 - 2026-09-13
 
 ### Security

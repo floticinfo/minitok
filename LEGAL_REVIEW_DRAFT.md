@@ -260,35 +260,39 @@ The document text itself is not machine-parsed beyond the review-note markers in
 `scripts/commercial-readiness.mjs`, so `npm start`-style behaviour, tests, and
 `npm run docs:check` are unaffected by the wording chosen here.
 
-## 6. Published pages that must change to stay consistent
+## 6. Published pages: state on 2026-09-13
 
-The applied text and the live pages disagree in one important place: **minitok.dev
-still advertises a refund that EULA §4 no longer offers.** These are live fetches
-from 2026-09-13, so each line below is the text to search for.
+The pages were fetched again on 2026-09-13, after the owner applied part of this
+table. **The refund promise that EULA §4 no longer offers has been removed** from the
+pricing page, the pricing note, the FAQ, and the refund page: those pages now print the
+cancellation model ("renew automatically until cancelled … the current paid billing
+period is not automatically refunded"). This table is therefore the list of what
+remains, each line still being the text to search for.
 
-| Page | Current published text | Required change |
+| Page | State | Remaining change |
 |---|---|---|
-| `https://minitok.dev/pricing` | "Request a full refund for the initial purchase within 7 days, subject to the Refund Policy." | Replace with the applied model: renews automatically until cancelled, cancel any time through the Dodo customer portal, the paid period stays usable, no refund for the unused part |
-| `https://minitok.dev` FAQ | "Each includes one installation; no free trial, cancel anytime, and an initial-purchase refund request within 7 days, subject to the Refund Policy." and the pricing-card copy "Request an initial-purchase refund within 7 days" | Drop the refund half-sentence from both; keep "no free trial" and "cancel anytime" |
-| `https://minitok.dev/refund` | The complete Refund & Cancellation Policy, including the 7-day initial-purchase refund, the post-initial-purchase exclusions, and the payment-failure and processing sections | Reduce it to the cancellation model of EULA §4, or unpublish the page |
-| Footer, every page | Legal → "Refund Policy" | Remove the link once the page changes |
-| `https://minitok.dev/support` | Contact-form category "Refund" | Remove the category, or fold it into billing questions |
-| `https://minitok.dev/terms` §3 | Already matches: "cancel at any time through the Dodo customer portal; access continues through the current paid billing period" | Keep as-is |
-| `https://minitok.dev/terms` §9 | "The registered address and any jurisdiction-specific governing-law or venue terms should be confirmed with support@minitok.dev before purchasing; this page does not invent a jurisdiction where one has not been confirmed." | Replace with the applied position: governed by the laws of the Republic of Korea, courts of the Republic of Korea, plus the notice address from EULA §11 |
-| `https://minitok.dev/terms` §10 | Company block without the address | Add the notice address from EULA §11 so the website and the EULA name the same entity and address |
-| `https://floticinfo.com` footer vs privacy policy | The footer prints the floor and unit only ("3F 301"); the privacy policy adds the unit suffix and the building and neighborhood names | Publish one English form in both places, so the EULA notice address has a single published twin |
-| `https://minitok.dev/terms`, `/privacy`, `/refund` | "Last updated: August 2026" | Update the date when these pages change |
-| `https://minitok.dev` install command | "npm install -g @flotic/minitok@1.3.12" | Point it at the version actually published to npm; 1.3.17 is the version prepared here |
+| `https://minitok.dev/pricing` | Applied: the note ends with "cancellation stops the next renewal. The current paid billing period is not automatically refunded." | — |
+| `https://minitok.dev` FAQ and pricing card | Applied: the FAQ answer and the card describe the cancellation model; no initial-purchase refund is offered | — |
+| `https://minitok.dev/refund` | Applied: the page is cancellation-first ("Subscriptions are not automatically refunded when canceled… subject to applicable law and provider rules") | Optional: rename the page and the footer link to "Cancellation Policy", since EULA §4 offers no refund |
+| Footer, every page | Pending (optional) | Remove or rename the "Refund Policy" link once the page is renamed |
+| `https://minitok.dev/support` | Pending | The contact form offers category "Refund", and the server accepts it (`src/api/support.js`). Keep it as an eligibility question or rename both to "Billing" |
+| `https://minitok.dev/terms` §3 | Applied: "cancel at any time through the Dodo customer portal; access continues through the current paid billing period" | — |
+| `https://minitok.dev/terms` §9 | **Pending** | Replace "The governing law, venue, and any jurisdiction-specific terms remain …" with the applied position: governed by the laws of the Republic of Korea, courts of the Republic of Korea, the customer's residence option, and the sentence preserving non-waivable rights |
+| `https://minitok.dev/terms` §10 and the footers | **Pending** | Publish one English address form matching EULA §11: the pages print "Room 301, 3rd Floor, 57 Munin-ro, Suji-gu, Yongin-si, Gyeonggi-do", which omits the unit suffix and "Sangik Plaza"; the privacy policy the server serves uses the same shorter form |
+| `https://floticinfo.com` footer and privacy policy | Pending | Same single English form in both places, so the EULA notice address has one published twin |
+| `https://minitok.dev/terms`, `/privacy`, `/refund` | Pending | "Last updated: August 2026" → the month the pages are actually changed |
+| `https://minitok.dev` install command | Pending (follows the publish) | "npm install -g @flotic/minitok@1.3.12" → the version published to npm; 1.3.18 is the version prepared here. The live command is correct until that publish happens |
+| `https://minitok.dev/privacy` §7 vs the server | **Open** | The page publishes 30 days for Open telemetry and 14 days for Select; the server retains telemetry for 90 days and the policy the server itself serves says 90. See `DATA_CLASSIFICATION.md` section 9.2 |
 
 **Version strings.** The homepage still advertises the 1.3.12 install command while
-this repository prepares 1.3.17, so the command has to follow the publish. The
-Extension was repackaged so its embedded CLI runtime matches 1.3.17 and reports 0.2.9,
+this repository prepares 1.3.18, so the command has to follow the publish. The
+Extension was repackaged so its embedded CLI runtime matches 1.3.18 and reports 0.2.9,
 which is the correct next version: the Marketplace serves
 `…/minitok-extension/0.2.5/vspackage` with HTTP 200 and a 725,989 byte VSIX, while the
-same URL for 0.2.6, 0.2.7, 0.2.8, and 0.2.9 all return HTTP 404, so 0.2.5 is the
-published version and none of 0.2.6 through 0.2.9 has been used. Publish the repackaged
-VSIX as 0.2.9, and bump the Extension version whenever a version that was already
-published has to change.
+same URL for 0.2.6 through 0.2.9 all return HTTP 404, so 0.2.5 is the published
+version and none of 0.2.6 through 0.2.9 has been used. Publish the repackaged VSIX as
+0.2.9, and bump the Extension version whenever a version that was already published has
+to change.
 
 Also re-read section 2.6: the live 7-day window is close to the statutory
 withdrawal period for a first purchase of digital content under Korean consumer law,
@@ -356,11 +360,19 @@ limit any right you have that cannot legally be excluded.
 District Court has exclusive jurisdiction, except where mandatory consumer law lets
 Customer sue elsewhere." That is optional and it was not applied.
 
-The pages were fetched again on 2026-09-13, after the owner reported that the website
-is still being edited: the footer had changed (it now lists "Support requests" and
-"Pre-sales and general inquiries" under support@minitok.dev), while the pricing page,
-the plan cards, the FAQ, the refund page, and terms §9/§10 still carried the text in
-the table above.
+The pages were fetched again on 2026-09-13 and re-checked while preparing 1.3.18: the
+refund promise is gone from the pricing page, the plan cards, the FAQ, and the refund
+page, the footer now lists "Support requests" and "Pre-sales and general inquiries"
+under support@minitok.dev, and terms §9, terms §10, the last-updated dates, and the
+install command are still as the table above describes.
+
+**Where the pages are edited.** The website is not part of this repository. The
+deployable copy lives in the website workspace (`minitok-website/`), which is uploaded
+with `scp` to the production VM (`/opt/minitok/website/`), and its own `static/`
+directory is marked obsolete in `deployment/deploy.sh` and must not be uploaded over
+the live pages. Edit the production HTML that was last uploaded (the `_*_prod.html`
+copies used by `deployment/deploy_legal_remediation.sh`) or fetch the live pages first,
+then upload only the pages that changed and restart the web container.
 
 
 

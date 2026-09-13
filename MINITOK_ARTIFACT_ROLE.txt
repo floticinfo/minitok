@@ -1,6 +1,6 @@
 ROLE: CANONICAL
 PACKAGE: @flotic/minitok
-VERSION: 1.3.17
+VERSION: 1.3.18
 SOURCE: current release worktree
 ALLOWED_USE: current client implementation, tests, lint, typecheck, packaging preparation
 FORBIDDEN_USE: calling this an immutable published or deployed artifact while the worktree is dirty
