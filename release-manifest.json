@@ -3,15 +3,15 @@
   "release": {
     "package": "@flotic/minitok",
     "version": "1.3.13",
-    "commit": "87e512c0e802fd8295c26bc816a3207ef2690513",
-    "tree": "0f1fa2bfe4aac2f98f6332ffe1a681934a949323",
+    "commit": "03dc617ad52a210383224c3601ce81d8d408a4cb",
+    "tree": "9771ce85a0a035b792c5fcff33638293cd07d186",
     "tag": "v1.3.13",
     "changelog": "## 1.3.13",
     "artifact": {
       "filename": "flotic-minitok-1.3.13.tgz",
-      "size": 179187,
-      "sha256": "6649b87e29afefb383df353ae2057acb8936542e43621fe40eaad8e6c32cdad8",
-      "integrity": "sha512-bS8+zxBaLmQ0SZm+O2lL13DrjH2nKFpT0gUFetBBlY5O20DWuWdxlrLcgLjHkuyVTo/HO6Kw5i1tiRrvvhGFgQ==",
+      "size": 181672,
+      "sha256": "ae763e2123c395d8f288d54feb902f789169f760b42c45e80ff794d8ae240536",
+      "integrity": "sha512-KFDYuPrv34s+mqV4PssUDXwoW5r5kzIhqFgGFvW+++SPeebBnXjI9Rfrk8I9PB/0YVWMjcnYb+p0U7tdVe+Ngw==",
       "files": [
         {
           "path": "BENCHMARK_EVIDENCE.json",
@@ -20,13 +20,13 @@
         },
         {
           "path": "CHANGELOG.md",
-          "size": 18828,
-          "sha256": "5ed2cb3d2df0e55975b47a7eff639949365fbfe4fc62d7097d596cf50c7fb872"
+          "size": 19912,
+          "sha256": "35c98b0b0401407e363aa6342fb93c9765d826ae5b4729a7578241d76d8667c8"
         },
         {
           "path": "DATA_CLASSIFICATION.md",
-          "size": 4479,
-          "sha256": "2d985939924ef45136ecdb22c04906b183f72314a0b98293ec8e703b48503f4c"
+          "size": 5126,
+          "sha256": "722d83c29477b9177ea74da3348b51e05c2cfbb5128bce7c6240043cdba305c2"
         },
         {
           "path": "DEMO_EVIDENCE.md",
@@ -35,8 +35,8 @@
         },
         {
           "path": "EULA.md",
-          "size": 3319,
-          "sha256": "e20d87f969590c1307096e2a2a74ba8246a6770f772e676a366c128ac0913ab9"
+          "size": 5610,
+          "sha256": "3614cad32e538e73778df083108bbe29b656fd971031bf020554d936d41dbb6c"
         },
         {
           "path": "LAUNCH_CHECKLIST.md",
@@ -50,8 +50,8 @@
         },
         {
           "path": "POLICY.md",
-          "size": 6491,
-          "sha256": "336d7a30cc204221c3332fca96e81911389acbbc4cf09e40ad49db011b00ca34"
+          "size": 9437,
+          "sha256": "d5a7c58ee03162967dd3ad615d04ae978590de148663023ca324577e71f203c6"
         },
         {
           "path": "PROMOTION_KIT.md",
