@@ -280,10 +280,10 @@ remains, each line still being the text to search for.
 | Footer, every page | Pending (optional) | Remove or rename the "Refund Policy" link once the page is renamed |
 | `https://minitok.dev/support` | Pending | The contact form offers category "Refund", and the server accepts it (`src/api/support.js`). Keep it as an eligibility question or rename both to "Billing" |
 | `https://minitok.dev/terms` §3 | Applied: "cancel at any time through the Dodo customer portal; access continues through the current paid billing period" | — |
-| `https://minitok.dev/terms` §9 | **Pending** | Replace "The governing law, venue, and any jurisdiction-specific terms remain …" with the applied position: governed by the laws of the Republic of Korea, courts of the Republic of Korea, the customer's residence option, and the sentence preserving non-waivable rights |
-| `https://minitok.dev/terms` §10 and the footers | **Pending** | Publish one English address form matching EULA §11: the pages print "Room 301, 3rd Floor, 57 Munin-ro, Suji-gu, Yongin-si, Gyeonggi-do", which omits the unit suffix and "Sangik Plaza"; the privacy policy the server serves uses the same shorter form |
+| `https://minitok.dev/terms` §9 | **Applied** (deployed 2026-09-13) | Governed by the laws of the Republic of Korea, courts of the Republic of Korea, the customer's residence option, and the sentence preserving non-waivable rights |
+| `https://minitok.dev/terms` §10, `/refund`, `/privacy` | **Applied** (deployed 2026-09-13) | One English address form, matching EULA §11 word for word: "3F 301-Na025, Sangik Plaza, 57 Munin-ro, Suji-gu, Yongin-si, Gyeonggi-do, Republic of Korea" |
 | `https://floticinfo.com` footer and privacy policy | Pending | Same single English form in both places, so the EULA notice address has one published twin |
-| `https://minitok.dev/terms`, `/privacy`, `/refund` | Pending | "Last updated: August 2026" → the month the pages are actually changed |
+| `https://minitok.dev/terms`, `/privacy`, `/refund` | **Applied** (deployed 2026-09-13) | "Last updated: August 2026" → "Last updated: September 2026" |
 | `https://minitok.dev` install command | Pending (follows the publish) | "npm install -g @flotic/minitok@1.3.12" → the version published to npm; 1.3.18 is the version prepared here. The live command is correct until that publish happens |
 | `https://minitok.dev/privacy` §7 vs the server | **Open** | The page publishes 30 days for Open telemetry and 14 days for Select; the server retains telemetry for 90 days and the policy the server itself serves says 90. See `DATA_CLASSIFICATION.md` section 9.2 |
 
@@ -365,17 +365,30 @@ Customer sue elsewhere." That is optional and it was not applied.
 
 The pages were fetched again on 2026-09-13 and re-checked while preparing 1.3.18: the
 refund promise is gone from the pricing page, the plan cards, the FAQ, and the refund
-page, the footer now lists "Support requests" and "Pre-sales and general inquiries"
-under support@minitok.dev, and terms §9, terms §10, the last-updated dates, and the
-install command are still as the table above describes.
+page, and the footer now lists "Support requests" and "Pre-sales and general inquiries"
+under support@minitok.dev. Of the items that were still open at that point, the
+governing-law paragraph, the notice address, and the last-updated dates were deployed
+the same day (below); the install command follows the npm publish. The shipped
+`CHANGELOG.md` for 1.3.18 was written before that deploy and still lists them as
+remaining, so the next release notes should correct that sentence.
 
 **Where the pages are edited.** The website is not part of this repository. The
-deployable copy lives in the website workspace (`minitok-website/`), which is uploaded
-with `scp` to the production VM (`/opt/minitok/website/`), and its own `static/`
-directory is marked obsolete in `deployment/deploy.sh` and must not be uploaded over
-the live pages. Edit the production HTML that was last uploaded (the `_*_prod.html`
-copies used by `deployment/deploy_legal_remediation.sh`) or fetch the live pages first,
-then upload only the pages that changed and restart the web container.
+production copy is the `website/` directory of the server repository
+(`floticinfo/minitok-server`), bind-mounted read-only into the Caddy container as
+`/opt/minitok/website`, so a page is changed by editing that directory on the VM. The
+website workspace (`minitok-website/`) keeps its own `static/` prototype, which
+`deployment/deploy.sh` marks obsolete and which must not be uploaded over the live
+pages, and its `_*_prod.html` copies record an earlier deployment.
+
+**Deployed on 2026-09-13.** Three pages were changed and verified live (`/terms` 8,612
+bytes, `/refund` 6,594 bytes, `/privacy` 9,586 bytes): the section 9 paragraph, the
+notice address in three places, and the last-updated date. The uploaded files, the
+byte-for-byte pre-upload backups, the exact before/after strings, the verification
+commands, and the rollback command are kept in
+`minitok-website/legal-consistency-20260913/`; static files need no container restart.
+One operational consequence matters: because the live tree is mounted from the server
+repository, the next website deploy from that repository would revert these three pages
+until its `website/` copies are updated with the same text.
 
 ## 7. Approval record (2026-09-13)
 
