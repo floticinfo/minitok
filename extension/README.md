@@ -1,5 +1,7 @@
 # minitok
 
+![minitok Harlekin brand mark](media/minitok.png)
+
 **Verified repository-aware coding workflows for AI agents**
 
 minitok brings repository-aware coding workflows into VS Code. Describe a task, let minitok inspect and plan the change, run implementation, verify the result, review failures, and preserve evidence for review.

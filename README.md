@@ -1,5 +1,7 @@
 # minitok
 
+![minitok Harlekin brand mark](assets/minitok-harlekin-mark.png)
+
 `@flotic/minitok` is a repository-aware coding workflow CLI. It runs the configured pipeline through repository intelligence, planning, implementation, deterministic verification, review, repair, and knowledge recording.
 
 ## Install
