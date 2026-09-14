@@ -2,16 +2,16 @@
   "schemaVersion": 1,
   "release": {
     "package": "@flotic/minitok",
-    "version": "1.3.19",
-    "commit": "2b895343da8e71e01e0ba73f8454a8f1274cfb5f",
-    "tree": "353dc5bbd38044e01178b1465a1c9f2a2b12a89f",
-    "tag": "v1.3.19",
-    "changelog": "## 1.3.19",
+    "version": "1.4.0",
+    "commit": "b0c07d6abd5557448c9d529302a8b753db2313f8",
+    "tree": "97482c643820ce1e6120b10c1dcdbe4560df4183",
+    "tag": "v1.4.0",
+    "changelog": "## 1.4.0",
     "artifact": {
-      "filename": "flotic-minitok-1.3.19.tgz",
-      "size": 199079,
-      "sha256": "0500bccb261245c89a51fcc2945d112922e25633857fb423c393155230de9fdb",
-      "integrity": "sha512-yVsmo6ancoZHKf21FiknCZuPfufabphrAFNovekFjyuJx7vrsI4jLHORKPKdbl7nW5MM9onFdIrEThlQIU8XrA==",
+      "filename": "flotic-minitok-1.4.0.tgz",
+      "size": 223170,
+      "sha256": "8ec8f3a9a4e6f3b8d8b9785e8a904b371b5a47d1ef5a98436e838a8b8b83db0d",
+      "integrity": "sha512-EWLfzIjaVeBpFX8el6OiAlMYopgoVOusPuKqsXnBiFfUAuaI+l+B5gDfXgfrm4X6k7hb6Oucl3swyKvgMxYS6w==",
       "files": [
         {
           "path": "BENCHMARK_EVIDENCE.json",
@@ -20,8 +20,8 @@
         },
         {
           "path": "CHANGELOG.md",
-          "size": 35750,
-          "sha256": "cdabf62b5e50284e8c0cfb8873983a8f217d7f7d497467bf876f0d8fbccbf062"
+          "size": 46130,
+          "sha256": "b658f06829181df3ed612174324ac04e4d57a77a58a8930b4734a3313e88b3c6"
         },
         {
           "path": "DATA_CLASSIFICATION.md",
@@ -40,8 +40,8 @@
         },
         {
           "path": "LAUNCH_CHECKLIST.md",
-          "size": 3330,
-          "sha256": "13169a345ce15bd192dae18e0fc9e0322c4b6b77fb56ff4e8b83d28b5d2263a7"
+          "size": 3328,
+          "sha256": "b2e447abc6bfa9fb6285124541a9d3ba1f74904a43d16ed61c08e8b7bb0aa54e"
         },
         {
           "path": "LICENSE",
@@ -55,23 +55,23 @@
         },
         {
           "path": "PROMOTION_KIT.md",
-          "size": 6152,
-          "sha256": "870ccd76b9a61e2d8673c9a43a684fafd525019a0a293daed599151b48ef945f"
+          "size": 6150,
+          "sha256": "3d1e54ca90f822a3ad32548b7b3222f43959f937bf611e1b76b4021935adcf87"
         },
         {
           "path": "README.md",
-          "size": 31525,
-          "sha256": "68f812ee7d09fe2981e70ff8ff1a07fdc19a455ffcd959bcf3833502452dc74c"
+          "size": 36307,
+          "sha256": "75f767acb7383aaf0bd4a4bba7e5f4690dfff6916d760a2d9183be187be1a793"
         },
         {
           "path": "bin/minitok.js",
-          "size": 10076,
-          "sha256": "e9982751123066b342a1f85e782133ebb87ad21cf33aa8b52b199679b60c24bf"
+          "size": 10094,
+          "sha256": "8b461c6f16dc9338f2345249ac443e4e96b8a5bd12591d172f7374d45d40dc0c"
         },
         {
           "path": "package.json",
-          "size": 5448,
-          "sha256": "ad4d02d6bd842a9bebec0ca9e77c6866efad2d9ca843f10dc5f55370001aae78"
+          "size": 5447,
+          "sha256": "c3ffdaa549bc86b0202bf2559048301a675a2519970a6527a15a9d7429588e53"
         },
         {
           "path": "promotion-posts/linkedin.md",
@@ -94,6 +94,11 @@
           "sha256": "e78aeb93c445b39fd940dde2b20349d740f85230410537a2ea48a110bdb1409e"
         },
         {
+          "path": "src/auth/aliases.js",
+          "size": 1620,
+          "sha256": "4c931117494925eed406bc05d7f5df1fd291216943513d264c8f0161e076ba61"
+        },
+        {
           "path": "src/auth/customer-session.js",
           "size": 1135,
           "sha256": "4f30529dff00df42115bfe4ba504854b54a16a3432ba91dd99edb690ffa35ea2"
@@ -105,23 +110,23 @@
         },
         {
           "path": "src/auth/index.js",
-          "size": 6425,
-          "sha256": "2b23197f5d95b82983bd38c80b548b7b9138b7ce43cb34a93a5249863e8cbee5"
+          "size": 6206,
+          "sha256": "215fa2b4f247ad30ea593128d361003f2a4158596ed84096141a5b2ccca65540"
         },
         {
           "path": "src/auth/oauth.js",
-          "size": 11827,
-          "sha256": "c3823330fa34bcb1c1fbbd9cea0770b189f1cd7304a35570eb288ac2781c07c6"
+          "size": 12388,
+          "sha256": "2c39739df991f2e0f07b894a78185b1c408163dc69dfb03704e7b6a7ba1ff187"
         },
         {
           "path": "src/auth/service-account.js",
-          "size": 6304,
-          "sha256": "a7325f28c1e5ec6f9d9e7261c4213582171d63f4fcd7cb528c92fc7afde8ef53"
+          "size": 6591,
+          "sha256": "8c56368bc6d689f5d6a9981da7a280d92dfb518597cf67a9e6c72023f39b925c"
         },
         {
           "path": "src/auth/token-store.js",
-          "size": 10047,
-          "sha256": "5caffb29721c213bbb1e2b7f22a17d04c9b5897e58bedadac2c8a3a31a995a3f"
+          "size": 12301,
+          "sha256": "4edfb2ae7b61790cc7d62315ed8b0aeadbd6c0a44686753f6b62a4534680f7a2"
         },
         {
           "path": "src/cli/commands/account.js",
@@ -130,8 +135,8 @@
         },
         {
           "path": "src/cli/commands/activate.js",
-          "size": 4037,
-          "sha256": "bea779be0934b85d81a23c23f6aa92b21be9b5d52a1e1cb1d3ae47ba996540e3"
+          "size": 4521,
+          "sha256": "bcc1ea57cc3abaa752c8e10097df8f28ae82528044e2921268b433a6f47ac666"
         },
         {
           "path": "src/cli/commands/activation-key.js",
@@ -140,8 +145,8 @@
         },
         {
           "path": "src/cli/commands/auth.js",
-          "size": 5842,
-          "sha256": "f320c803f63012c7ad2813e60245438931531611540d0fac0d6bb675ec62bf74"
+          "size": 6667,
+          "sha256": "efa84e03c692668f7967dcd7a5e00f280f98ae984b1ef0e8ccded4786bd9042f"
         },
         {
           "path": "src/cli/commands/billing.js",
@@ -155,8 +160,8 @@
         },
         {
           "path": "src/cli/commands/doctor.js",
-          "size": 5696,
-          "sha256": "455a38e707b608f215b72378fe9fabd4fdb10ecd2bd43d5692b555b992eba61e"
+          "size": 5657,
+          "sha256": "8e1d74101743eacfa3ea37fd825f4da834f4215a13f7f0ce2ad5b44cfab7365d"
         },
         {
           "path": "src/cli/commands/evolution.js",
@@ -165,8 +170,8 @@
         },
         {
           "path": "src/cli/commands/gui.js",
-          "size": 5619,
-          "sha256": "c85d53d7a58cb239c77c77f585c243af5393a3df2108f7bfc1a04d0ccfbb8e5a"
+          "size": 5646,
+          "sha256": "7a788b6ea8b9d44608d203f926e456aba62933796422b58745453f8140a4a454"
         },
         {
           "path": "src/cli/commands/license.js",
@@ -175,8 +180,8 @@
         },
         {
           "path": "src/cli/commands/mcp.js",
-          "size": 18615,
-          "sha256": "7174d6bd9f171001ff9d7b3aef0ac3dd90b96ce4de7acbdcf7029dda7a1a3fe1"
+          "size": 20284,
+          "sha256": "e6306a3c99cdbf060d6bf7bbdf7809a27fbfa35e38156018525384b7ac9175c0"
         },
         {
           "path": "src/cli/commands/migrate.js",
@@ -195,8 +200,8 @@
         },
         {
           "path": "src/cli/commands/run.js",
-          "size": 7614,
-          "sha256": "5b9e69420e9a3e1f05d821ea02e1bbbf4cd60720783d6c022413059ed9861d93"
+          "size": 7776,
+          "sha256": "b2bf730b817c721a46adb1293a0400952386fdb8407832a0a68981f1f837ea3c"
         },
         {
           "path": "src/cli/commands/runs.js",
@@ -205,8 +210,8 @@
         },
         {
           "path": "src/cli/commands/runtime.js",
-          "size": 6280,
-          "sha256": "ef4281d5e9fe860d91feadf370fb78fffe61cbf15618c4fc08af1dd4b0b6b173"
+          "size": 6316,
+          "sha256": "dda76088521ee3cb5ad17d917dee44f536d3c1b9f460231e37d7ffc029788fde"
         },
         {
           "path": "src/cli/commands/server-config.js",
@@ -215,8 +220,8 @@
         },
         {
           "path": "src/cli/commands/status.js",
-          "size": 5226,
-          "sha256": "f18a560c71d510e6b195f6abb2272adeadce1bd6141f37a0aa55ba617d1d3fab"
+          "size": 5974,
+          "sha256": "601f3c8da1b314feff28bc0c526d472e791e7b8cde42619f69577b44b249786a"
         },
         {
           "path": "src/cli/commands/workspace.js",
@@ -225,23 +230,23 @@
         },
         {
           "path": "src/cli/fullscreen-gui.js",
-          "size": 14084,
-          "sha256": "407b18bf280dcc7c7bf23eaf47bde0f93872384c2149f117a62ac1d3c17ebefd"
+          "size": 15202,
+          "sha256": "2156ca227555195326194412f5d8810a845dfd61232ec5584b28a76555ec658d"
         },
         {
           "path": "src/cli/gui-commands.js",
-          "size": 7946,
-          "sha256": "8f1b72666d7cda7cb5f5d3c1564e83896ea2360abe85e019b8a0a25a84aa4bb4"
+          "size": 9317,
+          "sha256": "1a4e0d9f8edc18082c8b10bd735b4f44ff5b7deb21e3e414adbcf2008a334597"
         },
         {
           "path": "src/cli/gui-run.js",
-          "size": 6693,
-          "sha256": "0d8b4aee86a57e00df91a25b473ba8c71b9f5e5767fcf0fe8e0ad02420b85716"
+          "size": 7057,
+          "sha256": "2456c7ec02e4054327e55a32ad17d3313b5ffcbd0e3d61e5bcf1bd08ec97d9fe"
         },
         {
           "path": "src/cli/gui-settings.js",
-          "size": 1014,
-          "sha256": "8358a78b8bc8ffdb7ae0f5277d8408e2afd7dfdcbb07a1a2a99c86a881bff514"
+          "size": 1260,
+          "sha256": "233c7479107f1663f8e976bff3a832e2f9311fd9007279c2d889fcc93b588b15"
         },
         {
           "path": "src/cli/login-screen.js",
@@ -275,18 +280,23 @@
         },
         {
           "path": "src/core/errors.js",
-          "size": 1342,
-          "sha256": "68acc74cbb0457a2358058285f7a20c04596e047f436fb09a591f5e6013c8ec5"
+          "size": 1791,
+          "sha256": "a7625b151d79991794a0c034a239a0ff40d44b764d8078788bee83665ad704b1"
         },
         {
           "path": "src/core/http.js",
-          "size": 8731,
-          "sha256": "8337debfac696ecb970d9c6f8cb7dda422e34977fb2c7875e8e2ca2b0ef88348"
+          "size": 9688,
+          "sha256": "c81f4be79b72beb37e74b028bb91a5b1e1f1acfc5258dde02765db368d893a92"
         },
         {
           "path": "src/core/package-manager.js",
           "size": 609,
           "sha256": "bf82b14f7a71da10ef78353e819510589de800057989aecbbcd1c9c80ad8a9ef"
+        },
+        {
+          "path": "src/core/palette.js",
+          "size": 6750,
+          "sha256": "5d73c3d7f52051e81f2f0faa7de27d29ddd603367e2f5ae68c0114cfa507bfbf"
         },
         {
           "path": "src/core/update-check.js",
@@ -300,8 +310,8 @@
         },
         {
           "path": "src/entitlement/gate.js",
-          "size": 8975,
-          "sha256": "8d69b5ae2fcdf1798baf1c4bbb88bde06646879bdd1433ba7b8faa5a08859e38"
+          "size": 9557,
+          "sha256": "804857f8b52c62853aea965d05981c28bf2b0ec5b9efa4fda982ac86e1d8666b"
         },
         {
           "path": "src/entitlement/model.js",
@@ -310,8 +320,8 @@
         },
         {
           "path": "src/entitlement/online.js",
-          "size": 4096,
-          "sha256": "9f8c1a3392a11f74db588ad1b854958855f4d7f01410f8c5c6d680876242e723"
+          "size": 4074,
+          "sha256": "106bfbe17fa8e237dc9336483cb72c82178331b9182a65888482aa4cb40663aa"
         },
         {
           "path": "src/entitlement/package.json",
@@ -405,33 +415,33 @@
         },
         {
           "path": "src/llm/provider.js",
-          "size": 39379,
-          "sha256": "afa11b65ab3c5190d6eb6faab76fcab5dc5c16365b029a3208fe5380ecb5d649"
+          "size": 41556,
+          "sha256": "5c97d12c605694f4aa15e0c581f232d356b21ae88ff21eeea47eb59df7fb1a7a"
         },
         {
           "path": "src/mcp/remote.js",
-          "size": 10592,
-          "sha256": "dcdbef0aabbe9068151522b4b8d9d377d94e358e418259ed4c77b758bbbfdd97"
+          "size": 10747,
+          "sha256": "6a5b1129545e2df35eeb7b1a35b45689138824091d105174a168ca2c5e0e3b4f"
         },
         {
           "path": "src/mcp/runtime-token.js",
-          "size": 6228,
-          "sha256": "f27f226a59a89b1118a36f007b233e92b3c94b7937162265888c15068af56def"
+          "size": 6627,
+          "sha256": "8c29f37dba94cf2fc661066acbc62c4c30738e8efa9efb38d0367404c1e16d8b"
         },
         {
           "path": "src/mcp/tools.js",
-          "size": 19224,
-          "sha256": "27612ee05d4b405807bd40e85b62c4f2fe50a8fd2e7019c79bf686e591176214"
+          "size": 20690,
+          "sha256": "8304d41d78839f75acb5fd14a89c6a5222d29e2d53de7b90e54de0edec4fa9b7"
         },
         {
           "path": "src/pipeline/check.js",
-          "size": 7998,
-          "sha256": "7c5d1be6ef3426a06b6ee82f1432dd39031705c244cdbced2e6892d0be64c158"
+          "size": 13960,
+          "sha256": "f89d579eb1ae31b38a74fd336abeed1cd7e815f9cbd4a48c9f843faf19dc3c04"
         },
         {
           "path": "src/pipeline/implementer.js",
-          "size": 17353,
-          "sha256": "822a04d03bfc3188d9f0e3716d1da16a85901378f7fc9def0f875383a7f0dbd7"
+          "size": 23859,
+          "sha256": "76a5030c770d13d3f56277602282df58f14867512123fcbed1bf39cae67b9682"
         },
         {
           "path": "src/pipeline/intel.js",
@@ -445,8 +455,8 @@
         },
         {
           "path": "src/pipeline/loop.js",
-          "size": 44521,
-          "sha256": "f9eb4f67d188b36bea4766073e60be2939eca769f6f0c4bac78f12eadd61bf29"
+          "size": 51240,
+          "sha256": "5af2a9161989bbaf910dbdcb939e06f54da5e3eeb2e957e9266092c7a1c3f5a3"
         },
         {
           "path": "src/pipeline/next_task.js",
@@ -455,8 +465,8 @@
         },
         {
           "path": "src/pipeline/planner.js",
-          "size": 1689,
-          "sha256": "7bab47a4926700e3485a171efeb3b968f1d8936e6180e1a5bd0367dc66ab8c6c"
+          "size": 2056,
+          "sha256": "cc1f16bff302e0fc0fac02239b6d1c8c6048c5aad7b9ec9e259c805f4467c1e0"
         },
         {
           "path": "src/pipeline/repair.js",
@@ -465,8 +475,8 @@
         },
         {
           "path": "src/pipeline/verifier.js",
-          "size": 1961,
-          "sha256": "0978939ae5d323e2df18a52b70ecf04cbf89562cd604ac9783c36c1285066296"
+          "size": 2324,
+          "sha256": "c299e51592a4d48eb7658384d593926d40dbd1beb86e2a4c13a90d441c081e0b"
         },
         {
           "path": "src/promotion/demo.js",
@@ -540,8 +550,8 @@
         },
         {
           "path": "src/runtime/server.js",
-          "size": 16713,
-          "sha256": "180e738c8336bca92c4da2093aedaa2d87c9df48eaf542274d21c3c1818c91ae"
+          "size": 18325,
+          "sha256": "976337bfb998c0ece2ec3bf1770cb180baac08d03030860737d90f1a1570c2e5"
         },
         {
           "path": "src/runtime/sessions.js",
@@ -555,8 +565,8 @@
         },
         {
           "path": "src/runtime/stdio.js",
-          "size": 27399,
-          "sha256": "7b97937aea8dbd113ae5bd1601f4389a3b27dcffe5dc1815b00f4f7f00a11920"
+          "size": 34413,
+          "sha256": "f3b2b8c8e6b7c0ca7e2cf1cc4cce56183bf0d60d45c865ac01f597ab5c39a2cf"
         },
         {
           "path": "src/runtime/workspace.js",
@@ -570,8 +580,8 @@
         },
         {
           "path": "src/state/run-lock.js",
-          "size": 3491,
-          "sha256": "78dbcd2279a5deaa1655022b4bb323b3aeecf710639d1a6848e677550ff2caf9"
+          "size": 5284,
+          "sha256": "f544bc8d65acb2ac49e53ad313bc94bc6e11a14fbd57bf9d83db34f8a3809f9d"
         },
         {
           "path": "src/utils/file-permissions.js",
@@ -585,13 +595,13 @@
         },
         {
           "path": "src/workspace/isolation.js",
-          "size": 16867,
-          "sha256": "e6c8291dc6a24ac6cfb0f9d0098362cea8a01e8ac88d6dfa7303c31997110e98"
+          "size": 17373,
+          "sha256": "c306657ea93a007191210663428245177fd6f620aacbace9c0b98f32afaa40e4"
         },
         {
           "path": "src/workspace/manager.js",
-          "size": 7764,
-          "sha256": "46a45e4c0d5b6b521f60a876b6af0f5176176c9351f203a0a1e054005fdd65f6"
+          "size": 8590,
+          "sha256": "f05c755fc21149e7325aec39422cc05d0e493da387189ed7602a0775feefc901"
         }
       ]
     }
