@@ -99,12 +99,12 @@ test("an expired cached OAuth token is not reused", () => {
     store.save("mcp-service.example", { resource: "https://service.example/mcp", access_token: "expired-token", expires_at: new Date(Date.now() - 60000).toISOString() });
     const stale = new RemoteMcpClient({ url: "https://service.example/mcp", tokenStore: store });
     assert.equal(stale.token, null, "an expired cached token must not be presented");
-    assert.equal(stale._cachedTokenExpired, true);
+    // The expired entry is eagerly removed so the 401 handler doesn't need to do it.
+    assert.equal(store.isValid("mcp-service.example"), false, "the expired entry must be purged from the store");
 
     store.save("mcp-service.example", { resource: "https://service.example/mcp", access_token: "fresh-token", expires_at: new Date(Date.now() + 3600000).toISOString() });
     const fresh = new RemoteMcpClient({ url: "https://service.example/mcp", tokenStore: store });
     assert.equal(fresh.token, "fresh-token", "a valid cached token is still reused");
-    assert.equal(fresh._cachedTokenExpired, false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }

@@ -17,8 +17,9 @@ function writeApprovalResponse(approvalFile, decision) {
   let request;
   try { request = JSON.parse(fs.readFileSync(approvalFile, "utf8")); } catch { return { ok: false, reason: "Approval request is unreadable; the run will time out closed." }; }
   if (!request || request.type !== "approval_request" || typeof request.nonce !== "string") return { ok: false, reason: "Approval request is malformed; the run will time out closed." };
+  const crypto = require("crypto");
   const target = `${approvalFile}.response`;
-  const temporary = `${target}.tmp-${process.pid}-${Date.now()}`;
+  const temporary = `${target}.tmp-${process.pid}-${crypto.randomBytes(6).toString("hex")}`;
   try {
     fs.writeFileSync(temporary, `${JSON.stringify({ decision, nonce: request.nonce, run_id: typeof request.run_id === "string" ? request.run_id : null })}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
     fs.renameSync(temporary, target);

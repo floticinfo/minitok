@@ -56,14 +56,18 @@ class RemoteMcpClient {
     this.clientId = options.clientId || "minitok-cli";
     this.tokenStore = options.tokenStore || new TokenStore(options.tokensDir);
     this.resourceKey = `mcp-${new URL(this.url).host}`;
-    this._cachedTokenExpired = false;
     if (!this.token) {
       const stored = this.tokenStore.load(this.resourceKey);
       // TokenStore.isValid() existed but was never consulted here, and the 401
       // handler below only re-authorized when no token was present at all, so an
       // expired cached token blocked OAuth refresh permanently.
-      this._cachedTokenExpired = Boolean(stored?.access_token) && !this.tokenStore.isValid(this.resourceKey);
-      if (stored?.access_token && !this._cachedTokenExpired) this.token = stored.access_token;
+      if (stored?.access_token && !this.tokenStore.isValid(this.resourceKey)) {
+        // Eagerly remove the unusable token so the 401 handler doesn't need to
+        // do it redundantly and the store stays clean for future requests.
+        try { this.tokenStore.remove(this.resourceKey); } catch {}
+      } else if (stored?.access_token) {
+        this.token = stored.access_token;
+      }
     }
     this.timeoutMs = options.timeoutMs || 10000;
     this.sessionId = null;

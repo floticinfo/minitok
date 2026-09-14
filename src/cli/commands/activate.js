@@ -84,10 +84,20 @@ async function cmdActivate(key, opts) {
       installation_id: installationId,
       saved_at: new Date().toISOString(),
     };
-    const tmp = tokenFile + ".tmp";
-    fs.writeFileSync(tmp, JSON.stringify(record, null, 2), { encoding: "utf-8", mode: 0o600 });
-    fs.renameSync(tmp, tokenFile);
-    setOwnerOnlyPermissions(tokenFile);
+    // flag: "wx" prevents concurrent activation from overwriting in-flight:
+    // two parallel `minitok activate` calls would otherwise race on the
+    // installation-token.json, leaving one caller with a truncated record.
+    const crypto = require("crypto");
+    const tmp = `${tokenFile}.tmp.${process.pid}.${crypto.randomBytes(6).toString("hex")}`;
+    try {
+      fs.writeFileSync(tmp, JSON.stringify(record, null, 2), { encoding: "utf-8", flag: "wx", mode: 0o600 });
+      setOwnerOnlyPermissions(tmp);
+      fs.renameSync(tmp, tokenFile);
+      setOwnerOnlyPermissions(tokenFile);
+    } catch (error) {
+      try { fs.unlinkSync(tmp); } catch {}
+      throw error;
+    }
   } catch (err) {
     console.error(`Error: Failed to store installation token: ${err.message}`);
     return 1;

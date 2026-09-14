@@ -108,12 +108,18 @@ describe("token store: read cache", () => {
   });
 
   it("re-reads after a removal", () => {
-    const { store, reads } = countingStore();
+    const { store } = countingStore();
+    const probed = [];
+    store._keychainLoad = (provider) => { probed.push(provider); return { access_token: "token" }; };
     store.load("anthropic");
+    assert.deepEqual(probed, ["anthropic"]);
     store.remove("anthropic");
-    store._keychainLoad = () => { reads.count += 1; return null; };
+    store._keychainLoad = (provider) => { probed.push(provider); return null; };
     assert.equal(store.load("anthropic"), null);
-    assert.equal(reads.count, 2);
+    // The cache invalidation re-reads the primary key. The extra claude probe is
+    // the pre-alias fallback: `auth login claude` used to store under the alias,
+    // so a miss on the canonical name checks the alias copy before giving up.
+    assert.deepEqual(probed, ["anthropic", "anthropic", "claude"]);
   });
 
   it("expires cached reads", () => {

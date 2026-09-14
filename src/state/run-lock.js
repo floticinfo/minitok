@@ -103,7 +103,17 @@ function acquireRunLock(workspaceRoot, _attempts = 0) {
   const ownership = JSON.stringify({ pid: process.pid, host: os.hostname(), started_at: new Date().toISOString(), token });
   try {
     fs.writeFileSync(fd, ownership, "utf-8");
-  } catch {}
+  } catch (writeError) {
+    // If the ownership record cannot be written, the lock file is
+    // empty/invalid: other processes would see an unreadable lock and
+    // potentially reclaim it after the grace period. Close the fd and
+    // remove the file so the next acquire can start clean.
+    try { fs.closeSync(fd); } catch {}
+    try { fs.unlinkSync(lockPath); } catch {}
+    const err = new Error(`Failed to write run lock ownership: ${writeError.message}`);
+    /** @type {NodeJS.ErrnoException} */ (err).code = "minitok_run_lock_write";
+    throw err;
+  }
   let released = false;
   return {
     path: lockPath,

@@ -10,6 +10,7 @@ const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
 const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
+const { aliasesFor } = require("./aliases");
 const { execFileSync } = require("child_process");
 
 const TOKENS_DIR = path.join(os.homedir(), ".minitok", "tokens");
@@ -142,16 +143,67 @@ class TokenStore {
     return record;
   }
 
-  _loadFromSource(provider) {
-    const keychain = this._keychainLoad(provider);
-    if (keychain) return keychain;
-    const fp = this._filePath(provider);
+  /**
+   * Every key a provider's credential may have been stored under, primary first.
+   *
+   * A credential written before aliases were normalised sits under the alias
+   * (`auth login gpt` wrote gpt.json while the resolver asked for openai.json),
+   * so resolving an account has to consider both names. Unknown keys (for
+   * example the remote MCP resource keys) have no aliases and resolve to
+   * themselves, which keeps their behaviour unchanged.
+   */
+  _providerKeys(provider) {
+    const name = String(provider || "");
+    return [name, ...aliasesFor(name).filter((alias) => alias !== name)];
+  }
+
+  /** @returns {Record<string, unknown> | null} */
+  _readTokenFile(provider) {
     try {
-      const data = fs.readFileSync(fp, "utf-8");
-      return JSON.parse(data);
+      return JSON.parse(fs.readFileSync(this._filePath(provider), "utf-8"));
     } catch {
       return null;
     }
+  }
+
+  _removeTokenFile(provider) {
+    try {
+      fs.unlinkSync(this._filePath(provider));
+    } catch {
+      // Ignore if not found
+    }
+  }
+
+  /**
+   * Drop the pre-alias copy of a credential that was just written under its
+   * canonical name.
+   *
+   * Leaving both files behind makes "which account is used?" depend on which
+   * file the fallback happens to read, so a fresh canonical login (or a token
+   * refresh) supersedes the alias copy.
+   */
+  _purgeAliasDuplicates(provider) {
+    for (const alias of aliasesFor(provider)) {
+      if (alias === provider) continue;
+      this._cache.delete(alias);
+      this._removeTokenFile(alias);
+    }
+  }
+
+  _loadFromSource(provider) {
+    const keychain = this._keychainLoad(provider);
+    if (keychain) return keychain;
+    const stored = this._readTokenFile(provider);
+    if (stored) return stored;
+    // The alias copy is only consulted after the primary key missed, and its
+    // file is checked before its keychain entry because a keychain miss costs a
+    // PowerShell process on Windows.
+    for (const alias of this._providerKeys(provider)) {
+      if (alias === provider) continue;
+      const legacy = this._readTokenFile(alias) || this._keychainLoad(alias);
+      if (legacy) return legacy;
+    }
+    return null;
   }
 
   /**
@@ -159,10 +211,10 @@ class TokenStore {
    */
   save(provider, tokenData) {
     this._ensureDir();
-    this._cache.delete(provider);
+    for (const key of this._providerKeys(provider)) this._cache.delete(key);
     const fp = this._filePath(provider);
     const record = { provider, ...tokenData, saved_at: new Date().toISOString() };
-    if (this._keychainSave(provider, record)) { try { fs.unlinkSync(this._filePath(provider)); } catch {} return; }
+    if (this._keychainSave(provider, record)) { this._removeTokenFile(provider); this._purgeAliasDuplicates(provider); return; }
     // Random suffix (not Math.random): two runs in one process must never pick
     // the same temporary name, or one would unlink the other's in-flight write.
     const tmp = `${fp}.tmp.${process.pid}.${crypto.randomBytes(6).toString("hex")}`;
@@ -175,19 +227,21 @@ class TokenStore {
     }
     // P3-01: Set owner-only permissions (POSIX + Windows ACL)
     setOwnerOnlyPermissions(fp);
+    this._purgeAliasDuplicates(provider);
   }
 
   /**
    * Delete stored token for a provider.
    */
   remove(provider) {
-    this._cache.delete(provider);
-    this._keychainRemove(provider);
-    const fp = this._filePath(provider);
-    try {
-      fs.unlinkSync(fp);
-    } catch {
-      // Ignore if not found
+    // Every key the credential may have been stored under is cleared: logging
+    // out of `openai` used to leave the pre-alias gpt.json behind, so the next
+    // resolve() — which normalises to openai — still found the credential and
+    // the logout had no effect.
+    for (const key of this._providerKeys(provider)) {
+      this._cache.delete(key);
+      this._keychainRemove(key);
+      this._removeTokenFile(key);
     }
   }
 

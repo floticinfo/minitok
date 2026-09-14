@@ -77,7 +77,8 @@ function _waitForExit(pid, attempts = 40) {
 
 async function cmdRuntimeStart(opts) {
   if (_isRunning()) {
-    console.log(`minitok runtime already running (PID ${_readRecord().pid})`);
+    const record = _readRecord();
+    console.log(`minitok runtime already running (PID ${record?.pid ?? "?"})`);
     return 0;
   }
 

@@ -172,6 +172,15 @@ function checkEntitlement(options = {}) {
     return { allowed: true, state: GateState.ALLOWED, message: GateMessages[GateState.ALLOWED], entitlement: verification.entitlement };
   }
 
+  // Even for non-terminal invalid states (MISSING, MALFORMED, etc.) the clock
+  // must still be observed: without bumping latest_observed_at, a local run
+  // that happens to execute while the entitlement is temporarily missing (file
+  // deleted, mid-rewrite) would freeze the timestamp and trigger a false
+  // clock-rollback detection on the next valid run after the file is restored.
+  const updated = updateMonotonicState(currentTimeMs, now, gateState);
+  const saveState = options._saveGateState || ((s) => saveGateState(s, entitlementDir));
+  saveState(updated);
+
   // Unknown state — fail closed
   return { allowed: false, state: GateState.MALFORMED, message: GateMessages[GateState.MALFORMED] };
 }

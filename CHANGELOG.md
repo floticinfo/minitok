@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.4.0 - 2026-09-14
 
 ### Added
 
@@ -12,6 +12,8 @@
 
 ### Fixed
 
+- Fixed credentials stored under a provider alias (`claude`, `gpt`, `gemini`) never authenticating. `auth login`/`auth logout` and the token store keyed credentials by the raw argument while every consumer (`AuthManager.resolve()`, `doctor`, `run`, the pipeline loop) looked up the normalized name, so `minitok auth login gpt` stored `gpt.json` and every lookup reported the credential as missing. Provider aliases now resolve once, at every boundary (`src/auth/aliases.js`), and the token store falls back to the legacy alias key so a `gpt.json` written by an older version keeps working.
+- Fixed multi-byte UTF-8 characters in HTTP response bodies being corrupted into `U+FFFD` replacement characters whenever a stream chunk boundary split the character (a Korean or emoji string in a provider error message, for example). `readCappedResponse` and `postJson` now accumulate the raw chunks and decode the concatenated bytes once instead of decoding every chunk independently.
 - Fixed `minitok run --approval-file`, the sidebar and TUI approval wait, and the MCP approval tools in isolated mode. The approval path was validated against the disposable clone instead of the operator's repository, so every file-backed approval failed with `approval_file must be under workspace/.minitok` before a single change was reviewed, and the extension waited for a file that could never be written. The run now carries the operator-visible workspace through as `approvalRoot` and the GUI runner writes its approval file into `<repo>/.minitok` rather than the OS temp directory. `--auto-accept` is honoured before the approval file is consulted, so the extension's `autoApprove` setting (which passes both flags) no longer waits out the timeout and then rejects every change.
 - Fixed an isolated run leaving the operator-visible `.minitok/contracts/task-contract.json` on `running` (or on the `interrupted` written by the heal at run start) after it had finished, because the terminal contract lived only in the clone that was deleted. The terminal state is now mirrored on completion, on a pipeline exception and on a failed final merge, together with `merged` and the merge outcome, so an approved run whose diff could not be applied is visible as such.
 - Fixed a provider reply that carried no text being reported as `Invalid JSON in response`. A refusal (Anthropic `stop_reason`, OpenAI `finish_reason`, Gemini `promptFeedback.blockReason`) and an answer cut off by the output token budget are now explicit provider errors carrying the stop reason, and the planner, implementer, verifier and reviewer report "the model stopped at its output token limit" instead of retrying, escalating and paying for the same overflow again. A truncated reply is not retried, because the same budget truncates it again; a malformed reply still is.

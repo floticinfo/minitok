@@ -84,6 +84,28 @@ describe("fetchWithTimeout", () => {
     }
   });
 
+  it("decodes a multi-byte UTF-8 character split across stream chunks", async () => {
+    const originalFetch = global.fetch;
+    const text = "한국어";
+    const bytes = Buffer.from(text, "utf8");
+    // Split the first character ("한", 3 bytes) after its first byte so the
+    // multibyte sequence straddles the chunk boundary.
+    const stream = new globalThis.ReadableStream({
+      start(controller) {
+        controller.enqueue(bytes.subarray(0, 1));
+        controller.enqueue(bytes.subarray(1));
+        controller.close();
+      },
+    });
+    global.fetch = async (_url, options) => ({ headers: headers(), body: stream });
+    try {
+      const response = await fetchWithTimeout("https://example.test", {}, 20);
+      assert.equal(await readCappedResponse(response), text);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
   it("maps an abort during response body consumption to AuthError", async () => {
     const originalFetch = global.fetch;
     const reader = {

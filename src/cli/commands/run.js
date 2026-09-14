@@ -2,6 +2,7 @@
 
 const { WorkspaceManager } = require("../../workspace/manager");
 const { runPipeline } = require("../../pipeline/loop");
+const { normalizeProvider } = require("../../auth/aliases");
 const path = require("path");
 
 async function cmdRun(task, opts) {
@@ -61,8 +62,7 @@ async function cmdRun(task, opts) {
     // completely unrunnable. Only the resolved providers are probed: verifying
     // every available key cost up to 8 seconds per unused provider, and
     // `minitok doctor --verify` is the command that audits all of them.
-    const aliasOf = { claude: "anthropic", gpt: "openai", gemini: "google" };
-    const canonical = (name) => aliasOf[String(name || "").toLowerCase()] || String(name || "").toLowerCase();
+    const canonical = normalizeProvider;
     const override = canonical(opts.providerOverride);
     const roleNames = Object.keys(preflightConfig.roles || {});
     let needed = [...new Set(roleNames.map(role => canonical(resolveProviderName(preflightConfig, role, opts.providerOverride))).filter(Boolean))];

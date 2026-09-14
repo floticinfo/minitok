@@ -152,7 +152,11 @@ class ServiceAccountResolver {
    * @returns {Promise<string>}
    */
   async _signServiceAccount(keyData) {
-    const now = Math.floor(Date.now() / 1000);
+    // GCP rejects tokens whose `iat` is in the future. A system clock that is
+    // even a few seconds ahead of Google's causes a transient failure. Subtract
+    // a 60-second buffer so minor skew is absorbed without raising the token's
+    // maximum lifetime above 1 hour.
+    const now = Math.floor(Date.now() / 1000) - 60;
     const expiry = now + 3600;
 
     const header = { alg: "RS256", typ: "JWT" };

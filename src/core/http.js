@@ -155,7 +155,7 @@ async function readCappedResponse(res, maxBytes = MAX_RESPONSE_BYTES) {
   if (Number.isFinite(declared) && declared > maxBytes) throw new Error("HTTP response body too large");
   if (!res.body || typeof res.body.getReader !== "function") throw new Error("HTTP response body is unavailable");
   const reader = res.body.getReader();
-  let data = "";
+  const chunks = [];
   let total = 0;
   try {
     for (;;) {
@@ -166,9 +166,12 @@ async function readCappedResponse(res, maxBytes = MAX_RESPONSE_BYTES) {
         await reader.cancel();
         throw new Error("HTTP response body too large");
       }
-      data += Buffer.from(value).toString("utf8");
+      // Decode once over the concatenated bytes: a multi-byte UTF-8 character
+      // split across two stream chunks would otherwise decode per chunk and
+      // turn into U+FFFD replacement characters.
+      chunks.push(Buffer.from(value));
     }
-    return data;
+    return Buffer.concat(chunks).toString("utf8");
   } catch (error) {
     throw timeoutError(error);
   } finally {
@@ -195,18 +198,31 @@ function postJson(urlString, body, timeoutMs = 10000, extraHeaders = {}) {
           throw new Error("HTTP response body too large");
         }
         const reader = res.body?.getReader();
-        let data = "";
+        let data;
         if (reader) {
-          let total = 0;
-          for (;;) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            total += value.byteLength;
-            if (total > MAX_RESPONSE_BYTES) {
-              await reader.cancel();
-              throw new Error("HTTP response body too large");
+          try {
+            const chunks = [];
+            let total = 0;
+            for (;;) {
+              const { done, value } = await reader.read();
+              if (done) break;
+              total += value.byteLength;
+              if (total > MAX_RESPONSE_BYTES) {
+                await reader.cancel();
+                throw new Error("HTTP response body too large");
+              }
+              // Decode once over the concatenated bytes: a multi-byte UTF-8
+              // character split across two stream chunks would otherwise decode
+              // per chunk and turn into U+FFFD replacement characters.
+              chunks.push(Buffer.from(value));
             }
-            data += Buffer.from(value).toString("utf8");
+            data = Buffer.concat(chunks).toString("utf8");
+          } finally {
+            // Release the reader lock so the connection is returned to the pool.
+            // Without this, repeated postJson calls hold the stream lock and
+            // exhaust the undici connection pool, surfacing as intermittent
+            // "UND_ERR_CONNECT_TIMEOUT" on the next request.
+            try { reader.releaseLock(); } catch {}
           }
         } else {
           data = await res.text();

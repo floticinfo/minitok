@@ -9,6 +9,7 @@ const path = require("path");
 const crypto = require("crypto");
 const providerModule = require("../llm/provider");
 const { loadConfig, resolveProviderName } = require("../config/loader");
+const { normalizeProvider } = require("../auth/aliases");
 const { intel } = require("./intel");
 const { plan } = require("./planner");
 const { implement, applyChanges, DEFAULT_BLOCKED_EXTENSIONS } = require("./implementer");
@@ -33,15 +34,20 @@ const git = require("../git/operations");
 const readline = require("readline");
 const os = require("os");
 
-const INSTALLATION_TOKEN_FILE = path.join(os.homedir(), ".minitok", "entitlement", "installation-token.json");
+const INSTALLATION_TOKEN_DEFAULT = path.join(os.homedir(), ".minitok", "entitlement", "installation-token.json");
 
 /**
  * Read the stored installation token (from minitok activate).
+ * @param {object} [options]
+ * @param {string} [options.entitlementDir] - Override entitlement directory
  * @returns {{ token: string, serverUrl: string } | null}
  */
-function _loadUploadCredentials() {
+function _loadUploadCredentials(options = {}) {
   try {
-    const data = fs.readFileSync(INSTALLATION_TOKEN_FILE, "utf-8");
+    const tokenFile = options.entitlementDir
+      ? path.join(options.entitlementDir, "installation-token.json")
+      : INSTALLATION_TOKEN_DEFAULT;
+    const data = fs.readFileSync(tokenFile, "utf-8");
     const parsed = JSON.parse(data);
     if (!parsed.token || typeof parsed.token !== "string") return null;
     const serverUrl = resolveServerUrl();
@@ -352,20 +358,19 @@ async function runPipelineInWorkspace(task, opts = {}) {
   const providersConfig = config.providers || {};
   const configuredProviderNames = Object.keys(providersConfig);
   const defaultProvider = config.default_provider || configuredProviderNames[0] || "";
-  const ALIAS_MAP = { claude: "anthropic", gpt: "openai", gemini: "google" };
   providerModule.configureRetries({
     maxRetries: config.execution?.max_retries === "unlimited" ? (Number(config.execution?.retry_hard_limit) || 5) : (Number(config.execution?.max_retries) || 5),
     backoffMs: (Number(config.execution?.retry_backoff_sec) || 1) * 1000,
     maxBackoffMs: (Number(config.execution?.retry_max_sec) || 30) * 1000,
   });
   const pricingFor = (providerName) => {
-    const canonical = ALIAS_MAP[providerName] || providerName;
+    const canonical = normalizeProvider(providerName);
     return providersConfig[providerName]?.pricing || providersConfig[canonical]?.pricing || null;
   };
   const createRoleProvider = (role) => {
     const providerName = resolveProviderName(config, role, opts.providerOverride) || defaultProvider;
     if (!providerName) throw new Error(`No provider configured for role '${role}'. Configure default_provider or providers.`);
-    const canonicalName = ALIAS_MAP[providerName] || providerName;
+    const canonicalName = normalizeProvider(providerName);
     const roleCfg = config.roles?.[role] || {};
     let provider = /** @type {any} */ (providerModule.createProvider(providerName, providersConfig[canonicalName] || providersConfig[providerName] || {}));
     if (roleCfg.fallback_model) {
@@ -409,7 +414,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
   const escfg = (config.execution && config.execution.escalation) || {};
   const failureAnalyzer = new FailureAnalyzer();
   const workProviderName = resolveProviderName(config, "work", opts.providerOverride) || defaultProvider;
-  const workCanonical = ALIAS_MAP[workProviderName] || workProviderName;
+  const workCanonical = normalizeProvider(workProviderName);
   const escalationEngine = new EscalationEngine({
     failureThreshold: Number(escfg.failure_threshold) || 2,
     tokenHardLimit: hardTokenLimit,
@@ -770,7 +775,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
     failure_category: uploadSafeCategory,
   };
   try {
-    const creds = _loadUploadCredentials();
+    const creds = _loadUploadCredentials({ entitlementDir: opts.entitlementDir });
     const uploadResult = await uploadEvolutionOutcome(uploadOutcome, {
       _entitlementCheck: gateResult || undefined,
       serverUrl: opts.serverUrl || creds?.serverUrl || undefined,
