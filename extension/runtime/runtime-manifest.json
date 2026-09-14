@@ -93,8 +93,8 @@
       "embedded": "0f86e6c56aa35589b35c7940696ee2b819fad071e46e280cb136b8e006656fe9"
     },
     "config/loader.js": {
-      "source": "547acd43d597bf9c0a372298e36caf6fc8d13b53cbb072f05b5c1b9bb10c9f1e",
-      "embedded": "547acd43d597bf9c0a372298e36caf6fc8d13b53cbb072f05b5c1b9bb10c9f1e"
+      "source": "e8db50d01ab57534d00f4f7e189e3eb650ed898d86126d23ac52641418130e5f",
+      "embedded": "e8db50d01ab57534d00f4f7e189e3eb650ed898d86126d23ac52641418130e5f"
     },
     "context/compaction.js": {
       "source": "0475f4c5ed57462603366a047689064c136cf596822394fff72f0c456bb27cdf",
@@ -181,12 +181,12 @@
       "embedded": "da4ce61247a3d707e3b1580ae42fd91b5b715df17a81df6f7fb6f1cd826543f9"
     },
     "llm/models.js": {
-      "source": "777c8ac528c58abd9f72b768c248d0ba3d6243dc22259313465177a23c795dde",
-      "embedded": "777c8ac528c58abd9f72b768c248d0ba3d6243dc22259313465177a23c795dde"
+      "source": "153efb67a0bf8befeec986b1e687966ab0de5bae62b29ec7f1d9b2e4a7ee28b0",
+      "embedded": "153efb67a0bf8befeec986b1e687966ab0de5bae62b29ec7f1d9b2e4a7ee28b0"
     },
     "llm/provider.js": {
-      "source": "7bd0453c7c805f208b51be9455f8de057f70c4cafe203ac6412f31722f127ab3",
-      "embedded": "7bd0453c7c805f208b51be9455f8de057f70c4cafe203ac6412f31722f127ab3"
+      "source": "f16ff8541c3ff682dbca360837351d73ddcdc4d9dac4c4b185d6ed54ae187468",
+      "embedded": "f16ff8541c3ff682dbca360837351d73ddcdc4d9dac4c4b185d6ed54ae187468"
     },
     "mcp/runtime-token.js": {
       "source": "d07663e879ad91f12b327101f7b747e8bfc527bed6abc8aa2018ee393f4382d4",
@@ -217,8 +217,8 @@
       "embedded": "d139507183711739b0829b47ff81b475b8f78f0d985ddc26e1d1ab187133976f"
     },
     "pipeline/loop.js": {
-      "source": "9ba14359ce6566b9cf3f2cd593cdf5f07fdfc1ddeff78e25af59356e329a37cf",
-      "embedded": "9ba14359ce6566b9cf3f2cd593cdf5f07fdfc1ddeff78e25af59356e329a37cf"
+      "source": "c7a56c009f47df561e26baf349254154777cb6604910e7f4de57461f35c59bb8",
+      "embedded": "c7a56c009f47df561e26baf349254154777cb6604910e7f4de57461f35c59bb8"
     },
     "pipeline/next_task.js": {
       "source": "d319a3b34dc5d80f4ce9e74e3e0805d2d4ee79aa4cfda8bc9be3dcaf8d9ce583",

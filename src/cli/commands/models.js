@@ -16,12 +16,12 @@ function register(program) {
 
         if (opts.discover) {
           if (opts.json) { const discovered = await discoverModels(config.providers || {}); console.log(JSON.stringify({ available, ...discovered })); return; }
-          console.log("🔍 Discovering models from provider APIs...\n");
+          console.log(" Discovering models from provider APIs...\n");
           const result = await discoverModels(config.providers || {});
 
           for (const [prov, liveIds] of Object.entries(result.live)) {
             const provAvail = available.includes(prov);
-            const icon = provAvail ? "✅" : "❌";
+            const icon = provAvail ? "" : "";
             console.log(`${icon} ${prov.toUpperCase()} (${liveIds.length} models)`);
             const catalogModels = listModels(prov);
             for (const id of liveIds) {
@@ -34,19 +34,19 @@ function register(program) {
 
           // Custom providers (the three supported providers publish only model IDs)
           for (const custom of result.custom) {
-            console.log(`🔧 ${custom.provider.toUpperCase()} (${custom.models.length} models — custom)`);
+            console.log(` ${custom.provider.toUpperCase()} (${custom.models.length} models — custom)`);
             if (custom.base_url) console.log(`   endpoint: ${custom.base_url}`);
             for (const m of custom.models) {
               const ctx = m.context_window ? `${(m.context_window/1000).toFixed(0)}K` : "?";
               const out = m.max_output ? `${(m.max_output/1000).toFixed(0)}K` : "?";
-              const reasoning = m.reasoning?.supported ? " 🧠" : "";
+              const reasoning = m.reasoning?.supported ? " " : "";
               console.log(`  ${m.id.padEnd(32)} ${(m.display||m.id).substring(0,24).padEnd(24)} [${ctx} in, ${out} out]${reasoning}`);
             }
             console.log();
           }
 
           if (result.unknown.length > 0) {
-            console.log(`⚠️  ${result.unknown.length} model(s) found in API but not in catalog:`);
+            console.log(`  ${result.unknown.length} model(s) found in API but not in catalog:`);
             result.unknown.forEach(id => console.log(`  - ${id}`));
             console.log("   These will work but lack metadata (context window, reasoning info).\n");
           }
@@ -62,17 +62,17 @@ function register(program) {
 
           for (const [prov, modelList] of Object.entries(grouped)) {
             const provAvail = available.includes(prov);
-            const icon = provAvail ? "✅" : "❌";
+            const icon = provAvail ? "" : "";
             console.log(`${icon} ${prov.toUpperCase()} (${modelList.length} models)`);
             modelList.forEach(m => console.log(formatModel(m)));
             console.log();
           }
 
-          console.log("💡 Use --discover to fetch live model list from provider APIs");
-          console.log("💡 Provider status: ✅ = API key configured, ❌ = not configured");
+          console.log(" Use --discover to fetch live model list from provider APIs");
+          console.log(" Provider status:  = API key configured,  = not configured");
         }
       } catch (e) {
-        console.error(`❌ Error: ${e.message}`);
+        console.error(` Error: ${e.message}`);
         process.exitCode = 1;
       }
     });

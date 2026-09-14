@@ -106,7 +106,7 @@ function getRepoContext(repoRoot, maxFiles = 50) {
 function compactContext(repoContext, budgetChars) {
   const result = compactText(repoContext, { budget_chars: budgetChars });
   if (result.compacted) {
-    console.log(`  📦 Context compacted: ${result.original_chars} → ${result.final_chars} chars`);
+    console.log(`   Context compacted: ${result.original_chars} → ${result.final_chars} chars`);
   }
   return result.text;
 }
@@ -244,9 +244,9 @@ async function promptConfirmation(changesResult, opts) {
   }
 
   // Display changes to user
-  console.log("\n📝 Proposed file changes:");
+  console.log("\n Proposed file changes:");
   for (const c of changes) {
-    const icon = c.action === "create" ? "➕" : c.action === "delete" ? "🗑️" : "✏️";
+    const icon = c.action === "create" ? "" : c.action === "delete" ? "" : "";
     console.log(`   ${icon} ${c.action}: ${c.file}`);
   }
   console.log("");
@@ -347,14 +347,14 @@ async function runPipelineInWorkspace(task, opts = {}) {
     const { GateState } = require("../entitlement/gate");
     gateResult = await authorizeEntitlement({ entitlementDir: opts.entitlementDir, serverUrl: opts.serverUrl || resolveServerUrl() });
     if (!gateResult.allowed) {
-      console.error(`\n🚫 Entitlement check failed: ${gateResult.message}`);
+      console.error(`\n Entitlement check failed: ${gateResult.message}`);
       if (gateResult.state === GateState.OFFLINE_GRACE) {
         console.warn("   Offline grace mode is temporary. Connect to the internet to renew.");
       }
       throw new Error(`Entitlement ${gateResult.state}: ${gateResult.message}`);
     }
     if (gateResult.state === GateState.OFFLINE_GRACE) {
-      console.warn(`⚠️  ${gateResult.message}`);
+      console.warn(`  ${gateResult.message}`);
     }
   }
 
@@ -438,13 +438,13 @@ async function runPipelineInWorkspace(task, opts = {}) {
     const roleCfg = config.roles.work || {};
     if (model) {
       roleCfg.model = model;
-      console.log(`  ⚡ Escalating work model → ${model} (tier: ${targetTier})`);
+      console.log(`   Escalating work model → ${model} (tier: ${targetTier})`);
     } else {
       // No catalog model for this provider — enable reasoning/thinking instead.
       roleCfg.effort = "high";
       roleCfg.thinking = "enabled";
       roleCfg.thinking_budget = roleCfg.thinking_budget || 20000;
-      console.log(`  ⚡ Escalating work to high-effort/reasoning mode (tier: ${targetTier})`);
+      console.log(`   Escalating work to high-effort/reasoning mode (tier: ${targetTier})`);
     }
   };
 
@@ -468,7 +468,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
         max_cycles: Number.isFinite(maxCycles) ? maxCycles : hardCycleLimit,
       });
       if (reasons.length > 0) {
-        console.log("  🧬 Adaptive policy:");
+        console.log("   Adaptive policy:");
         reasons.forEach(r => console.log(`     → ${r}`));
         adaptedMaxCycles = recommended.max_cycles;
       }
@@ -482,13 +482,13 @@ async function runPipelineInWorkspace(task, opts = {}) {
   const configuredVerificationPath = config.validation?.script_path || "VERIFY_CMD.mjs";
   const baselineScriptPath = path.resolve(repoRoot, configuredVerificationPath);
   if (!opts.dryRun && validationEnabled && fs.existsSync(baselineScriptPath)) {
-    console.log("  🧪 Running baseline verification...");
+    console.log("   Running baseline verification...");
     const baseline = await verifyCommandAsync(repoRoot, { script_path: config.validation?.script_path, timeout_ms: config.validation?.timeout_ms });
     if (!baseline.passed) {
       const baselineStatus = classifyVerificationEvidence(baseline.evidence);
       results.cycles.push({ cycle: 0, status: baselineStatus, check: baseline.evidence, error: baseline.evidence?.output || "Baseline verification did not pass" });
       lastFailureCategory = failureAnalyzer.categorize(baseline.evidence?.output || "Baseline verification did not pass");
-      console.log(`  🛑 Baseline verification failed (${baselineStatus}); no model work will be attempted.`);
+      console.log(`   Baseline verification failed (${baselineStatus}); no model work will be attempted.`);
       results.baseline = baseline.evidence;
       // Skip the cycle loop while retaining the normal final contract/evidence path.
       adaptedMaxCycles = 0;
@@ -503,7 +503,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
   const _originalSigterm = process.listeners("SIGTERM").slice();
   const _onSignal = (sig) => {
     _abortRequested = true;
-    console.log(`\n⚠️  Received ${sig} — finishing current cycle then stopping...`);
+    console.log(`\n  Received ${sig} — finishing current cycle then stopping...`);
   };
   process.on("SIGINT", _onSignal);
   process.on("SIGTERM", _onSignal);
@@ -512,28 +512,28 @@ async function runPipelineInWorkspace(task, opts = {}) {
   for (let cycle = 1; cycle <= adaptedMaxCycles; cycle++) {
     // Graceful shutdown check
     if (_abortRequested || opts.signal?.aborted) {
-      console.log("🛑 Pipeline interrupted by signal.");
+      console.log(" Pipeline interrupted by signal.");
       break;
     }
     if (Date.now() >= deadline) {
-      console.log("\n⏱️  Timeout hard limit reached. Stopping.");
+      console.log("\n  Timeout hard limit reached. Stopping.");
       break;
     }
-    // 💰 Token budget cap — prevent runaway LLM usage.
+    //  Token budget cap — prevent runaway LLM usage.
     const totalUsed = results.totalTokens.input + results.totalTokens.output;
     if (totalUsed >= tokenBudget || totalUsed >= hardTokenLimit) {
       if (escalationEngine.shouldStop(totalUsed)) {
         // Hard guardrail: beyond context compression, stop and escalate to a human.
         humanEscalation = true;
         lastFailureCategory = "timeout";
-        console.log(`\n🙋 Token HARD limit reached (${totalUsed.toLocaleString()} / ${hardTokenLimit.toLocaleString()}). Stopping and escalating to a human reviewer — not merely compressing context.`);
+        console.log(`\n Token HARD limit reached (${totalUsed.toLocaleString()} / ${hardTokenLimit.toLocaleString()}). Stopping and escalating to a human reviewer — not merely compressing context.`);
       } else {
-        console.log(`\n💰 Token budget reached (${totalUsed.toLocaleString()} / ${tokenBudget.toLocaleString()}). Stopping.`);
+        console.log(`\n Token budget reached (${totalUsed.toLocaleString()} / ${tokenBudget.toLocaleString()}). Stopping.`);
       }
       break;
     }
 
-    console.log(`\n🔄 Cycle ${cycle}/${adaptedMaxCycles}`);
+    console.log(`\n Cycle ${cycle}/${adaptedMaxCycles}`);
     // Context compaction (token savings)
     // P1: repo context is static on the real (non-isolated) repo while the
     // pipeline edits the disposable clone — compute once per run instead of
@@ -564,26 +564,26 @@ async function runPipelineInWorkspace(task, opts = {}) {
     opts.onProgress?.({ phase: "intel", state: "started", cycle });
     let intelResult = { intelligence: undefined, tokens: { input: 0, output: 0 } };
     if (researchEnabled) {
-      console.log("  🧭 Gathering repository intelligence...");
+      console.log("   Gathering repository intelligence...");
       intelResult = await intel(roleProviders.intel.provider, task, promptContext, roleOpts("intel"));
       results.totalTokens.input += intelResult.tokens?.input || 0;
       results.totalTokens.output += intelResult.tokens?.output || 0;
       addCost("intel", intelResult.tokens);
       opts.onProgress?.({ phase: "intel", state: "completed", cycle, tokens: intelResult.tokens, total_tokens: results.totalTokens, total_cost: results.totalCost });
     } else {
-      console.log("  🧭 Repository intelligence disabled (execution.research_enabled: false)");
+      console.log("   Repository intelligence disabled (execution.research_enabled: false)");
       opts.onProgress?.({ phase: "intel", state: "skipped", cycle });
     }
 
     // Phase 2: Plan
     opts.onProgress?.({ phase: "plan", state: "started", cycle });
-    console.log("  📋 Planning...");
+    console.log("   Planning...");
     const planResult = await plan(roleProviders.plan.provider, task, promptContext, { ...roleOpts("plan"), intelligence: intelResult.intelligence });
     results.totalTokens.input += planResult.tokens?.input || 0;
     results.totalTokens.output += planResult.tokens?.output || 0;
     addCost("plan", planResult.tokens);
     opts.onProgress?.({ phase: "plan", state: "completed", cycle, tokens: planResult.tokens, total_tokens: results.totalTokens, total_cost: results.totalCost });
-    console.log(`     Plan: ${planResult.plan.error ? "❌ " + planResult.plan.error : "✅ " + (planResult.plan.steps?.length || 0) + " steps"}`);
+    console.log(`     Plan: ${planResult.plan.error ? " " + planResult.plan.error : " " + (planResult.plan.steps?.length || 0) + " steps"}`);
 
     if (planResult.plan.error || !Array.isArray(planResult.plan.steps) || planResult.plan.steps.length === 0) {
       const planError = planResult.plan.error || "No actionable implementation steps were produced";
@@ -598,7 +598,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
 
     // Phase 3: Implement
     opts.onProgress?.({ phase: "work", state: "started", cycle });
-    console.log("  🔧 Implementing...");
+    console.log("   Implementing...");
     const implResult = await implement(roleProviders.work.provider, planResult, promptContext, roleOpts("work"));
     results.totalTokens.input += implResult.tokens?.input || 0;
     results.totalTokens.output += implResult.tokens?.output || 0;
@@ -606,13 +606,13 @@ async function runPipelineInWorkspace(task, opts = {}) {
     opts.onProgress?.({ phase: "work", state: "completed", cycle, tokens: implResult.tokens, total_tokens: results.totalTokens, total_cost: results.totalCost });
 
     if (implResult.changes.error) {
-      console.log(`     Implement: ❌ ${implResult.changes.error}`);
+      console.log(`     Implement:  ${implResult.changes.error}`);
       const _icCat = failureAnalyzer.categorize(implResult.changes.error || "");
       lastFailureCategory = _icCat;
       implementationRejections += 1;
       results.cycles.push({ cycle, plan: planResult.plan, implement: implResult.changes, status: "MODEL_OUTPUT_INVALID", implementation_errors: [implResult.changes.error] });
       if (implementationRejections >= 2) {
-        console.log("  🛑 Repeated invalid implementation output; stopping without verification.");
+        console.log("   Repeated invalid implementation output; stopping without verification.");
         break;
       }
       task = buildImplementationRepairTask(originalGoal, [implResult.changes.error]);
@@ -621,7 +621,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
 
     const changeList = Array.isArray(implResult.changes?.changes) ? implResult.changes.changes : [];
     if (changeList.length === 0) {
-      console.log("  🛑 No actionable changes were produced; stopping without verification.");
+      console.log("   No actionable changes were produced; stopping without verification.");
       results.cycles.push({ cycle, plan: planResult.plan, implement: implResult.changes, status: "NO_ACTIONABLE_PLAN", implementation_errors: ["The implementation returned zero changes"] });
       break;
     }
@@ -630,7 +630,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
     // is refused BEFORE anything is written, instead of being reported after the
     // fact. Nothing was enforced before, so the documented limit was advisory.
     if (Number.isFinite(maxChangedFiles) && maxChangedFiles > 0 && changeList.length > maxChangedFiles) {
-      console.log(`     ❌ ${changeList.length} files changed, above validation.max_changed_files (${maxChangedFiles}). Nothing was applied.`);
+      console.log(`      ${changeList.length} files changed, above validation.max_changed_files (${maxChangedFiles}). Nothing was applied.`);
       results.cycles.push({
         cycle,
         plan: planResult.plan,
@@ -647,7 +647,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
     } else {
       const accepted = await promptConfirmation(implResult.changes, { ...opts, repoRoot });
       if (!accepted) {
-        console.log("  ❌ Changes rejected by user. Stopping pipeline.");
+        console.log("   Changes rejected by user. Stopping pipeline.");
         results.cycles.push({ cycle, plan: planResult.plan, implement: implResult.changes, status: "rejected_by_user" });
         break;
       }
@@ -668,7 +668,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
         implementation_errors: implementationErrors,
       });
       if (implementationRejections >= 2) {
-        console.log("  🛑 Repeated implementation rejection; stopping without verification.");
+        console.log("   Repeated implementation rejection; stopping without verification.");
         break;
       }
       task = buildImplementationRepairTask(originalGoal, implementationErrors);
@@ -677,8 +677,8 @@ async function runPipelineInWorkspace(task, opts = {}) {
 
     // Phase 4: Check
     opts.onProgress?.({ phase: "verify", state: "started", cycle });
-    if (!validationEnabled) console.log("  🧪 Verification disabled (validation.enabled: false).");
-    else console.log("  🧪 Running verification command...");
+    if (!validationEnabled) console.log("   Verification disabled (validation.enabled: false).");
+    else console.log("   Running verification command...");
     const checkResult = opts.dryRun
       ? { passed: true, evidence: { status: "skipped", command: "dry-run", output: "" } }
       : validationEnabled
@@ -705,11 +705,11 @@ async function runPipelineInWorkspace(task, opts = {}) {
       repeatedVerificationOutput = verificationFingerprint === lastVerificationFingerprint ? repeatedVerificationOutput + 1 : 0;
       lastVerificationFingerprint = verificationFingerprint;
       if (verificationStatus === "VERIFICATION_INFRA_FAILED") {
-        console.log("  🛑 Verification infrastructure is unavailable; stopping without review/repair.");
+        console.log("   Verification infrastructure is unavailable; stopping without review/repair.");
         break;
       }
       if (repeatedVerificationOutput >= 1) {
-        console.log("  🛑 Identical verification output repeated; stopping instead of sending a duplicate repair.");
+        console.log("   Identical verification output repeated; stopping instead of sending a duplicate repair.");
         break;
       }
       task = buildRepairTask(originalGoal, null, checkResult);
@@ -718,7 +718,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
 
     // Phase 5: Review
     opts.onProgress?.({ phase: "review", state: "started", cycle });
-    console.log("  🔍 Reviewing...");
+    console.log("   Reviewing...");
     const verifyResult = await verify(roleProviders.review.provider, task, { changes: implResult.changes, check: checkResult }, repoRoot, roleOpts("review"));
     results.totalTokens.input += verifyResult.tokens?.input || 0;
     results.totalTokens.output += verifyResult.tokens?.output || 0;
@@ -737,7 +737,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
     const reviewRejected = reviewVerdict === "REJECT";
     const verdict = !checkPassed ? "VERIFICATION_FAILED" : lowConfidence ? "LOW_CONFIDENCE" : reviewRejected ? "REVIEW_REJECTED" : reviewVerdict;
     const cycleStatus = verdict === "REVIEW_REJECTED" ? "REJECT" : verdict;
-    const icon = verdict === "APPROVE" ? "✅" : "❌";
+    const icon = verdict === "APPROVE" ? "" : "";
     console.log(`     Review: ${icon} ${verdict} (confidence: ${verifyResult.review.confidence || "N/A"})`);
     if (lowConfidence) console.log(`     Confidence ${reportedConfidence} is below validation.confidence_threshold (${confidenceThreshold}); continuing.`);
 
@@ -746,7 +746,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
     else stagnantCycles = 0;
     lastChangeSignature = changeSignature;
     if (stagnantCycles >= (config.budget.stagnation_limit || 3)) {
-      console.log(`\n🛑 Stagnation limit reached (${stagnantCycles} cycles). Stopping.`);
+      console.log(`\n Stagnation limit reached (${stagnantCycles} cycles). Stopping.`);
       break;
     }
 
@@ -792,26 +792,26 @@ async function runPipelineInWorkspace(task, opts = {}) {
     const goalConfidenceFloor = Number.isFinite(confidenceThreshold) && confidenceThreshold > 0 ? confidenceThreshold : 0.8;
     if (verdict === "APPROVE" && (Number(verifyResult.review.confidence) || 0) >= goalConfidenceFloor) {
       if (cycle < adaptedMaxCycles && !opts.dryRun) {
-        console.log("  🧠 Evaluating goal progress...");
+        console.log("   Evaluating goal progress...");
         const nextResult = await generateNextTask(roleProviders.plan.provider, originalGoal, results.cycles, verifyResult.review, roleOpts("plan"));
         results.totalTokens.input += nextResult.tokens?.input || 0;
         results.totalTokens.output += nextResult.tokens?.output || 0;
         if (nextResult.done) {
-          console.log(`  ✅ Goal achieved: ${nextResult.summary || "All objectives met"}`);
+          console.log(`   Goal achieved: ${nextResult.summary || "All objectives met"}`);
           break;
         } else if (nextResult.next_task) {
-          console.log(`  📌 Next task: ${nextResult.next_task}`);
+          console.log(`   Next task: ${nextResult.next_task}`);
           task = nextResult.next_task;
         }
       } else {
-        console.log("\n✅ Task completed successfully!");
+        console.log("\n Task completed successfully!");
         break;
       }
     }
 
     // Phase 6: Repair
     if (verdict === "REVIEW_REJECTED" || verdict === "VERIFICATION_FAILED" || verdict === "REJECT") {
-      console.log(`  🔧 Preparing ${verdict === "VERIFICATION_FAILED" ? "verification repair" : "review repair"} task...`);
+      console.log(`   Preparing ${verdict === "VERIFICATION_FAILED" ? "verification repair" : "review repair"} task...`);
       task = buildRepairTask(originalGoal, verifyResult.review, checkResult);
     }
   }
@@ -880,15 +880,15 @@ async function runPipelineInWorkspace(task, opts = {}) {
 
   const elapsedSec = (elapsed / 1000).toFixed(1);
   const costNote = results.totalCost > 0 ? `, ~$${results.totalCost.toFixed(4)}` : "";
-  console.log(`\n📊 Summary: ${results.cycles.length} cycles, ${totalTokens.toLocaleString()} tokens (${results.totalTokens.input.toLocaleString()} in + ${results.totalTokens.output.toLocaleString()} out)${costNote}, ${elapsedSec}s`);
-  console.log(`🧬 Evolution: ${knowledgeStore.size} outcomes recorded`);
+  console.log(`\n Summary: ${results.cycles.length} cycles, ${totalTokens.toLocaleString()} tokens (${results.totalTokens.input.toLocaleString()} in + ${results.totalTokens.output.toLocaleString()} out)${costNote}, ${elapsedSec}s`);
+  console.log(` Evolution: ${knowledgeStore.size} outcomes recorded`);
 
   results.success = success;
   results.approved = approved;
   results.last_cycle_status = lastCycleStatus;
   results.humanEscalation = humanEscalation;
   if (humanEscalation) {
-    console.log(`\n🙋 Human escalation engaged: the token hard limit was reached. Manual review is required.`);
+    console.log(`\n Human escalation engaged: the token hard limit was reached. Manual review is required.`);
   }
   writeContract(repoRoot, { status: success ? "completed" : "failed", goal: originalGoal, verify_command: config.validation?.script_path || "VERIFY_CMD.sh", cycles: results.cycles.length, success, approved, last_cycle_status: lastCycleStatus, human_escalation: humanEscalation });
   try {
@@ -922,7 +922,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
       outcome: success ? "success" : approved ? "approved-not-merged" : "verification-failed",
     }, { evidencePath: opts.evidencePath });
   } catch (error) {
-    console.warn(`⚠️  Could not save run evidence: ${error.message}`);
+    console.warn(`  Could not save run evidence: ${error.message}`);
   }
   return results;
 }

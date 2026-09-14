@@ -152,7 +152,7 @@ function loadEnvVars() {
 function loadYaml(filePath) {
   try {
     const data = fs.readFileSync(filePath, "utf-8");
-    // 🔒 Use safe schema to prevent YAML code execution attacks (!!js/function etc.)
+    //  Use safe schema to prevent YAML code execution attacks (!!js/function etc.)
     const parsed = yaml.load(data, { schema: yaml.DEFAULT_SAFE_SCHEMA });
     if (parsed == null) return {};
     if (typeof parsed !== "object" || Array.isArray(parsed)) throw new ConfigError("Configuration root must be a mapping");

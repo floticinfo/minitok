@@ -381,7 +381,7 @@ class AnthropicProvider extends LLMProvider {
     };
     if (systemMsg) body.system = systemMsg.content;
 
-    // 🧠 Thinking support
+    //  Thinking support
     const thinking = options.thinking || this.config.thinking;
     const effort = options.effort || this.config.effort;
     if (thinking === "adaptive" || thinking === "enabled") {
@@ -442,7 +442,7 @@ class OpenAIProvider extends LLMProvider {
     if (!reasoningModel) body.temperature = options.temperature ?? 0.7;
     else if (options.temperature !== undefined) body.temperature = options.temperature;
 
-    // 🧠 Reasoning effort support (o1, o3, o4-mini)
+    //  Reasoning effort support (o1, o3, o4-mini)
     const reasoningEffort = options.reasoning_effort || this.config.reasoning_effort;
     if (reasoningEffort && reasoningModel) body.reasoning_effort = reasoningEffort;
 
@@ -488,7 +488,7 @@ class GoogleProvider extends LLMProvider {
     const body = { contents };
     if (systemMsg) body.systemInstruction = { parts: [{ text: systemMsg.content }] };
 
-    // 🧠 Thinking support (Gemini 2.5 Pro / Flash)
+    //  Thinking support (Gemini 2.5 Pro / Flash)
     const thinking = options.thinking || this.config.thinking;
     if (thinking && thinking !== "none") {
       body.generationConfig = body.generationConfig || {};

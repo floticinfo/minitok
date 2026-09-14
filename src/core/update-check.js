@@ -144,7 +144,7 @@ function notifyIfOutdated({ cachePath = cacheFilePath(), now = Date.now(), strea
   const cache = readCache(cachePath);
   const decision = shouldNotify(cache, currentVersion, now);
   if (decision.notify && stream && typeof stream.write === "function") {
-    stream.write(`⬆️  minitok ${decision.latest} is available (installed: ${currentVersion}). Run 'npm install -g ${PKG_NAME}' to update.\n`);
+    stream.write(`  minitok ${decision.latest} is available (installed: ${currentVersion}). Run 'npm install -g ${PKG_NAME}' to update.\n`);
     try {
       writeCacheAtomic(cachePath, { ...cache, notifiedVersion: decision.latest });
     } catch {}

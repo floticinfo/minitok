@@ -129,7 +129,7 @@ repoRoot: repoDir, providerOverride: "rta", authorization: require("../src/pipel
       const fp = p.join(repoDir, "recovery-proof.txt");
       assert.ok(fs.existsSync(fp), "File must exist");
       assert.equal(fs.readFileSync(fp, "utf-8"), "minitok_RECOVERY_PASS");
-      console.log("\n✅ REJECT → RECOVERY → APPROVE: PASS");
+      console.log("\n REJECT → RECOVERY → APPROVE: PASS");
     } finally { pm.createProvider = origCreateProvider; }
   });
 
@@ -159,7 +159,7 @@ repoRoot: repoDir, providerOverride: "cr", authorization: require("../src/pipeli
       assert.equal(r.cycles.length, 3);
       r.cycles.forEach(c => assert.equal(c.status, "CHANGES_REQUESTED"));
       assert.equal(r.success, false, "No APPROVE → success=false");
-      console.log("\n⚠️  CHANGES_REQUESTED GAP: no task mutation, same task repeated");
+      console.log("\n  CHANGES_REQUESTED GAP: no task mutation, same task repeated");
     } finally { pm.createProvider = origCreateProvider; }
   });
 
@@ -179,7 +179,7 @@ repoRoot: repoDir, providerOverride: "ar", authorization: require("../src/pipeli
         assert.ok(c.verify.summary, "Feedback summary preserved");
         assert.ok(c.verify.findings.length > 0, "Feedback findings preserved");
       });
-      console.log("\n✅ MAX-CYCLE EXHAUSTION: PASS");
+      console.log("\n MAX-CYCLE EXHAUSTION: PASS");
     } finally { pm.createProvider = origCreateProvider; }
   });
 
@@ -190,7 +190,7 @@ repoRoot: repoDir, providerOverride: "ar", authorization: require("../src/pipeli
     assert.ok(src.includes("buildRepairTask"), "Review summary in repair task");
     // Verify no equivalent CHANGES_REQUESTED feedback injection
     assert.ok(!src.includes('verdict === "CHANGES_REQUESTED"'), "No CHANGES_REQUESTED feedback path");
-    console.log("\n✅ SOURCE ANALYSIS: REJECT mutates task; CHANGES_REQUESTED does not");
+    console.log("\n SOURCE ANALYSIS: REJECT mutates task; CHANGES_REQUESTED does not");
   });
 });
 
