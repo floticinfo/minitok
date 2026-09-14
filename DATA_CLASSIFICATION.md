@@ -17,10 +17,17 @@ This inventory describes implementation boundaries. It does not establish legal 
 | D3 | TELEMETRY | Sanitized allowlisted workflow metrics | MinTok server only after opt-in and entitlement gates |
 | D4 | LOCAL_ONLY | User content and workflow content | Not sent to minitok server |
 | D5 | SECRET | API keys, private keys, passwords, and token values | Not sent to minitok server; provider-specific credentials go only to their configured provider |
+| D6 | PROJECT_KNOWLEDGE | User-approved source documents for tenant-scoped retrieval | MinTok server only after separate knowledge consent and plan capability; encrypted and tenant-scoped |
+| D7 | TENANT_TRAINING | User-approved documents eligible for one customer's adapter/job | Dedicated tenant training boundary only; never global by default |
+| D8 | GLOBAL_TRAINING | Data explicitly approved for cross-tenant model training | Disabled by default; requires separate contract, consent, license review, and approved training pipeline |
 
 ## 2. D4 — LOCAL_ONLY
 
 Prompts, source code, file contents, command output, terminal output, generated code and text, knowledge entries, goals, summaries, decision traces, agent context, repository names and paths, LLM request/response content, and path-bearing error messages are outside the minitok-server telemetry payload. Configured LLM providers may receive the data required by the user's workflow.
+
+## 2.1 Knowledge and training boundaries
+
+D4 remains local-only unless the user explicitly enables the separate D6 project-knowledge scope. D6 is used for tenant-scoped retrieval and is not model training. D7 is only for dedicated tenant training jobs. Consent withdrawal deletes tenant knowledge and revokes queued tenant training jobs. D8 is disabled by default and is not accepted by the current client or server. Embeddings, hashes, indexes, adapters, and derived representations inherit the source document's classification.
 
 ## 3. D3 — TELEMETRY
 

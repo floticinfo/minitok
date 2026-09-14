@@ -188,6 +188,36 @@ describe("Quantitative product benchmarks", () => {
     assert.equal(result.reasons.length, 3);
   });
 
+  it("adaptive policy decreases cycles after sustained successful outcomes", () => {
+    const { analyzeFailurePatterns } = require("../src/evolution/analyzer");
+    const { recommendPolicy } = require("../src/evolution/policy");
+    const analysis = analyzeFailurePatterns([
+      { status: "success", timestamp: "2026-01-01T00:00:00.000Z" },
+      { status: "success", timestamp: "2026-01-02T00:00:00.000Z" },
+      { status: "success", timestamp: "2026-01-03T00:00:00.000Z" },
+    ]);
+    assert.deepEqual(analysis.patterns, [{ category: "_success", count: 3, last_occurrence: "2026-01-03T00:00:00.000Z" }]);
+    const result = recommendPolicy(analysis.patterns, { max_cycles: 3 });
+    assert.equal(result.recommended.max_cycles, 2);
+    assert.match(result.reasons[0], /success rate/);
+  });
+
+  it("adaptive policy combines success and failure signals", () => {
+    const { analyzeFailurePatterns } = require("../src/evolution/analyzer");
+    const { recommendPolicy } = require("../src/evolution/policy");
+    const analysis = analyzeFailurePatterns([
+      { status: "success", timestamp: "2026-01-01T00:00:00.000Z" },
+      { status: "success", timestamp: "2026-01-02T00:00:00.000Z" },
+      { status: "failure", failure_category: "api_error", timestamp: "2026-01-03T00:00:00.000Z" },
+    ]);
+    assert.deepEqual(analysis.patterns, [
+      { category: "_success", count: 2, last_occurrence: "2026-01-02T00:00:00.000Z" },
+      { category: "api_error", count: 1, last_occurrence: "2026-01-03T00:00:00.000Z" },
+    ]);
+    const result = recommendPolicy(analysis.patterns, { max_cycles: 3 });
+    assert.equal(result.recommended.max_cycles, 3);
+  });
+
   it("token hard guardrail stops before the configured limit", () => {
     const { EscalationEngine } = require("../src/evolution/policy");
     const engine = new EscalationEngine({ tokenHardLimit: 100000, tokenStopRatio: 0.9 });

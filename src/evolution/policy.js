@@ -51,7 +51,8 @@ function recommendPolicy(patterns, currentPolicy = {}) {
     }
   }
 
-  // Decrease on sustained success — if most outcomes are successes, reduce cycles
+  // Decrease on sustained success — `_success` is emitted by the analyzer as
+  // an internal aggregate alongside failure patterns.
   const successRate = patterns?.length
     ? (patterns.find(p => p.category === "_success")?.count || 0) /
       patterns.reduce((s, p) => s + p.count, 0)

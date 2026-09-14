@@ -109,8 +109,8 @@
       "embedded": "a7625b151d79991794a0c034a239a0ff40d44b764d8078788bee83665ad704b1"
     },
     "core/http.js": {
-      "source": "59425e2e46a032b56b4ce669d1455340d320843480c476814f496faf587dcce2",
-      "embedded": "59425e2e46a032b56b4ce669d1455340d320843480c476814f496faf587dcce2"
+      "source": "70df3db3f581939f39bb5934c373ef6390148f1f993e9fb765aba8261d8aa997",
+      "embedded": "70df3db3f581939f39bb5934c373ef6390148f1f993e9fb765aba8261d8aa997"
     },
     "core/package-manager.js": {
       "source": "cc3fdaa4b869c074011a27fe0059498c4ce3c957c1954d7329d41f52329d995b",
@@ -149,8 +149,8 @@
       "embedded": "dc612468cf2f66a1fb97c777d189e035e300e92eff62546b00c67b16ada55ae9"
     },
     "evolution/analyzer.js": {
-      "source": "b7b1c6ed09d1043cf97c9fa3c66f819fd1452e0b9a2b4bc0bb186740554d2879",
-      "embedded": "b7b1c6ed09d1043cf97c9fa3c66f819fd1452e0b9a2b4bc0bb186740554d2879"
+      "source": "b8f9404921c6a2ab23db3a61c9c5c0d337db16f527cb92c251a69894c7be92aa",
+      "embedded": "b8f9404921c6a2ab23db3a61c9c5c0d337db16f527cb92c251a69894c7be92aa"
     },
     "evolution/knowledge.js": {
       "source": "679f09ac8bb8e648a39870093681c00eee1014bd377eae373f7d3daa50bfc3bc",
@@ -161,8 +161,8 @@
       "embedded": "9aa278bd76ecb1fc08a58955a8934486b609d021eb9da2577d992d90df176c23"
     },
     "evolution/policy.js": {
-      "source": "027b30ad7d4f2e9f904105d5e0719ca54f6994396da60ae42b534db121ab2154",
-      "embedded": "027b30ad7d4f2e9f904105d5e0719ca54f6994396da60ae42b534db121ab2154"
+      "source": "aaaedbf6b19a7feec8a3552970d28d7b4d8b7b09613d033a510aa188024f02e9",
+      "embedded": "aaaedbf6b19a7feec8a3552970d28d7b4d8b7b09613d033a510aa188024f02e9"
     },
     "evolution/sanitize.js": {
       "source": "6a6c1309c79cbed188e50ab17176e9d5c2b6caad5d6312158a2d6c4174c7ef58",

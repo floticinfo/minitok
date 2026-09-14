@@ -111,13 +111,18 @@ function categorizeFailure(message) {
  * @returns {{ patterns: Array<{ category: string, count: number, last_occurrence: string }>, recommendations: string[] }}
  */
 function analyzeFailurePatterns(outcomes) {
-  const failures = outcomes.filter(o => o.status !== "success");
-  if (failures.length === 0) {
+  const records = Array.isArray(outcomes) ? outcomes : [];
+  const failures = records.filter(o => o.status !== "success");
+  const successes = records.filter(o => o.status === "success");
+  if (failures.length === 0 && successes.length === 0) {
     return { patterns: [], recommendations: [] };
   }
 
-  // Count by category
+  // Count by category. `_success` is an internal policy signal rather than a
+  // failure category; it lets sustained success reduce the next run's cycle
+  // budget without changing the failure-pattern categories exposed to repair.
   const categoryCounts = {};
+  if (successes.length > 0) categoryCounts._success = { count: successes.length, last_occurrence: successes.at(-1)?.timestamp };
   for (const f of failures) {
     const cat = f.failure_category || categorizeFailure(f.summary || "");
     if (!categoryCounts[cat]) categoryCounts[cat] = { count: 0, last_occurrence: f.timestamp };
@@ -133,7 +138,7 @@ function analyzeFailurePatterns(outcomes) {
 
   // Generate recommendations
   const recommendations = [];
-  const totalRuns = outcomes.length;
+  const totalRuns = records.length;
   const totalFailures = failures.length;
   const successRate = 1 - (totalFailures / totalRuns);
 

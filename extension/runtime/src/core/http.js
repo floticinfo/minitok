@@ -179,6 +179,13 @@ async function readCappedResponse(res, maxBytes = MAX_RESPONSE_BYTES) {
   }
 }
 
+async function getJson(urlString, timeoutMs = 10000, extraHeaders = {}) {
+  const response = await fetchWithTimeout(urlString, { method: "GET", headers: { Accept: "application/json", ...extraHeaders } }, timeoutMs);
+  const text = await readCappedResponse(response, MAX_RESPONSE_BYTES);
+  let body; try { body = JSON.parse(text); } catch { throw new Error("Invalid JSON response"); }
+  return { ok: response.status >= 200 && response.status < 300, status: response.status, body };
+}
+
 function postJson(urlString, body, timeoutMs = 10000, extraHeaders = {}) {
   return new Promise((resolve, reject) => {
     const controller = new AbortController();
@@ -240,4 +247,4 @@ function postJson(urlString, body, timeoutMs = 10000, extraHeaders = {}) {
   });
 }
 
-module.exports = { getProxyDispatcher, shouldBypassProxy, fetchWithTimeout, readCappedResponse, postJson, MAX_RESPONSE_BYTES };
+module.exports = { getProxyDispatcher, shouldBypassProxy, fetchWithTimeout, readCappedResponse, getJson, postJson, MAX_RESPONSE_BYTES };

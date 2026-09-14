@@ -66,7 +66,7 @@ minitok evolution disable
 
 ### 5.1 Current paid plans
 
-The current commercial contract has three canonical plan IDs: `open`, `select`, and `private`; there is no free plan. `open` permits consent-required per-run evolution uploads when the signed capability allows it, `select` permits consent-required aggregate-only telemetry, and `private` never uploads or stores telemetry. Entitlement is required for all plan-gated execution.
+The current commercial contract has three canonical plan IDs: `open`, `select`, and `private`; there is no free plan. `open` permits consent-required per-run evolution uploads when the signed capability allows it, `select` permits consent-required aggregate telemetry plus tenant-scoped project retrieval when the knowledge capabilities are present, and `private` keeps telemetry disabled while permitting dedicated tenant-scoped retrieval and tenant training when separately consented. Global model training is disabled for every current plan. Entitlement is required for all plan-gated execution.
 
 ### 5.2 Feature flags
 
@@ -139,6 +139,14 @@ These are the positions published with the commercial service. They describe the
 - **Retention and deletion.** Account and authentication records: while the account exists and for the period required by legal and security obligations. Open telemetry: 30 days. Select aggregate telemetry: 14 days. Private telemetry: not collected. Billing records: as needed to provide the service and to meet tax and accounting obligations. Support and security records: as needed to handle the request, prevent abuse, and resolve disputes. Data is deleted or anonymized when the applicable retention purpose ends, subject to legal retention exceptions. The 90-day telemetry cleanup described in this document is an implementation setting, not the client plan policy.
 - **Contact, version, and effective date.** The authoritative support and privacy contact is support@minitok.dev, and the privacy notice is published at https://minitok.dev/privacy. This document is technical policy version 1.2.0 and takes effect on 2026-09-13.
 
-## 11. Future Changes
+## 11. Project Knowledge and Training
 
-Cloud knowledge synchronization, diagnostic uploads, and organization-wide policy controls require a new classification and boundary review before implementation.
+Project knowledge is a separate data purpose from evolution metrics. The client stores independent consent scopes for `project_knowledge`, `retrieval`, `tenant_training`, and `global_training`; unknown or unreadable consent is treated as OFF. The client previews and filters repository files before export, rejecting secrets, credentials, internal runtime metadata, traversal paths, and unapproved license files.
+
+The server stores project documents in tenant-scoped repositories, encrypts document content at rest, records access/upload/delete/training/consent audit events, enforces plan capabilities and consent, and supports repository deletion and explicit consent withdrawal. Withdrawal deletes the customer's stored knowledge and revokes queued tenant training jobs. Retrieval is not model retraining. The current retrieval contract is deterministic `lexical/lexical-v1`; future embedding/vector providers require an explicit versioned adapter and migration review. Tenant training creates a queued, tenant-bound job record only; an external training backend must satisfy the job contract and cannot cross tenant boundaries. Global training is explicitly rejected by the current API.
+
+Current knowledge retention is 30 days unless the repository is deleted earlier. Deletion removes the repository and its documents; derived indexes, embeddings, caches, and adapters must be treated as part of the same deletion workflow when those backends are added. D6/D7/D8 data must never be placed in the D3 telemetry endpoint.
+
+## 12. Future Changes
+
+Cloud embeddings, vector databases, diagnostic uploads, organization-wide policy controls, tenant adapters, and any global training require a new classification, license review, threat model, deletion test, and consent/contract review before production enablement.
