@@ -154,7 +154,9 @@ async function implement(provider, planResult, repoContext, options = {}) {
       role: "user",
       content: `## Plan\n${JSON.stringify(planResult.plan, null, 2)}\n\n## Repository Context\n${repoContext}\n\n## Instructions\n- Produce complete, working code\n- Follow existing code style\n- Include imports and dependencies
 - For modify, content must be the complete replacement file contents
-- Do not include line_range or unified diff syntax`,
+- Do not include line_range or unified diff syntax
+- Never modify validation scripts, tests, scripts, minitok.yml, .minitok, credentials, CI/workflow files, or other protected paths
+- Do not return an empty changes array unless the goal is already satisfied`,
     },
   ];
 
@@ -330,15 +332,13 @@ function temporaryWritePath(filePath) {
 }
 
 function applyChanges(repoRoot, changesResult, dryRun = false, options = {}) {
-  if (changesResult.error) return { applied: 0, errors: [changesResult.error] };
+  if (changesResult?.error) return { applied: 0, skipped: 0, errors: [changesResult.error], atomic: true };
 
-  // 🔒 Validate LLM output before processing
+  // Validate the complete model response before doing any filesystem work.
   const { valid, errors: validationErrors, validatedChanges } = validateChanges(changesResult);
-  if (!valid) {
-    return { applied: 0, errors: validationErrors };
-  }
+  if (!valid) return { applied: 0, skipped: 0, errors: validationErrors, atomic: true };
 
-  const results = { applied: 0, skipped: 0, errors: [], audit: { persisted: true, warnings: [] } };
+  const results = { applied: 0, skipped: 0, errors: [], atomic: true, audit: { persisted: true, warnings: [] } };
   const recordAudit = (entry) => {
     const result = auditLog(entry, options.auditPath);
     if (result && result.persisted === false) {
@@ -347,91 +347,101 @@ function applyChanges(repoRoot, changesResult, dryRun = false, options = {}) {
     }
     return result;
   };
+  const reject = (change, reason) => {
+    recordAudit({ action: change.action, file: change.file, result: "rejected", reason });
+    results.errors.push(`${change.file}: ${reason}`);
+  };
+
+  // Preflight every change. This is deliberately separate from commit: a valid
+  // change must never be applied when another change in the same model response is
+  // protected, malformed for the current filesystem, or otherwise unsafe.
+  const prepared = [];
+  const blockedExtensions = options.blockedExtensions || DEFAULT_BLOCKED_EXTENSIONS;
+  const releaseProtected = isCanonicalReleaseRepository(repoRoot);
   for (const change of validatedChanges) {
-    // 🔒 Validate path stays within repoRoot
     const { resolved: filePath, safe, reason } = safePath(repoRoot, change.file);
-    if (!safe) {
-      recordAudit({ action: change.action, file: change.file, result: "rejected", reason });
-      results.errors.push(reason);
-      continue;
-    }
+    if (!safe) { reject(change, reason); continue; }
+    const { protected: isProtected, reason: protectedReason } = isProtectedPath(repoRoot, filePath, { protectedExtraPaths: options.protectedExtraPaths });
+    const releaseTestException = releaseProtected && change.action === "create" && path.relative(path.resolve(repoRoot), filePath).replace(/\\/g, "/").startsWith("tests/");
+    if (isProtected && !releaseTestException) { reject(change, protectedReason); continue; }
+    const { blocked, reason: extensionReason } = isBlockedExtension(filePath, blockedExtensions);
+    if (blocked) { reject(change, extensionReason); continue; }
 
-    // 🔒 Check protected paths
-    const { protected: isProtected, reason: protReason } = isProtectedPath(repoRoot, filePath, { protectedExtraPaths: options.protectedExtraPaths });
-    const releaseProtected = isCanonicalReleaseRepository(repoRoot);
-    if (isProtected && !(releaseProtected && change.action === "create" && path.relative(path.resolve(repoRoot), filePath).replace(/\\/g, "/").startsWith("tests/"))) {
-      recordAudit({ action: change.action, file: change.file, result: "rejected", reason: protReason });
-      results.errors.push(protReason);
-      continue;
-    }
-
-    // 🔒 Check blocked extensions
-    const blockedExtensions = options.blockedExtensions || DEFAULT_BLOCKED_EXTENSIONS;
-    const { blocked, reason: extReason } = isBlockedExtension(filePath, blockedExtensions);
-    if (blocked) {
-      recordAudit({ action: change.action, file: change.file, result: "rejected", reason: extReason });
-      results.errors.push(extReason);
-      continue;
-    }
-
+    let exists = false;
+    let stat = null;
     try {
-      if (dryRun) {
-        results.applied++;
+      stat = fs.lstatSync(filePath);
+      exists = true;
+    } catch (error) {
+      if (error.code !== "ENOENT") { reject(change, `Cannot inspect target: ${error.message}`); continue; }
+    }
+    if (exists && (stat.isSymbolicLink() || !stat.isFile())) {
+      reject(change, `${change.action} target must be a regular file`);
+      continue;
+    }
+    if (change.action === "modify" && !exists) { reject(change, "File not found"); continue; }
+    if (change.action !== "delete" && exists) {
+      const shrink = suspiciousShrinkReason(filePath, change.content, options);
+      if (shrink) { reject(change, shrink); continue; }
+    }
+    prepared.push({ change, filePath, exists, orderIndex: prepared.length });
+  }
+  if (results.errors.length > 0) return results;
+
+  if (dryRun) {
+    results.applied = prepared.filter(item => item.change.action !== "delete" || item.exists).length;
+    results.skipped = prepared.filter(item => item.change.action === "delete" && !item.exists).length;
+    return results;
+  }
+
+  // Stage all new contents before touching a target. A commit record keeps the
+  // old target until its replacement is safely renamed, allowing rollback if a
+  // later rename fails (including Windows/NTFS rename behaviour).
+  const staged = [];
+  const committed = [];
+  try {
+    for (const item of prepared) {
+      if (item.change.action === "delete") continue;
+      fs.mkdirSync(path.dirname(item.filePath), { recursive: true });
+      const temporary = temporaryWritePath(item.filePath);
+      fs.writeFileSync(temporary, item.change.content, { encoding: "utf-8", flag: "wx" });
+      staged.push({ ...item, temporary });
+    }
+    for (const item of prepared) {
+      if (item.change.action === "delete" && !item.exists) {
+        results.skipped++;
         continue;
       }
-      if (change.action === "create") {
-        fs.mkdirSync(path.dirname(filePath), { recursive: true });
-        // "create" is allowed to replace an existing file (a repair cycle may
-        // re-emit create for a file it wrote earlier), but the overwrite is
-        // audited so evidence never hides a replaced file.
-        const replacedExisting = fs.existsSync(filePath);
-        // A "create" that lands on an existing file is an overwrite in practice,
-        // so the truncation guard applies here too.
-        if (replacedExisting) {
-          const shrink = suspiciousShrinkReason(filePath, change.content, options);
-          if (shrink) {
-            recordAudit({ action: "create", file: change.file, result: "rejected", reason: shrink });
-            results.errors.push(`${change.file}: ${shrink}`);
-            continue;
-          }
-        }
-        const temporary = temporaryWritePath(filePath);
-        fs.writeFileSync(temporary, change.content, { encoding: "utf-8", flag: "wx" });
-        try { fs.renameSync(temporary, filePath); } catch (error) { try { fs.unlinkSync(temporary); } catch {} throw error; }
-        if (replacedExisting) results.audit.warnings.push(`Overwrote existing file: ${change.file}`);
-        recordAudit(replacedExisting ? { action: "create", file: change.file, result: "applied", overwrote: true } : { action: "create", file: change.file, result: "applied" });
-        results.applied++;
-      } else if (change.action === "modify") {
-        if (!fs.existsSync(filePath)) {
-          results.errors.push(`File not found: ${change.file}`);
-          continue;
-        }
-        const current = fs.lstatSync(filePath);
-        if (current.isSymbolicLink() || !current.isFile()) throw new Error("Modify target must be a regular file");
-        const shrink = suspiciousShrinkReason(filePath, change.content, options);
-        if (shrink) {
-          recordAudit({ action: "modify", file: change.file, result: "rejected", reason: shrink });
-          results.errors.push(`${change.file}: ${shrink}`);
-          continue;
-        }
-        const temporary = temporaryWritePath(filePath);
-        fs.writeFileSync(temporary, change.content, { encoding: "utf-8", flag: "wx" });
-        try { fs.renameSync(temporary, filePath); } catch (error) { try { fs.unlinkSync(temporary); } catch {} throw error; }
-        recordAudit({ action: "modify", file: change.file, result: "applied" });
-        results.applied++;
-      } else if (change.action === "delete") {
-        if (!fs.existsSync(filePath)) continue;
-        const current = fs.lstatSync(filePath);
-        if (current.isSymbolicLink() || !current.isFile()) throw new Error("Delete target must be a regular file");
-        fs.unlinkSync(filePath);
-        recordAudit({ action: "delete", file: change.file, result: "applied" });
-        results.applied++;
-      } else {
-        results.skipped++;
+      const stagedItem = staged.find(candidate => candidate.orderIndex === item.orderIndex);
+      const record = { ...item, backup: null };
+      committed.push(record);
+      if (item.exists) {
+        record.backup = temporaryWritePath(item.filePath);
+        fs.renameSync(item.filePath, record.backup);
       }
-    } catch (e) {
-      results.errors.push(`${change.file}: ${e.message}`);
+      if (stagedItem) fs.renameSync(stagedItem.temporary, item.filePath);
+      results.applied++;
     }
+  } catch (error) {
+    for (const record of committed.reverse()) {
+      try {
+        if (fs.existsSync(record.filePath)) fs.unlinkSync(record.filePath);
+        if (record.backup && fs.existsSync(record.backup)) fs.renameSync(record.backup, record.filePath);
+      } catch {}
+    }
+    for (const item of staged) { try { fs.unlinkSync(item.temporary); } catch {} }
+    results.applied = 0;
+    results.errors.push(`Atomic apply rolled back: ${error.message}`);
+    return results;
+  }
+
+  for (const record of committed) {
+    if (record.backup) {
+      try { fs.unlinkSync(record.backup); } catch (error) { results.audit.warnings.push(`Could not remove temporary backup for ${record.change.file}: ${error.message}`); }
+    }
+    const overwritten = record.change.action === "create" && record.exists;
+    recordAudit(overwritten ? { action: record.change.action, file: record.change.file, result: "applied", overwrote: true } : { action: record.change.action, file: record.change.file, result: "applied" });
+    if (overwritten) results.audit.warnings.push(`Overwrote existing file: ${record.change.file}`);
   }
   return results;
 }

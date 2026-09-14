@@ -99,7 +99,7 @@ function runVerification(repoRoot, options = {}) {
  * credentials are removed: PATH, HOME, proxy settings, and unrelated application
  * variables (a database URL, a CI flag) are kept.
  */
-const PROVIDER_CREDENTIAL_ENV = /^(?:ANTHROPIC|OPENAI|AZURE_OPENAI|GOOGLE|GEMINI|OPENROUTER|GROQ|MISTRAL|DEEPSEEK|XAI|TOGETHER|FIREWORKS|COHERE|PERPLEXITY|VOYAGE)_(?:API_KEY|TOKEN|SECRET|KEY)$/i;
+const PROVIDER_CREDENTIAL_ENV = /^(?:ANTHROPIC|OPENAI|AZURE_OPENAI|GOOGLE|GEMINI|OPENROUTER|GROQ|MISTRAL|DEEPSEEK|XAI|TOGETHER|FIREWORKS|COHERE|PERPLEXITY|VOYAGE|CAMEL_STREAM)_(?:API_KEY|TOKEN|SECRET|KEY)$/i;
 const MINITOK_SECRET_ENV = /^MINITOK_(?:MCP_AUTH_TOKEN|MCP_AUTH_TOKEN_FILE|MCP_AUTH_TOKEN_NEXT|MCP_AUTH_TOKEN_TTL_MS|MCP_AUTH_TOKEN_EXPIRES_AT|MCP_AUTH_TOKEN_REVOKED|MCP_RUNTIME_IDENTITY|TOKEN|CUSTOMER_TOKEN|ACTIVATION_KEY|SERVER_TOKEN)/i;
 
 function verificationEnvironment(base = process.env) {
@@ -159,14 +159,14 @@ function runProcessAsync(command, args, repoRoot, options = {}) {
     try {
       child = execFile(command, args, spawnOptions, (error, stdout, stderr) => {
         const output = `${stdout || ""}${stderr || ""}`.slice(-4000);
-        if (error) resolve({ status: "failed", command: commandLine, output, duration_ms: Date.now() - started, exit_code: typeof error.code === "number" ? error.code : 1 });
+        if (error) resolve({ status: typeof error.code === "number" ? "failed" : "infra_failed", command: commandLine, output, duration_ms: Date.now() - started, exit_code: typeof error.code === "number" ? error.code : 1 });
         else resolve({ status: "passed", command: commandLine, output: String(stdout || "").slice(-4000), duration_ms: Date.now() - started, exit_code: 0 });
       });
     } catch (error) {
-      resolve({ status: "failed", command: commandLine, output: error.message, duration_ms: Date.now() - started, exit_code: 1 });
+      resolve({ status: "infra_failed", command: commandLine, output: error.message, duration_ms: Date.now() - started, exit_code: 1 });
       return;
     }
-    child.on("error", error => resolve({ status: "failed", command: commandLine, output: error.message, duration_ms: Date.now() - started, exit_code: 1 }));
+    child.on("error", error => resolve({ status: "infra_failed", command: commandLine, output: error.message, duration_ms: Date.now() - started, exit_code: 1 }));
   });
 }
 
@@ -239,6 +239,11 @@ async function verifyCommandAsync(repoRoot, options = {}) {
   return { passed: evidence.status === "passed" && evidence.exit_code === 0, evidence };
 }
 
+function classifyVerificationEvidence(evidence) {
+  if (!evidence || evidence.status === "missing" || evidence.status === "infra_failed") return "VERIFICATION_INFRA_FAILED";
+  return evidence.status === "passed" && evidence.exit_code === 0 ? "PASSED" : "VERIFICATION_FAILED";
+}
+
 function verifyCommand(repoRoot, options = {}) {
   const sync = syncCanonicalRuntime(repoRoot);
   if (sync && sync.status !== "passed") return { passed: false, evidence: sync };
@@ -246,4 +251,4 @@ function verifyCommand(repoRoot, options = {}) {
   return { passed: evidence.status === "passed" && evidence.exit_code === 0, evidence };
 }
 
-module.exports = { runVerification, runVerificationAsync, verifyCommand, verifyCommandAsync, runProcessAsync, bashAvailable, bashRuntime, verificationEnvironment, syncCanonicalRuntime, syncCanonicalRuntimeAsync };
+module.exports = { runVerification, runVerificationAsync, verifyCommand, verifyCommandAsync, runProcessAsync, bashAvailable, bashRuntime, verificationEnvironment, classifyVerificationEvidence, syncCanonicalRuntime, syncCanonicalRuntimeAsync };

@@ -27,12 +27,12 @@ test("the built-in blocked extensions stay a floor when configuration is merged"
     { file: "danger.ps1", action: "create", content: "Write-Host 'no'\n" },
   ] };
   try {
-    // Without the extra entry the SQL file is written; the script never is.
+    // Atomic preflight rejects the complete set when any entry is blocked; the
+    // valid SQL file must not be partially applied.
     const baseline = applyChanges(repo, changes, false, { blockedExtensions: DEFAULT_BLOCKED_EXTENSIONS });
-    assert.equal(baseline.applied, 1);
-    assert.equal(fs.existsSync(path.join(repo, "schema.sql")), true);
+    assert.equal(baseline.applied, 0);
+    assert.equal(fs.existsSync(path.join(repo, "schema.sql")), false);
     assert.equal(fs.existsSync(path.join(repo, "danger.ps1")), false, "the built-in list blocks executables");
-    fs.rmSync(path.join(repo, "schema.sql"), { force: true });
 
     // A configured entry blocks the SQL file too, and the built-in floor still
     // covers the script: configuration can extend the list but never weaken it.

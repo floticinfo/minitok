@@ -48,11 +48,20 @@ function headCommit(repoRoot) {
   try { return git(repoRoot, ["rev-parse", "--short", "HEAD"]); } catch { return ""; }
 }
 
-function status(repoRoot) {
-  try { return git(repoRoot, ["status", "--porcelain"]); } catch { return ""; }
+function isRuntimeMetadataStatusLine(line) {
+  const file = String(line || "").slice(3).replace(/^"|"$/g, "").replace(/\\/g, "/");
+  return file === ".minitok" || file.startsWith(".minitok/");
 }
 
-function diffStat(repoRoot) {
+function status(repoRoot, options = {}) {
+  try {
+    const output = git(repoRoot, ["status", "--porcelain"]);
+    if (options.excludeRuntime === true) return output.split("\n").filter(line => line && !isRuntimeMetadataStatusLine(line)).join("\n");
+    return output;
+  } catch { return ""; }
+}
+
+function diffStat(repoRoot, options = {}) {
   try { return git(repoRoot, ["diff", "--stat"]); } catch { return ""; }
 }
 

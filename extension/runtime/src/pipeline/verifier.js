@@ -26,7 +26,10 @@ Output format (strict JSON):
 
 async function verify(provider, task, changesResult, repoRoot, options = {}) {
   const diff = require("../git/operations").diffStat(repoRoot);
-  const status = require("../git/operations").status(repoRoot);
+  // .minitok/ contains run locks, contracts, evidence, and other internal
+  // runtime state. It is intentionally not part of the user's code change and
+  // must not be presented to the model as an unexpected modified file.
+  const status = require("../git/operations").status(repoRoot, { excludeRuntime: true });
 
   const messages = [
     { role: "system", content: REVIEW_SYSTEM_PROMPT },

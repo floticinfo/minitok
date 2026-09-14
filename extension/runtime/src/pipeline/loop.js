@@ -15,7 +15,8 @@ const { plan } = require("./planner");
 const { implement, applyChanges, DEFAULT_BLOCKED_EXTENSIONS } = require("./implementer");
 const { verify } = require("./verifier");
 const { verifyCommandAsync } = require("./check");
-const { buildRepairTask } = require("./repair");
+const { classifyVerificationEvidence } = require("./check");
+const { buildRepairTask, buildImplementationRepairTask } = require("./repair");
 const { writeContract, writeContextManifest, readContract } = require("../state/contracts");
 const { recordRunEvidence } = require("../run-evidence");
 const { generateNextTask } = require("./next_task");
@@ -321,6 +322,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
   // handed to the write policy as an extra protected path.
   const protectedExtraPaths = typeof config.validation?.script_path === "string" && config.validation.script_path.trim() ? [config.validation.script_path.trim()] : [];
   const applyOptions = { blockedExtensions, protectedExtraPaths };
+  applyOptions.auditPath = path.join(repoRoot, ".minitok", "evidence", "runs", "file-operations.jsonl");
 
   // validation.* thresholds were accepted, env-mapped and documented but never
   // enforced.
@@ -393,7 +395,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
   const hardCycleLimit = Math.max(1, Number(config.budget.max_cycles_hard_limit) || 100);
   const hardTokenLimit = Math.max(1, Number(config.budget.token_hard_limit) || 2000000);
   const maxCyclesSetting = opts.overrides?.budget?.max_cycles ?? config.budget.max_cycles;
-  const maxCycles = maxCyclesSetting === "unlimited" || maxCyclesSetting === 0 || maxCyclesSetting == null ? Infinity : Math.min(Number(maxCyclesSetting) || 1, hardCycleLimit);
+  const maxCycles = maxCyclesSetting === "unlimited" || maxCyclesSetting === 0 ? Infinity : Math.min(Number(maxCyclesSetting) || 1, hardCycleLimit);
   const tokenSetting = opts.overrides?.budget?.token_budget ?? config.budget.token_budget;
   const tokenBudget = tokenSetting === "unlimited" || tokenSetting === 0 || tokenSetting == null ? Infinity : Math.min(Number(tokenSetting) || 1, hardTokenLimit);
   const originalGoal = task;
@@ -405,6 +407,9 @@ async function runPipelineInWorkspace(task, opts = {}) {
   let stagnantCycles = 0;
   let lastChangeSignature = "";
   let lastFailureCategory = undefined; // classified failure category for the current run's last failing cycle
+  let implementationRejections = 0;
+  let repeatedVerificationOutput = 0;
+  let lastVerificationFingerprint = "";
   let humanEscalation = false;
 
   // Model escalation + token hard guardrail.
@@ -470,6 +475,27 @@ async function runPipelineInWorkspace(task, opts = {}) {
     }
   }
   results.evolution.knowledge_size = knowledgeStore.size;
+
+  // Establish a clean baseline before asking the model to spend tokens or mutate
+  // files. A failing baseline is an infrastructure/project-state problem, not a
+  // model repair opportunity, so stop immediately and preserve the evidence.
+  const configuredVerificationPath = config.validation?.script_path || "VERIFY_CMD.mjs";
+  const baselineScriptPath = path.resolve(repoRoot, configuredVerificationPath);
+  if (!opts.dryRun && validationEnabled && fs.existsSync(baselineScriptPath)) {
+    console.log("  🧪 Running baseline verification...");
+    const baseline = await verifyCommandAsync(repoRoot, { script_path: config.validation?.script_path, timeout_ms: config.validation?.timeout_ms });
+    if (!baseline.passed) {
+      const baselineStatus = classifyVerificationEvidence(baseline.evidence);
+      results.cycles.push({ cycle: 0, status: baselineStatus, check: baseline.evidence, error: baseline.evidence?.output || "Baseline verification did not pass" });
+      lastFailureCategory = failureAnalyzer.categorize(baseline.evidence?.output || "Baseline verification did not pass");
+      console.log(`  🛑 Baseline verification failed (${baselineStatus}); no model work will be attempted.`);
+      results.baseline = baseline.evidence;
+      // Skip the cycle loop while retaining the normal final contract/evidence path.
+      adaptedMaxCycles = 0;
+    } else {
+      results.baseline = baseline.evidence;
+    }
+  }
 
   // Graceful shutdown on SIGINT/SIGTERM
   let _abortRequested = false;
@@ -559,14 +585,15 @@ async function runPipelineInWorkspace(task, opts = {}) {
     opts.onProgress?.({ phase: "plan", state: "completed", cycle, tokens: planResult.tokens, total_tokens: results.totalTokens, total_cost: results.totalCost });
     console.log(`     Plan: ${planResult.plan.error ? "❌ " + planResult.plan.error : "✅ " + (planResult.plan.steps?.length || 0) + " steps"}`);
 
-    if (planResult.plan.error) {
-      const _pfCat = failureAnalyzer.categorize(planResult.plan.error || "");
+    if (planResult.plan.error || !Array.isArray(planResult.plan.steps) || planResult.plan.steps.length === 0) {
+      const planError = planResult.plan.error || "No actionable implementation steps were produced";
+      const _pfCat = failureAnalyzer.categorize(planError);
       lastFailureCategory = _pfCat;
       const _pfRec = escalationEngine.recordCycleOutcome(originalGoal, { success: false, category: _pfCat, tokens: (intelResult.tokens?.input || 0) + (intelResult.tokens?.output || 0) });
       if (_pfRec.stop) { console.log(`\n${_pfRec.stopReason}`); if (_pfRec.humanEscalation) humanEscalation = true; break; }
       if (_pfRec.escalate) escalateWorkRole(_pfRec.targetTier, _pfRec.model);
-      results.cycles.push({ cycle, plan: planResult.plan, status: "plan_failed" });
-      continue;
+      results.cycles.push({ cycle, plan: planResult.plan, status: planResult.plan.error ? "MODEL_OUTPUT_INVALID" : "NO_ACTIONABLE_PLAN", error: planError });
+      break;
     }
 
     // Phase 3: Implement
@@ -582,21 +609,35 @@ async function runPipelineInWorkspace(task, opts = {}) {
       console.log(`     Implement: ❌ ${implResult.changes.error}`);
       const _icCat = failureAnalyzer.categorize(implResult.changes.error || "");
       lastFailureCategory = _icCat;
-      const _icRec = escalationEngine.recordCycleOutcome(originalGoal, { success: false, category: _icCat, tokens: (intelResult.tokens?.input || 0) + (intelResult.tokens?.output || 0) + (planResult.tokens?.input || 0) + (planResult.tokens?.output || 0) });
-      if (_icRec.stop) { console.log(`\n${_icRec.stopReason}`); if (_icRec.humanEscalation) humanEscalation = true; break; }
-      if (_icRec.escalate) escalateWorkRole(_icRec.targetTier, _icRec.model);
-      results.cycles.push({ cycle, plan: planResult.plan, implement: implResult.changes, status: "impl_failed" });
+      implementationRejections += 1;
+      results.cycles.push({ cycle, plan: planResult.plan, implement: implResult.changes, status: "MODEL_OUTPUT_INVALID", implementation_errors: [implResult.changes.error] });
+      if (implementationRejections >= 2) {
+        console.log("  🛑 Repeated invalid implementation output; stopping without verification.");
+        break;
+      }
+      task = buildImplementationRepairTask(originalGoal, [implResult.changes.error]);
       continue;
     }
 
-    // Apply changes — require user confirmation on first file modification
     const changeList = Array.isArray(implResult.changes?.changes) ? implResult.changes.changes : [];
+    if (changeList.length === 0) {
+      console.log("  🛑 No actionable changes were produced; stopping without verification.");
+      results.cycles.push({ cycle, plan: planResult.plan, implement: implResult.changes, status: "NO_ACTIONABLE_PLAN", implementation_errors: ["The implementation returned zero changes"] });
+      break;
+    }
+
     // validation.max_changed_files is a real safety bound: an oversized change set
     // is refused BEFORE anything is written, instead of being reported after the
     // fact. Nothing was enforced before, so the documented limit was advisory.
     if (Number.isFinite(maxChangedFiles) && maxChangedFiles > 0 && changeList.length > maxChangedFiles) {
       console.log(`     ❌ ${changeList.length} files changed, above validation.max_changed_files (${maxChangedFiles}). Nothing was applied.`);
-      results.cycles.push({ cycle, plan: planResult.plan, implement: implResult.changes, status: "changes_exceeded_limit" });
+      results.cycles.push({
+        cycle,
+        plan: planResult.plan,
+        implement: implResult.changes,
+        status: "IMPLEMENTATION_REJECTED",
+        implementation_errors: [`${changeList.length} changes exceed validation.max_changed_files (${maxChangedFiles})`],
+      });
       break;
     }
     let applyResult;
@@ -614,6 +655,25 @@ async function runPipelineInWorkspace(task, opts = {}) {
       applyResult = applyChanges(repoRoot, implResult.changes, opts.dryRun, applyOptions);
     }
     console.log(`     Applied: ${applyResult.applied} changes${applyResult.errors.length ? `, ${applyResult.errors.length} errors` : ""}`);
+    if (applyResult.errors.length > 0) {
+      implementationRejections += 1;
+      const implementationErrors = applyResult.errors.slice();
+      lastFailureCategory = failureAnalyzer.categorize(implementationErrors.join("\n"));
+      results.cycles.push({
+        cycle,
+        plan: planResult.plan,
+        implement: { ...implResult.changes, changed_files: [] },
+        apply: applyResult,
+        status: "IMPLEMENTATION_REJECTED",
+        implementation_errors: implementationErrors,
+      });
+      if (implementationRejections >= 2) {
+        console.log("  🛑 Repeated implementation rejection; stopping without verification.");
+        break;
+      }
+      task = buildImplementationRepairTask(originalGoal, implementationErrors);
+      continue;
+    }
 
     // Phase 4: Check
     opts.onProgress?.({ phase: "verify", state: "started", cycle });
@@ -629,6 +689,32 @@ async function runPipelineInWorkspace(task, opts = {}) {
         ? await verifyCommandAsync(repoRoot, { script_path: config.validation?.script_path, timeout_ms: config.validation?.timeout_ms })
         : { passed: true, evidence: { status: "skipped", command: "validation.enabled=false", output: "Verification command skipped by configuration." } };
     opts.onProgress?.({ phase: "verify", state: "completed", cycle, passed: checkResult.passed, total_tokens: results.totalTokens, total_cost: results.totalCost });
+    if (!checkResult.passed) {
+      const verificationStatus = classifyVerificationEvidence(checkResult.evidence);
+      const verificationCycle = {
+        cycle,
+        plan: planResult.plan,
+        implement: { summary: implResult.changes.summary, files_changed: implResult.changes.files_changed, changed_files: changeList.map(change => change.file) },
+        check: checkResult.evidence,
+        status: verificationStatus,
+        error: checkResult.evidence?.output || "Verification did not pass",
+      };
+      results.cycles.push(verificationCycle);
+      lastFailureCategory = failureAnalyzer.categorize(verificationCycle.error);
+      const verificationFingerprint = JSON.stringify({ command: checkResult.evidence?.command, exit_code: checkResult.evidence?.exit_code, output: checkResult.evidence?.output || "" });
+      repeatedVerificationOutput = verificationFingerprint === lastVerificationFingerprint ? repeatedVerificationOutput + 1 : 0;
+      lastVerificationFingerprint = verificationFingerprint;
+      if (verificationStatus === "VERIFICATION_INFRA_FAILED") {
+        console.log("  🛑 Verification infrastructure is unavailable; stopping without review/repair.");
+        break;
+      }
+      if (repeatedVerificationOutput >= 1) {
+        console.log("  🛑 Identical verification output repeated; stopping instead of sending a duplicate repair.");
+        break;
+      }
+      task = buildRepairTask(originalGoal, null, checkResult);
+      continue;
+    }
 
     // Phase 5: Review
     opts.onProgress?.({ phase: "review", state: "started", cycle });
@@ -646,7 +732,11 @@ async function runPipelineInWorkspace(task, opts = {}) {
     const reportedConfidence = Number(verifyResult.review.confidence);
     const lowConfidence = reviewVerdict === "APPROVE" && Number.isFinite(confidenceThreshold) && confidenceThreshold > 0
       && Number.isFinite(reportedConfidence) && reportedConfidence < confidenceThreshold;
-    const verdict = !checkPassed ? "VERIFICATION_FAILED" : lowConfidence ? "LOW_CONFIDENCE" : reviewVerdict;
+    // Keep the public cycle status REJECT for compatibility; failure_status carries
+    // the unambiguous classification used by new consumers.
+    const reviewRejected = reviewVerdict === "REJECT";
+    const verdict = !checkPassed ? "VERIFICATION_FAILED" : lowConfidence ? "LOW_CONFIDENCE" : reviewRejected ? "REVIEW_REJECTED" : reviewVerdict;
+    const cycleStatus = verdict === "REVIEW_REJECTED" ? "REJECT" : verdict;
     const icon = verdict === "APPROVE" ? "✅" : "❌";
     console.log(`     Review: ${icon} ${verdict} (confidence: ${verifyResult.review.confidence || "N/A"})`);
     if (lowConfidence) console.log(`     Confidence ${reportedConfidence} is below validation.confidence_threshold (${confidenceThreshold}); continuing.`);
@@ -672,7 +762,8 @@ async function runPipelineInWorkspace(task, opts = {}) {
         input: (intelResult.tokens?.input || 0) + (planResult.tokens?.input || 0) + (implResult.tokens?.input || 0) + (verifyResult.tokens?.input || 0),
         output: (intelResult.tokens?.output || 0) + (planResult.tokens?.output || 0) + (implResult.tokens?.output || 0) + (verifyResult.tokens?.output || 0),
       },
-      status: verdict,
+      status: cycleStatus,
+      failure_status: verdict === "REVIEW_REJECTED" ? "REVIEW_REJECTED" : undefined,
     });
 
     // ---- Model escalation + token hard guardrail ----
@@ -719,7 +810,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
     }
 
     // Phase 6: Repair
-    if (verdict === "REJECT" || verdict === "VERIFICATION_FAILED") {
+    if (verdict === "REVIEW_REJECTED" || verdict === "VERIFICATION_FAILED" || verdict === "REJECT") {
       console.log(`  🔧 Preparing ${verdict === "VERIFICATION_FAILED" ? "verification repair" : "review repair"} task...`);
       task = buildRepairTask(originalGoal, verifyResult.review, checkResult);
     }
@@ -811,6 +902,18 @@ async function runPipelineInWorkspace(task, opts = {}) {
         review: results.cycles.at(-1)?.review || null,
       },
       changed_files: results.cycles.flatMap(c => c.implement?.changed_files || []),
+      cycles: results.cycles.map(cycle => ({
+        cycle: cycle.cycle,
+        status: cycle.status,
+        implementation_errors: cycle.implementation_errors || [],
+        changed_files: cycle.implement?.changed_files || [],
+        verification: cycle.check ? {
+          command: cycle.check.command || null,
+          status: cycle.check.status || null,
+          exit_code: cycle.check.exit_code ?? null,
+          output: cycle.check.output || "",
+        } : null,
+      })),
       verification: {
         commands: results.cycles.map(c => c.check?.command).filter(Boolean),
         exit_status: results.cycles.at(-1)?.check?.exit_code ?? null,

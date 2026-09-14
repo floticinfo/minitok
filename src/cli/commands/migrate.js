@@ -58,14 +58,14 @@ roles:
     effort: medium
 
 budget:
-  max_cycles: unlimited
+  max_cycles: 3
   token_budget: unlimited
   max_cycles_hard_limit: 100
   token_hard_limit: 2000000
   stagnation_limit: 3
 
 execution:
-  max_retries: unlimited
+  max_retries: 3
   timeout_sec: unlimited
   retry_hard_limit: 5
   timeout_hard_limit_sec: 86400

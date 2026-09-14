@@ -71,8 +71,8 @@ describe("Pipeline stages", () => {
     const source = fs.readFileSync(path.join(__dirname, "loop.js"), "utf8");
     // Verification failure outranks a low-confidence approval, which in turn
     // outranks the reviewer verdict, so the three outcomes stay distinguishable.
-    assert.match(source, /const verdict = !checkPassed \? "VERIFICATION_FAILED" : lowConfidence \? "LOW_CONFIDENCE" : reviewVerdict/);
-    assert.match(source, /verdict === "REJECT" \|\| verdict === "VERIFICATION_FAILED"/);
+    assert.match(source, /const verdict = !checkPassed \? "VERIFICATION_FAILED" : lowConfidence \? "LOW_CONFIDENCE" : reviewRejected \? "REVIEW_REJECTED"/);
+    assert.match(source, /verdict === "REVIEW_REJECTED" \|\| verdict === "VERIFICATION_FAILED"/);
   });
 
   it("synchronizes embedded runtime before canonical verification", () => {
@@ -81,6 +81,14 @@ describe("Pipeline stages", () => {
     fs.writeFileSync(path.join(d, "package.json"), JSON.stringify({ name: "customer-app" }));
     assert.equal(syncCanonicalRuntime(d), null);
     fs.rmSync(d, { recursive: true, force: true });
+  });
+
+  it("classifies missing and non-executable verification gates separately from gate failures", () => {
+    const { classifyVerificationEvidence } = require("./check");
+    assert.equal(classifyVerificationEvidence({ status: "missing", exit_code: 1 }), "VERIFICATION_INFRA_FAILED");
+    assert.equal(classifyVerificationEvidence({ status: "infra_failed", exit_code: 1 }), "VERIFICATION_INFRA_FAILED");
+    assert.equal(classifyVerificationEvidence({ status: "failed", exit_code: 1 }), "VERIFICATION_FAILED");
+    assert.equal(classifyVerificationEvidence({ status: "passed", exit_code: 0 }), "PASSED");
   });
 
   it("does not leak minitok control environment variables into customer verification", () => {
@@ -98,6 +106,7 @@ describe("Pipeline stages", () => {
       OPENAI_API_KEY: "sk-openai-secret",
       GEMINI_API_KEY: "gm-secret",
       OPENROUTER_API_KEY: "or-secret",
+      CAMEL_STREAM_API_KEY: "camel-secret",
       MINITOK_MCP_AUTH_TOKEN: "mcp-secret",
       MINITOK_MCP_AUTH_TOKEN_FILE: "/home/user/.minitok/mcp/runtime-token.json",
       MINITOK_CUSTOMER_TOKEN: "customer-secret",
@@ -106,7 +115,7 @@ describe("Pipeline stages", () => {
       DATABASE_URL: "postgres://user:pass@localhost/db",
       CI: "true",
     });
-    for (const key of ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "MINITOK_MCP_AUTH_TOKEN", "MINITOK_MCP_AUTH_TOKEN_FILE", "MINITOK_CUSTOMER_TOKEN"]) {
+    for (const key of ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "CAMEL_STREAM_API_KEY", "MINITOK_MCP_AUTH_TOKEN", "MINITOK_MCP_AUTH_TOKEN_FILE", "MINITOK_CUSTOMER_TOKEN"]) {
       assert.equal(env[key], undefined, `${key} must not reach repository code`);
     }
     // Only credentials are removed: a gate that needs its build environment keeps it.
@@ -114,6 +123,28 @@ describe("Pipeline stages", () => {
     assert.equal(env.HOME, "/home/user");
     assert.equal(env.DATABASE_URL, "postgres://user:pass@localhost/db");
     assert.equal(env.CI, "true");
+  });
+
+  it("excludes internal .minitok runtime metadata from reviewer status", async () => {
+    const { execFileSync } = require("node:child_process");
+    const repo = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-review-status-"));
+    try {
+      execFileSync("git", ["init", "-q"], { cwd: repo });
+      execFileSync("git", ["config", "user.email", "test@example.invalid"], { cwd: repo });
+      execFileSync("git", ["config", "user.name", "test"], { cwd: repo });
+      fs.writeFileSync(path.join(repo, "README.md"), "baseline\n");
+      execFileSync("git", ["add", "README.md"], { cwd: repo });
+      execFileSync("git", ["commit", "-qm", "baseline"], { cwd: repo });
+      fs.mkdirSync(path.join(repo, ".minitok", "evidence"), { recursive: true });
+      fs.writeFileSync(path.join(repo, ".minitok", "run.lock"), "runtime\n");
+      let reviewPrompt = "";
+      const provider = { complete: async messages => { reviewPrompt = messages[1].content; return { text: JSON.stringify({ verdict: "APPROVE", confidence: 1, summary: "ok", findings: [], security_findings: [], risk_level: "low", test_suggestions: [] }), tokens: { input: 1, output: 1 }, model: "test" }; } };
+      await verify(provider, "review task", { changes: { changes: [] }, check: { passed: true } }, repo);
+      assert.doesNotMatch(reviewPrompt, /\\.minitok/);
+      assert.match(reviewPrompt, /Git Status\nclean/);
+    } finally {
+      fs.rmSync(repo, { recursive: true, force: true });
+    }
   });
 
   it("builds a repair task from review and check failures", () => {

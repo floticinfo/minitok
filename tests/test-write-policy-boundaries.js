@@ -135,6 +135,30 @@ test("suspiciousShrinkReason ignores small files and directories", () => {
   } finally { fs.rmSync(repo, { recursive: true, force: true }); }
 });
 
+test("a protected file rejects the entire change set without partial apply", () => {
+  const repo = customerRepo();
+  try {
+    const result = applyChanges(repo, {
+      changes: [
+        { file: "src/allowed.js", action: "create", content: "allowed\n" },
+        { file: "VERIFY_CMD.mjs", action: "modify", content: "process.exit(0);\n" },
+      ],
+    });
+    assert.equal(result.applied, 0);
+    assert.equal(result.errors.length, 1);
+    assert.equal(fs.existsSync(path.join(repo, "src", "allowed.js")), false, "atomic rejection must not partially apply valid changes");
+  } finally { fs.rmSync(repo, { recursive: true, force: true }); }
+});
+
+test("an empty change set is reported as non-actionable by the caller contract", () => {
+  const repo = customerRepo();
+  try {
+    const result = applyChanges(repo, { changes: [] });
+    assert.equal(result.applied, 0);
+    assert.deepEqual(result.errors, []);
+  } finally { fs.rmSync(repo, { recursive: true, force: true }); }
+});
+
 test("isolation git calls are bounded and never prompt for credentials", () => {
   // A git command that waits on a credential prompt used to hang the pipeline
   // forever while it held the run lock; src/git/operations.js already capped its

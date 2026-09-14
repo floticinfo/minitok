@@ -40,7 +40,7 @@ async function cmdRun(task, opts) {
   // or when a provider key is rejected by the API (401/403). Otherwise
   // runPipeline would burn cycles and only fail at the first real request.
   let preflightAuthorized = opts.authorization === PREAUTHORIZED;
-  try {
+  if (opts.authorization !== PREAUTHORIZED) try {
     const { loadConfig, resolveProviderName } = require("../../config/loader");
     const { authorizeEntitlement } = require("../../entitlement/policy");
     const { detectAvailableProviders, verifyCredentials } = require("../../llm/provider");

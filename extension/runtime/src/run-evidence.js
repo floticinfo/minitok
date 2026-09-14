@@ -57,6 +57,7 @@ function normalizeEvidence(input) {
       review: input.stages?.review ?? null
     },
     changed_files: Array.isArray(input.changed_files) ? input.changed_files : [],
+    cycles: Array.isArray(input.cycles) ? input.cycles : [],
     verification: {
       commands: Array.isArray(input.verification?.commands) ? input.verification.commands : [],
       exit_status: input.verification?.exit_status ?? null,
