@@ -112,7 +112,8 @@
     "promotion-posts/",
     "EULA.md",
     "POLICY.md",
-    "DATA_CLASSIFICATION.md"
+    "DATA_CLASSIFICATION.md",
+    "assets/"
   ],
   "devDependencies": {
     "@eslint/js": "^10.0.1",
