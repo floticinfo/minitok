@@ -4,7 +4,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { postJson } = require("../core/http");
-const { checkEntitlement, loadGateState, GateState } = require("./gate");
+const { checkEntitlement, loadGateState, saveGateState, GateState, OFFLINE_GRACE_MS, OFFLINE_GRACE_DAYS } = require("./gate");
 
 const DEFAULT_ENTITLEMENT_DIR = path.join(os.homedir(), ".minitok", "entitlement");
 const INSTALLATION_TOKEN_FILE = "installation-token.json";
@@ -26,10 +26,10 @@ function postValidation(urlString, body, timeoutMs = 10000) {
 }
 
 async function checkEntitlementOnline(options = {}) {
-  const localOptions = options.serverUrl && loadInstallationRecord(options.entitlementDir)
-    ? { ...options, _saveGateState: () => {} }
-    : options;
-  const local = checkEntitlement(localOptions);
+  // Always allow local gate state to be saved: suppressing it when a server is
+  // configured broke offline grace, because `last_validated_at` was never set
+  // by local checks and the online path only saved on success.
+  const local = checkEntitlement(options);
   if (!local.allowed) return local;
 
   const record = loadInstallationRecord(options.entitlementDir);
@@ -50,7 +50,6 @@ async function checkEntitlementOnline(options = {}) {
     // Record the successful validation timestamp so offline grace can be
     // measured if the server later becomes unreachable.
     try {
-      const { loadGateState, saveGateState } = require("./gate");
       const dir = options.entitlementDir;
       const state = loadGateState(dir);
       saveGateState({ ...state, last_validated_at: new Date().toISOString() }, dir);
@@ -62,7 +61,6 @@ async function checkEntitlementOnline(options = {}) {
     }
     // Server unreachable — allow bounded offline grace if the entitlement was
     // recently validated online; otherwise fail closed.
-      const { OFFLINE_GRACE_MS, OFFLINE_GRACE_DAYS } = require("./gate");
     const state = options._loadGateState ? options._loadGateState() : loadGateState(options.entitlementDir);
     const lastValidated = state.last_validated_at ? new Date(state.last_validated_at).getTime() : 0;
     if (lastValidated > 0 && Date.now() - lastValidated <= OFFLINE_GRACE_MS) {

@@ -16,19 +16,15 @@ const { AuthError } = require("../core/errors");
 const { TokenStore } = require("./token-store");
 const { OAuthFlow } = require("./oauth");
 const { ServiceAccountResolver } = require("./service-account");
-
-const ALIAS_MAP = {
-  claude: "anthropic",
-  gpt: "openai",
-  gemini: "google",
-};
+// Aliases live in one place so the names this resolver looks up are the same
+// names the CLI stores credentials under.
+const { ALIAS_MAP, normalizeProvider } = require("./aliases");
 
 class AuthManager {
   constructor() {
     this._tokenStore = new TokenStore();
     this._oauth = new OAuthFlow();
     this._sa = new ServiceAccountResolver();
-    this._iam = { resolve: async (_auth) => ({ headers: {}, token: null }) };
   }
 
   get tokenStore() { return this._tokenStore; }
@@ -41,7 +37,7 @@ class AuthManager {
    * @param {object} providerConfig - Full provider config from minitok.yml
    */
   async resolve(providerName, providerConfig) {
-    const normalized = ALIAS_MAP[providerName.toLowerCase()] || providerName.toLowerCase();
+    const normalized = normalizeProvider(providerName);
     const auth = providerConfig.auth;
 
     // No auth block → legacy api_key fallback
@@ -143,12 +139,6 @@ class AuthManager {
     const tokens = await this._oauth.authorize(name, auth);
     this._tokenStore.save(name, tokens);
     return { headers: { Authorization: `Bearer ${tokens.access_token}` }, token: tokens.access_token };
-  }
-
-  // ─── Auth type: iam ───
-  async _resolveIAM(name, auth) {
-    const creds = await this._iam.resolve(auth);
-    return { headers: creds.headers, token: creds.token || null };
   }
 
   // ─── Auth type: service_account ───

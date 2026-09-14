@@ -2,6 +2,7 @@
 
 const { TokenStore } = require("../../auth/token-store");
 const { OAuthFlow, OAUTH_CONFIGS } = require("../../auth/oauth");
+const { ALIAS_MAP, normalizeProvider } = require("../../auth/aliases");
 const { saveCustomerToken } = require("../../auth/customer-token");
 const { resetVerifyCache } = require("../../llm/provider");
 const { resolveServerUrl } = require("./server-config");
@@ -38,8 +39,10 @@ async function cmdAuthCustomerLogin(server, email, password) {
 function customerAuthRequest(endpoint, body, server) { return postJson(resolveServerUrl({ cliServer: server }) + endpoint, body, 30000); }
 
 async function cmdAuthLogin(provider) {
-  if (!provider) { console.error("Usage: minitok auth login <provider>"); console.error("  Providers: anthropic, openai, google (any other endpoint: configure a custom provider)"); return 1; }
-  const name = provider.toLowerCase();
+  if (!provider) { console.error("Usage: minitok auth login <provider>"); console.error("  Providers: anthropic, openai, google — aliases claude, gpt, gemini are accepted (any other endpoint: configure a custom provider)"); return 1; }
+  // Stored under the canonical name: the resolver normalises aliases before it
+  // reads, so keying by the raw argument made `auth login gpt` unreachable.
+  const name = normalizeProvider(provider);
   if (OAUTH_CONFIGS[name]) {
     const oauthConfig = OAUTH_CONFIGS[name];
     if (!oauthConfig.client_id) { console.log("\nOAuth not available: " + oauthConfig.name + " client_id not configured."); console.log("   You can:"); console.log("   1. Set the client ID via environment variable:"); const envVar = name.toUpperCase().replace("-", "_") + "_CLIENT_ID"; console.log("      export " + envVar + "=your_client_id"); console.log("   2. Use API key authentication instead:"); console.log("      minitok auth login " + name + " (API key mode)"); console.log("\nAPI Key fallback:"); return await cmdApiKeyLogin(name); }
@@ -61,14 +64,23 @@ async function cmdAuthStatus() {
   const tokens = tokenStore.list();
   if (tokens.length === 0) { console.log("No stored credentials."); console.log("\nRun: minitok auth login <provider>"); return 0; }
   console.log("Stored credentials:\n");
-  for (const t of tokens) { const status = t.valid ? "valid" : "expired"; const refresh = t.has_refresh ? " (has refresh token)" : ""; const expiry = t.expires_at ? "  expires: " + t.expires_at : ""; console.log("  " + t.provider.padEnd(16) + status + refresh + expiry); }
+  for (const t of tokens) {
+    const status = t.valid ? "valid" : "expired";
+    const refresh = t.has_refresh ? " (has refresh token)" : "";
+    const expiry = t.expires_at ? "  expires: " + t.expires_at : "";
+    // A credential saved before aliases were normalised is keyed by the alias
+    // (gpt.json) and still resolves through the token store's fallback, but the
+    // canonical name is what the CLI and the resolver use from now on.
+    const legacy = ALIAS_MAP[t.provider] ? `  [alias of ${ALIAS_MAP[t.provider]} — re-run: minitok auth login ${ALIAS_MAP[t.provider]}]` : "";
+    console.log("  " + t.provider.padEnd(16) + status + refresh + expiry + legacy);
+  }
   console.log("\nRun: minitok auth login <provider>  to add/update credentials");
   return 0;
 }
 
 async function cmdAuthLogout(provider) {
   if (!provider) { console.error("Usage: minitok auth logout <provider>"); return 1; }
-  const name = provider.toLowerCase(); tokenStore.remove(name); afterCredentialChange(); console.log("Logged out from " + name + "."); return 0;
+  const name = normalizeProvider(provider); tokenStore.remove(name); afterCredentialChange(); console.log("Logged out from " + name + "."); return 0;
 }
 
 function addCustomerLogin(command, description) {
@@ -78,7 +90,7 @@ function addCustomerLogin(command, description) {
 
 function register(program) {
   const authCmd = program.command("auth").description("Manage provider and customer authentication");
-  authCmd.command("login").description("Log in to an LLM provider (OAuth or API key)").argument("<provider>", "Provider name (anthropic, openai, google)").action(async provider => { process.exit(await cmdAuthLogin(provider)); });
+  authCmd.command("login").description("Log in to an LLM provider (OAuth or API key)").argument("<provider>", "Provider name (anthropic, openai, google; aliases claude, gpt, gemini accepted)").action(async provider => { process.exit(await cmdAuthLogin(provider)); });
   addCustomerLogin(authCmd, "Log in to the minitok customer account for billing commands");
   authCmd.command("status").description("Show stored credentials and their validity").action(async () => { process.exit(await cmdAuthStatus()); });
   authCmd.command("logout").description("Remove stored credentials for a provider").argument("<provider>", "Provider name").action(async provider => { process.exit(await cmdAuthLogout(provider)); });

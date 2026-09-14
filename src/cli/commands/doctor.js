@@ -6,6 +6,7 @@ const os = require("os");
 const { minitokVersion } = require("../../core/version");
 const { detectAvailableProviders } = require("../../llm/provider");
 const { loadConfig, resolveProviderName } = require("../../config/loader");
+const { normalizeProvider } = require("../../auth/aliases");
 const { checkEntitlement, GateState } = require("../../entitlement/gate");
 const { loadInstallationRecord } = require("../../entitlement/online");
 
@@ -96,8 +97,7 @@ async function cmdDoctor(opts = {}) {
   console.log(`\nRoles:`);
   for (const [role, cfg] of Object.entries(config.roles)) {
     const providerName = resolveProviderName(config, role);
-    const providerAliases = { claude: "anthropic", gpt: "openai", gemini: "google" };
-    const availableProviderName = providerAliases[providerName] || providerName;
+    const availableProviderName = normalizeProvider(providerName);
     const providerConfig = config.providers?.[availableProviderName] || config.providers?.[providerName] || {};
     const providerOk = providers.includes(availableProviderName) || cfg.adapter === "mock";
     const detail = providerOk

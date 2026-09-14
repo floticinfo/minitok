@@ -138,8 +138,13 @@ class RuntimeServer {
     } catch (err) {
       this._metrics.requests_failed++;
       this._metrics.last_error = { code: err.code || null, status: err.statusCode || 500, at: new Date().toISOString() };
-      if (req.method === "POST" && new URL(req.url, `http://${HOST}:${this._port}`).pathname === "/mcp" && err.statusCode === 400) return this._sendJson(res, 200, { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
-      this._sendJson(res, err.statusCode || 500, { error: err.statusCode === 413 ? "Request body too large" : err.statusCode === 400 ? "Malformed JSON" : "Internal error" });
+      // SyntaxError from JSON.parse or malformed request body is a client
+      // error (400), but plain Error objects carry no statusCode. Detect the
+      // common cases so clients receive an actionable status instead of 500.
+      const isClientError = err.statusCode === 400 || err.statusCode === 413 || err instanceof SyntaxError || err.code === "SyntaxError" || err.type === "entity.parse.failed";
+      const status = err.statusCode || (isClientError ? 400 : 500);
+      if (req.method === "POST" && new URL(req.url, `http://${HOST}:${this._port}`).pathname === "/mcp" && status === 400) return this._sendJson(res, 200, { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } });
+      this._sendJson(res, status, { error: status === 413 ? "Request body too large" : status === 400 ? "Malformed JSON" : "Internal error" });
     } finally {
       this._activeRequests--;
       this._resetIdleTimer();
@@ -279,22 +284,39 @@ class RuntimeServer {
   _acquireLock() {
     fs.mkdirSync(path.dirname(this._lockFile), { recursive: true, mode: 0o700 });
     const lock = JSON.stringify({ pid: process.pid, nonce: this._lockNonce, startedAt: new Date().toISOString() }) + "\n";
-    try {
-      const fd = fs.openSync(this._lockFile, "wx", 0o600);
-      try { fs.writeFileSync(fd, lock, { encoding: "utf8" }); } finally { fs.closeSync(fd); }
-      this._lockOwned = true;
-      return;
-    } catch (error) {
-      if (error?.code !== "EEXIST") throw error;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const fd = fs.openSync(this._lockFile, "wx", 0o600);
+        try { fs.writeFileSync(fd, lock, { encoding: "utf8" }); } finally { fs.closeSync(fd); }
+        this._lockOwned = true;
+        return;
+      } catch (error) {
+        if (error?.code !== "EEXIST") throw error;
+      }
+      const existing = this._readLock();
+      if (existing && this._pidIsRunning(existing.pid)) {
+        // A lock from a different host can never belong to this process; reclaim
+        // it immediately rather than blocking forever.
+        if (existing.host && existing.host !== os.hostname()) {
+          try { fs.unlinkSync(this._lockFile); } catch {}
+          continue;
+        }
+        // Stale lock: the owner PID may have been reused by the OS, but the
+        // lock's startedAt timestamp proves it belongs to an old process. Reclaim
+        // after 24 hours (well beyond any realistic runtime lifecycle).
+        if (existing.startedAt) {
+          const lockAge = Date.now() - new Date(existing.startedAt).getTime();
+          const STALE_LOCK_THRESHOLD_MS = 24 * 60 * 60 * 1000;
+          if (lockAge > STALE_LOCK_THRESHOLD_MS) {
+            try { fs.unlinkSync(this._lockFile); } catch {}
+            continue;
+          }
+        }
+        throw new Error("Runtime is already running");
+      }
+      try { fs.unlinkSync(this._lockFile); } catch {}
     }
-    const existing = this._readLock();
-    if (existing && this._pidIsRunning(existing.pid)) throw new Error("Runtime is already running");
-    try { fs.unlinkSync(this._lockFile); } catch {}
-    try {
-      const fd = fs.openSync(this._lockFile, "wx", 0o600);
-      try { fs.writeFileSync(fd, lock, { encoding: "utf8" }); } finally { fs.closeSync(fd); }
-      this._lockOwned = true;
-    } catch { throw new Error("Runtime is already running"); }
+    throw new Error("Runtime is already running");
   }
 
   _releaseLock() {
@@ -328,12 +350,20 @@ class RuntimeServer {
 
   _removePid() {
     let ownsPidFile = false;
+    let pidFileUnlinked = false;
     try {
       const value = JSON.parse(fs.readFileSync(this._pidFile, "utf8"));
       ownsPidFile = value?.pid === process.pid && value.nonce === this._pidNonce && value.tokenFile === this._tokenFile;
-      if (ownsPidFile) fs.unlinkSync(this._pidFile);
+      if (ownsPidFile) {
+        fs.unlinkSync(this._pidFile);
+        pidFileUnlinked = true;
+      }
     } catch {}
-    if (!ownsPidFile) return;
+    // Only remove the token file when the pid file was successfully deleted:
+    // if unlinkSync(pidFile) failed (AV scan, open handle), leaving the pid
+    // file behind while deleting the token creates a zombie entry that
+    // `runtime status` reports as "running" with no way to connect.
+    if (!ownsPidFile || !pidFileUnlinked) return;
     try { fs.unlinkSync(this._tokenFile); } catch {}
   }
 

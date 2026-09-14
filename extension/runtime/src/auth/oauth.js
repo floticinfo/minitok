@@ -20,6 +20,9 @@ const OAUTH_CONFIGS = {
     authorize_url: "https://console.anthropic.com/oauth/authorize",
     token_url: "https://console.anthropic.com/oauth/token",
     scope: "user:inference",
+    // client_id is required for the OAuth flow. An empty string is the same
+    // as missing: the exchange call would fail with a cryptic HTTP 400 from
+    // the token endpoint instead of a clear diagnostic message.
     client_id: process.env.ANTHROPIC_CLIENT_ID || "",
     client_secret: process.env.ANTHROPIC_CLIENT_SECRET || "",
   },
@@ -67,6 +70,9 @@ class OAuthFlow {
    */
   async authorize(provider, authConfig = {}) {
     const config = provider === "mcp" ? this._getMcpConfig(authConfig) : this._getConfig(provider, authConfig);
+    // Fail fast with a clear message instead of a cryptic HTTP 400 from the
+    // token endpoint when the environment variable is missing.
+    if (!config.client_id) throw new AuthError(`OAuth client_id is not configured for ${config.name}. Set the environment variable (ANTHROPIC_CLIENT_ID) or use API key authentication instead.`);
     const { codeVerifier, codeChallenge } = this._generatePKCE();
     const state = crypto.randomBytes(16).toString("hex");
 

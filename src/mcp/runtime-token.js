@@ -46,8 +46,14 @@ function writeRuntimeToken(record, filePath = DEFAULT_RUNTIME_TOKEN_FILE) {
     setOwnerOnlyPermissions(temp);
     fs.renameSync(temp, filePath);
     setOwnerOnlyPermissions(filePath);
-  } finally {
+  } catch (error) {
+    // Clean up the temporary file on failure. If rename succeeded the file
+    // no longer exists at `temp` and unlinkSync would throw ENOENT — swallowed.
+    // If rename failed, the temp file is left behind for diagnostic purposes
+    // when the error is a permissions or disk-space issue, but we still attempt
+    // cleanup to avoid orphaned temp files accumulating.
     try { fs.unlinkSync(temp); } catch {}
+    throw error;
   }
   return record;
 }

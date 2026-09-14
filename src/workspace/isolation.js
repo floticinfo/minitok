@@ -257,7 +257,7 @@ function applyWorkspaceDiff(repoRoot, isolatedRoot) {
   // destroy paid pipeline output — the user can re-apply it manually.
   const keptPatch = path.join(repoRoot, ".minitok", "last-run.patch");
   fs.mkdirSync(path.dirname(keptPatch), { recursive: true });
-    fs.writeFileSync(patchFile, patch, { encoding: "utf8", flag: "w", mode: 0o600 });
+    fs.writeFileSync(patchFile, patch, { encoding: "utf8", flag: "wx", mode: 0o600 });
     setOwnerOnlyPermissions(patchFile);
   try {
     execFileSync("git", ["apply", "--index", "--whitespace=nowarn", patchFile], { cwd: repoRoot, stdio: ["pipe", "pipe", "pipe"] });
