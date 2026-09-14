@@ -41,7 +41,10 @@ const node_child_process_1 = require("node:child_process");
 const node_crypto_1 = require("node:crypto");
 const workspace_1 = require("./workspace");
 const entitlement_1 = require("./entitlement");
+const device_auth_1 = require("./device-auth");
+const redaction_1 = require("./redaction");
 const CLI_TIMEOUT_MS = 1800000;
+const redactPanelOutput = redaction_1.redactSensitiveText;
 /**
  * Kill a child process and everything it spawned.
  * Windows needs taskkill /t; POSIX children are started detached so the whole
@@ -103,6 +106,7 @@ function runCli(cliPath, args, cwd, onProcess) {
     });
 }
 class minitokPanel {
+    context;
     static current;
     panel;
     extensionUri;
@@ -114,17 +118,87 @@ class minitokPanel {
             return;
         }
         const panel = vscode.window.createWebviewPanel("minitok", "minitok", vscode.ViewColumn.Beside, { enableScripts: true, retainContextWhenHidden: true });
-        minitokPanel.current = new minitokPanel(panel, context.extensionUri);
+        minitokPanel.current = new minitokPanel(panel, context.extensionUri, context);
     }
-    constructor(panel, extensionUri) {
+    constructor(panel, extensionUri, context) {
+        this.context = context;
         this.panel = panel;
         this.extensionUri = extensionUri;
         this.panel.webview.html = this.html();
-        this.panel.webview.onDidReceiveMessage(message => this.handle(message), null, this.disposables);
+        this.panel.webview.onDidReceiveMessage(message => {
+            void this.handle(message).catch(error => this.post(false, redactPanelOutput(String(error))));
+        }, null, this.disposables);
+        void this.authStatus();
         this.panel.onDidDispose(() => { minitokPanel.current = undefined; this.dispose(); }, null, this.disposables);
     }
+    async openBilling(kind) {
+        const session = await (0, device_auth_1.refreshExtensionSession)(this.context);
+        if (!session?.access_token) {
+            this.post(false, "Sign in before managing your plan.");
+            return;
+        }
+        const envName = "MINITOK_EXTENSION_CUSTOMER_TOKEN";
+        const env = { ...process.env, MINITOK_UPDATE_CHECK: "0", [envName]: session.access_token };
+        const spec = (0, workspace_1.spawnSpec)((0, workspace_1.cliPath)(), [kind, "--token-env", envName, "--json"]);
+        (0, node_child_process_1.execFile)(spec.command, spec.args, { ...(0, workspace_1.spawnOptionsFor)(spec, { cwd: (0, workspace_1.workspacePath)(), env }), timeout: 30000 }, async (error, stdout, stderr) => {
+            delete env[envName];
+            if (error) {
+                this.post(false, redactPanelOutput(stderr || error.message));
+                return;
+            }
+            try {
+                const result = JSON.parse(String(stdout).trim());
+                const target = kind === "checkout" ? result.checkout_url : result.portal_url;
+                if (!target || !/^https:\/\//i.test(target))
+                    throw new Error("Billing service returned an invalid URL");
+                await vscode.env.openExternal(vscode.Uri.parse(target));
+                this.post(true, kind === "checkout" ? "Checkout opened in your browser." : "Billing portal opened in your browser.");
+            }
+            catch (parseError) {
+                this.post(false, redactPanelOutput(parseError instanceof Error ? parseError.message : String(parseError)));
+            }
+        });
+    }
+    async authStatus() {
+        const session = await (0, device_auth_1.refreshExtensionSession)(this.context);
+        if (!session) {
+            this.postAuth("signed-out", false, false, "Sign in to continue.");
+            return;
+        }
+        (0, entitlement_1.invalidateEntitlementCache)();
+        const result = await (0, entitlement_1.checkEntitlement)();
+        this.postAuth(result.allowed ? "authenticated" : "not-entitled", true, result.allowed, result.allowed ? `Signed in with ${result.plan} plan.` : (result.message || "An active paid plan is required."));
+    }
+    postAuth(state, authenticated, entitled, text) {
+        this.panel.webview.postMessage({ type: "auth-state", state, authenticated, entitled, text: redactPanelOutput(text) });
+    }
     async handle(message) {
-        if (!message || !["status", "run", "dry-run", "stop"].includes(message.command)) {
+        if (message?.command === "auth-status") {
+            await this.authStatus();
+            return;
+        }
+        if (message?.command === "device-login") {
+            try {
+                await (0, device_auth_1.deviceLogin)(this.context, text => this.postAuth("checking", false, false, text));
+                (0, entitlement_1.invalidateEntitlementCache)();
+                await this.authStatus();
+            }
+            catch (error) {
+                this.postAuth("refresh-failed", false, false, (0, device_auth_1.authErrorText)(error));
+            }
+            return;
+        }
+        if (message?.command === "activate" || message?.command === "manage-plan") {
+            await this.openBilling(message.command === "activate" ? "checkout" : "portal");
+            return;
+        }
+        if (message?.command === "device-logout") {
+            const remoteRevoked = await (0, device_auth_1.logoutExtension)(this.context);
+            (0, entitlement_1.invalidateEntitlementCache)();
+            this.postAuth("signed-out", false, false, remoteRevoked ? "Signed out locally and from the server." : "Signed out locally. The server session could not be revoked; sign in again when online.");
+            return;
+        }
+        if (!message || !["status", "run", "dry-run", "stop", "activate", "manage-plan"].includes(message.command)) {
             this.post(false, "Unsupported command");
             return;
         }
@@ -139,21 +213,24 @@ class minitokPanel {
             // onDidReceiveMessage callback ignores the promise this method returns,
             // so a throw here became an unhandled rejection and the webview never
             // received any feedback at all.
-            (0, workspace_1.requireTrustedWorkspace)(cwd);
             if (message.command === "stop") {
                 this.stopProcess();
                 this.post(true, "Run stopped.");
                 return;
             }
-            await (0, entitlement_1.requireEntitlement)();
-            if (message.command === "status")
-                this.post(true, await runCli(cli, ["status", "--repo", cwd], cwd, child => { this.process = child; }));
+            if (message.command === "status") {
+                const statusArgs = cwd ? ["status", "--repo", cwd] : ["status"];
+                this.post(true, await runCli(cli, statusArgs, cwd, child => { this.process = child; }));
+            }
             else {
+                (0, workspace_1.requireTrustedWorkspace)(cwd);
+                await (0, entitlement_1.requireEntitlement)();
                 if (!message.task?.trim())
                     throw new Error("Task description required");
                 if (this.process)
                     throw new Error("A minitok run is already active");
-                const args = ["run", message.task, "--repo", cwd];
+                const evidencePath = vscode.workspace.getConfiguration("minitok").get("evidencePath", ".minitok/evidence/runs/latest.json").trim() || ".minitok/evidence/runs/latest.json";
+                const args = ["run", message.task, "--repo", cwd, "--evidence-path", evidencePath];
                 if (message.command === "dry-run")
                     args.push("--dry-run");
                 else if ((0, workspace_1.autoApprove)())
@@ -171,15 +248,23 @@ class minitokPanel {
                 }
                 const output = await runCli(cli, args, cwd, child => { this.process = child; });
                 const evidence = cwd ? this.readEvidence(cwd) : null;
-                this.post(true, `${output}\n${evidence ? `Evidence: ${JSON.stringify(evidence, null, 2)}` : "Evidence unavailable"}`);
+                this.post(true, `${redactPanelOutput(output)}\n${evidence ? `Evidence: ${JSON.stringify(evidence, null, 2)}` : "Evidence unavailable"}`);
             }
         }
         catch (error) {
-            this.post(false, String(error));
+            this.post(false, redactPanelOutput(String(error)));
         }
     }
+    evidenceFile(cwd) {
+        const configured = vscode.workspace.getConfiguration("minitok").get("evidencePath", ".minitok/evidence/runs/latest.json").trim() || ".minitok/evidence/runs/latest.json";
+        const file = path.resolve(cwd, configured);
+        const root = path.resolve(cwd) + path.sep;
+        if (file !== path.resolve(cwd) && !file.startsWith(root))
+            throw new Error("minitok.evidencePath must stay inside the workspace");
+        return file;
+    }
     readEvidence(cwd) {
-        const file = path.join(cwd, ".minitok", "evidence", "runs", "latest.json");
+        const file = this.evidenceFile(cwd);
         try {
             return JSON.parse(fs.readFileSync(file, "utf8"));
         }
@@ -195,7 +280,7 @@ class minitokPanel {
             return;
         killProcessTree(child);
     }
-    post(ok, text) { this.panel.webview.postMessage({ ok, text }); }
+    post(ok, text) { this.panel.webview.postMessage({ ok, text: redactPanelOutput(text) }); }
     html() { const nonce = (0, node_crypto_1.randomBytes)(16).toString("base64"); const source = fs.readFileSync(path.join(this.extensionUri.fsPath, "src", "panel.html"), "utf8"); return source.replaceAll("{{nonce}}", nonce).replace("{{cspSource}}", this.panel.webview.cspSource); }
     dispose() { this.stopProcess(); while (this.disposables.length)
         this.disposables.pop()?.dispose(); this.panel.dispose(); }

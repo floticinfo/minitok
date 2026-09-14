@@ -4,6 +4,7 @@ const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
 const { runtimeTokenPath, ensureRuntimeToken } = require("../../mcp/runtime-token");
+const { resolveServerUrl } = require("./server-config");
 
 const LOCK_STALE_MS = 30000;
 
@@ -63,11 +64,27 @@ function resolveHost(name, override) {
   );
 }
 
+function configuredScopes(file) {
+  try {
+    const data = readConfig(file);
+    const container = serverContainer(data);
+    const entry = container.value?.minitok;
+    const raw = entry && typeof entry === "object" ? entry.env?.MINITOK_MCP_SCOPES : undefined;
+    const explicit = typeof raw === "string" && raw.trim().length > 0;
+    const scopes = explicit ? [...new Set(raw.split(",").map(scope => scope.trim()).filter(Boolean))] : ["read"];
+    const allowed = ["read", "write", "auto_accept", "verify_exec"];
+    return { scopes, scopes_explicit: explicit, scopes_source: explicit ? "explicit" : "default", invalid_scopes: scopes.filter(scope => !allowed.includes(scope)) };
+  } catch (error) {
+    return { scopes: [], invalid_scopes: [], scope_error: error.message };
+  }
+}
+
 function detect() {
   const candidates = hostCandidates();
   return Object.entries(candidates).map(([name, list]) => {
     const file = list.find(candidate => fs.existsSync(candidate)) || list[0];
-    return { name, file, detected: fs.existsSync(file), candidates: list };
+    const row = { name, file, detected: fs.existsSync(file), candidates: list };
+    return row.detected ? { ...row, ...configuredScopes(file) } : row;
   });
 }
 
@@ -243,6 +260,16 @@ function writeConfig(file, data, options = {}) {
     throw error;
   } finally { try { releaseLock(lock, owner); } catch {} }
 }
+function configuredServerUrl(file) {
+  try {
+    const data = readConfig(file);
+    const entry = serverContainer(data).value?.minitok;
+    const value = entry && typeof entry === "object" ? entry.env?.minitok_server_url : undefined;
+    return typeof value === "string" && value.trim() ? value : undefined;
+  } catch {
+    return undefined;
+  }
+}
 function planChange(file, action, options = {}) {
   const data = readConfig(file);
   const container = serverContainer(data);
@@ -251,10 +278,19 @@ function planChange(file, action, options = {}) {
 
   if (action === "connect") {
     const tokenFile = options.tokenFile || runtimeTokenPath();
-    const env = { MINITOK_MCP_AUTH_TOKEN_FILE: tokenFile };
+    const existingEntry = container.value?.minitok;
+    const existingServer = existingEntry && typeof existingEntry === "object" ? existingEntry.env?.minitok_server_url : undefined;
+    const serverUrl = options.serverUrl || (typeof existingServer === "string" && existingServer.trim() ? existingServer : resolveServerUrl());
+    const env = { MINITOK_MCP_AUTH_TOKEN_FILE: tokenFile, minitok_server_url: serverUrl };
     // The grant has to travel in the MCP server's environment: the transport
     // reads it at startup, and options.permissions is only reachable in-process.
-    if (options.scopes) env.MINITOK_MCP_SCOPES = options.scopes;
+    // Reconnects without --scopes are non-destructive: retain the existing grant.
+    if (options.scopes !== undefined && options.scopes !== null) env.MINITOK_MCP_SCOPES = options.scopes;
+    else {
+      const existing = container.value?.minitok;
+      const previous = existing && typeof existing === "object" ? existing.env?.MINITOK_MCP_SCOPES : undefined;
+      if (typeof previous === "string" && previous.trim()) env.MINITOK_MCP_SCOPES = previous;
+    }
     servers.minitok = {
       command: process.execPath,
       args: [path.resolve(__dirname, "../../runtime/stdio-entry.js")],
@@ -298,10 +334,12 @@ function register(program) {
   const mcp = program.command("mcp");
 
   mcp.command("status")
+    .option("--server <url>", "minitok server URL")
     .option("--json")
     .action(opts => {
-      /** @type {Array<{ name: string, file: string, detected: boolean, candidates?: string[], reason?: string | null, action?: string | null }>} */
+      /** @type {Array<{ name: string, file: string, detected: boolean, candidates?: string[], scopes?: string[], scopes_explicit?: boolean, scopes_source?: string, invalid_scopes?: string[], scope_error?: string, reason?: string | null, action?: string | null }>} */
       const rows = detect();
+      rows.unshift({ name: "server", file: resolveServerUrl({ cliServer: opts.server }), detected: true });
       // The token row explains a class of silent failure: an MCP host is configured
       // with a token file that readRuntimeToken refuses (outside ~/.minitok/mcp/, or
       // an expired/revoked record), so every call fails with AUTH_REQUIRED while the
@@ -318,6 +356,11 @@ function register(program) {
           continue;
         }
         console.log(`${row.name}: ${row.detected ? "detected" : "not found"} (${row.file})`);
+        if (row.detected && row.scopes) {
+          console.log(`  scopes: ${row.scopes.join(",") || "none"} (${row.scopes_source || "default"})`);
+          if (row.invalid_scopes?.length) console.log(`  invalid scopes: ${row.invalid_scopes.join(",")}`);
+          if (row.scope_error) console.log(`  scope error: ${row.scope_error}`);
+        }
       }
     });
 
@@ -339,6 +382,7 @@ function register(program) {
       .option("--host-file <path>", "write this host configuration file instead of the detected one")
       .option("--rollback", "restore the previous configuration on failure")
       .option("--scopes <scopes>", "local MCP scopes to grant (read,write,auto_accept,verify_exec)")
+      .option("--server <url>", "minitok server URL")
       .action(async (host, opts) => {
         const target = resolveHost(host, opts.hostFile);
         const file = target.file;
@@ -354,14 +398,15 @@ function register(program) {
           : null;
 
         let tokenFile;
+        const effectiveServerUrl = opts.server ? resolveServerUrl({ cliServer: opts.server }) : configuredServerUrl(file) || resolveServerUrl();
         if (action === "connect" && !(opts.dryRun || opts.preview)) {
           const { authorizeEntitlement } = require("../../entitlement/policy");
-          const entitlement = await authorizeEntitlement();
+          const entitlement = await authorizeEntitlement({ serverUrl: effectiveServerUrl });
           if (!entitlement.allowed) throw new Error(entitlement.message || "An active paid entitlement is required");
           tokenFile = ensureRuntimeToken({});
         }
 
-        const plan = planChange(file, action, { tokenFile: tokenFile?.path || runtimeTokenPath(), scopes });
+        const plan = planChange(file, action, { tokenFile: tokenFile?.path || runtimeTokenPath(), scopes, serverUrl: opts.server ? effectiveServerUrl : undefined });
         if (!plan.changed && !opts.force) {
           console.log(`${action === "connect" ? "Already connected" : "Already disconnected"} ${host}`);
           return;
@@ -370,7 +415,9 @@ function register(program) {
           console.log(JSON.stringify({ action, host, file, schema: plan.schema, changed: plan.changed, backup: opts.backup !== false ? plan.backup : null, keepBackup: opts.keepBackup === true, scopes: action === "connect" ? scopes : null }));
           return;
         }
-        writeConfig(file, plan.data, { backup: opts.backup !== false, keepBackup: opts.keepBackup === true, rollback: opts.rollback === true });
+        const backupRequested = opts.backup !== false;
+        const hadPreviousConfig = fs.existsSync(file);
+        writeConfig(file, plan.data, { backup: backupRequested, keepBackup: opts.keepBackup === true, rollback: opts.rollback === true });
         if (action === "disconnect") {
           // Only the last host holding the record revokes it: the token file is
           // shared, so disconnecting one editor must not sign out the others.
@@ -381,7 +428,9 @@ function register(program) {
           }
         }
         console.log(`${action === "connect" ? "Connected" : "Disconnected"} minitok ${action === "connect" ? "to" : "from"} ${host} (${file})`);
-        if (opts.keepBackup === true && fs.existsSync(plan.backup)) console.log(`Backup: ${plan.backup}`);
+        if (hadPreviousConfig && backupRequested && opts.keepBackup === true && fs.existsSync(plan.backup)) console.log(`Backup: ${plan.backup}`);
+        else if (hadPreviousConfig && backupRequested) console.log("Backup: not retained (use --keep-backup to keep the restore point).");
+        else console.log(`Backup: none (${hadPreviousConfig ? "disabled by --no-backup" : "new configuration"}).`);
       });
   }
 
@@ -391,9 +440,10 @@ function register(program) {
   // step that the editor can call before a handshake.
   mcp.command("token")
     .description("Ensure the local MCP runtime token is valid, rotating it when missing or expired")
-    .action(async () => {
+    .option("--server <url>", "minitok server URL")
+    .action(async opts => {
       const { authorizeEntitlement } = require("../../entitlement/policy");
-      const entitlement = await authorizeEntitlement();
+      const entitlement = await authorizeEntitlement({ serverUrl: resolveServerUrl({ cliServer: opts.server }) });
       if (!entitlement.allowed) throw new Error(entitlement.message || "An active paid entitlement is required");
       const { ensureRuntimeToken } = require("../../mcp/runtime-token");
       const record = ensureRuntimeToken({});
@@ -402,4 +452,4 @@ function register(program) {
       console.log(JSON.stringify({ status: "ok", path: record.path, expires_at: new Date(record.expires_at).toISOString() }));
     });
 }
-module.exports = { register, detect, readConfig, writeConfig, configs, serverContainer, planChange, readLock, processIsRunning, hostCandidates, resolveHost, configuredTokenFiles };
+module.exports = { register, detect, configuredScopes, readConfig, writeConfig, configs, serverContainer, configuredServerUrl, planChange, readLock, processIsRunning, hostCandidates, resolveHost, configuredTokenFiles };

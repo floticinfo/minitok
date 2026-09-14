@@ -18,6 +18,7 @@ const { applyChanges, DEFAULT_BLOCKED_EXTENSIONS } = require(path.join(ROOT, "sr
 const loopSource = fs.readFileSync(path.join(ROOT, "src", "pipeline", "loop.js"), "utf8");
 const providerSource = fs.readFileSync(path.join(ROOT, "src", "llm", "provider.js"), "utf8");
 const migrateSource = fs.readFileSync(path.join(ROOT, "src", "cli", "commands", "migrate.js"), "utf8");
+const runSource = fs.readFileSync(path.join(ROOT, "src", "cli", "commands", "run.js"), "utf8");
 
 test("the built-in blocked extensions stay a floor when configuration is merged", () => {
   const repo = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-blocked-"));
@@ -77,6 +78,63 @@ test("the pipeline consumes the options the CLI and configuration expose", () =>
   // One occurrence per provider request: Anthropic, OpenAI, Google, and custom.
   assert.equal((providerSource.match(/timeout_ms: options\.timeout_ms/g) || []).length, 4, "every provider request carries the role budget");
   assert.match(providerSource, /const requestedTimeout = Number\.isFinite\(Number\(opts\.timeout_ms\)\)/);
+});
+
+test("role provider and model environment overrides reach the loaded config", () => {
+  const names = ["MINITOK_PLAN_PROVIDER", "MINITOK_PLAN_MODEL", "MINITOK_MODEL"];
+  const previous = Object.fromEntries(names.map(name => [name, process.env[name]]));
+  try {
+    process.env.MINITOK_PLAN_PROVIDER = "openai";
+    process.env.MINITOK_PLAN_MODEL = "gpt-test";
+    process.env.MINITOK_MODEL = "fallback-model";
+    const config = loadConfig(path.join(os.tmpdir(), "minitok-does-not-exist.yml"));
+    assert.equal(config.roles.plan.provider, "openai");
+    assert.equal(config.roles.plan.model, "gpt-test");
+    assert.equal(config.model, "fallback-model");
+  } finally {
+    for (const name of names) {
+      if (previous[name] === undefined) delete process.env[name];
+      else process.env[name] = previous[name];
+    }
+  }
+});
+
+test("CLI role adapter overrides win over default_provider in preflight and pipeline", () => {
+  assert.match(runSource, /preflightRoles\.roles\[role\][\s\S]{0,180}provider: adapter\.trim\(\), adapter: adapter\.trim\(\)/);
+  assert.match(loopSource, /config\.roles\[role\] = \{ \.\.\.config\.roles\[role\], provider: adapter\.trim\(\), adapter: adapter\.trim\(\) \}/);
+});
+
+test("research-disabled preflight skips the intel role", () => {
+  assert.match(runSource, /const researchEnabled = preflightRoles\.execution\?\.research_enabled !== false/);
+  assert.match(runSource, /filter\(role => researchEnabled \|\| role !== "intel"\)/);
+});
+
+test("provider aliases are normalized before discovery and role resolution", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-provider-alias-"));
+  const file = path.join(dir, "minitok.yml");
+  try {
+    fs.writeFileSync(file, "default_provider: gpt\nproviders:\n  gpt:\n    api_key: configured\nroles:\n  plan:\n    provider: claude\n");
+    const config = loadConfig(file);
+    assert.equal(config.default_provider, "openai");
+    assert.equal(config.roles.plan.provider, "anthropic");
+    assert.ok(config.providers.openai);
+    assert.equal(config.providers.gpt, undefined);
+  } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+});
+
+test("unknown roles fail configuration validation instead of being ignored", () => {
+  assert.throws(() => loadConfig(path.join(os.tmpdir(), "minitok-unknown-role.yml"), { roles: { coding: {} } }), /Unknown role 'coding'/);
+});
+
+test("default_provider must be a string", () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-config-type-"));
+  const file = path.join(dir, "minitok.yml");
+  try {
+    fs.writeFileSync(file, "default_provider: 123\n");
+    assert.throws(() => loadConfig(file), /default_provider must be a string/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
 });
 
 test("configuration no longer advertises role options without a consumer", () => {

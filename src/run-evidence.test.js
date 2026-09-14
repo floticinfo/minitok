@@ -79,6 +79,20 @@ test('repeated runs update latest while retaining individual artifacts', async (
   await fs.access(path.join(workspaceRoot, '.minitok/evidence/runs/run-two.json'));
 });
 
+test('supports a workspace-relative custom evidence path', async () => {
+  const workspaceRoot = await temporaryWorkspace();
+  const evidencePath = '.minitok/custom/latest.json';
+  await recordRunEvidence(sample({ workspaceRoot, run_id: 'custom-path' }), { evidencePath });
+  const latest = await readRunEvidence(workspaceRoot, { evidencePath });
+  assert.equal(latest.run_id, 'custom-path');
+  await fs.access(path.join(workspaceRoot, evidencePath));
+});
+
+test('rejects evidence paths outside the workspace', async () => {
+  const workspaceRoot = await temporaryWorkspace();
+  await assert.rejects(() => recordRunEvidence(sample({ workspaceRoot }), { evidencePath: '../outside.json' }), /stay inside the workspace/);
+});
+
 test('reports malformed existing evidence', async () => {
   const workspaceRoot = await temporaryWorkspace();
   const file = path.join(workspaceRoot, '.minitok/evidence/runs/latest.json');

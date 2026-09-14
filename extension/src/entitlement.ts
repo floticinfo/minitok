@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { cliPath, workspacePath, requireTrustedWorkspace, spawnSpec, spawnOptionsFor } from "./workspace";
+import { cliPath, workspacePath, spawnSpec, spawnOptionsFor } from "./workspace";
 
 export type EntitlementState = { checked: boolean; allowed: boolean; plan?: string | null; message?: string; cached?: boolean };
 
@@ -28,10 +28,12 @@ export function checkEntitlement(): Promise<EntitlementState> {
     return Promise.resolve({ ...cachedDecision.state, cached: true });
   }
   return new Promise(resolve => {
-    const settle = (state: EntitlementState) => { cachedDecision = { at: Date.now(), state }; resolve(state); };
-    try { requireTrustedWorkspace(workspacePath()); } catch (error) { settle({ checked: true, allowed: false, message: error instanceof Error ? error.message : String(error) }); return; }
+    let settled = false;
+    const settle = (state: EntitlementState) => { if (settled) return; settled = true; cachedDecision = { at: Date.now(), state }; resolve(state); };
     const spec = spawnSpec(cliPath(), ["status", "--json"]);
-    const child = spawn(spec.command, spec.args, spawnOptionsFor(spec, { cwd: workspacePath() }));
+    let child: import("node:child_process").ChildProcessWithoutNullStreams;
+    try { child = spawn(spec.command, spec.args, spawnOptionsFor(spec, { cwd: workspacePath() })); }
+    catch (error) { settle({ checked: true, allowed: false, message: error instanceof Error ? error.message : String(error) }); return; }
     let stdout = "";
     let stderr = "";
     const timer = setTimeout(() => { child.kill(); settle({ checked: true, allowed: false, message: "Entitlement check timed out" }); }, 30000);

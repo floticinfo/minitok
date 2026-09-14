@@ -20,6 +20,7 @@ const assert = require("node:assert/strict");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
+const { TEST_AUTHORIZATION } = require("../src/pipeline/test-seam");
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "mt-exit-"));

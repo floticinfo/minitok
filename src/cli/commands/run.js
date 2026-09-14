@@ -3,7 +3,16 @@
 const { WorkspaceManager } = require("../../workspace/manager");
 const { runPipeline } = require("../../pipeline/loop");
 const { normalizeProvider } = require("../../auth/aliases");
+const { PREAUTHORIZED } = require("../../pipeline/authorization");
 const path = require("path");
+
+function classifyProviderHealth(name, available, health) {
+  if (!available.includes(name)) return "absent";
+  if (!health.has(name)) return "unprobed";
+  const status = health.get(name)?.status;
+  if (["ok", "skipped", "invalid", "network_error", "absent"].includes(status)) return status;
+  return "error";
+}
 
 async function cmdRun(task, opts) {
   if (!task) {
@@ -30,8 +39,10 @@ async function cmdRun(task, opts) {
     // Preflight: fail fast with a setup guide when no provider credentials exist,
   // or when a provider key is rejected by the API (401/403). Otherwise
   // runPipeline would burn cycles and only fail at the first real request.
+  let preflightAuthorized = opts.authorization === PREAUTHORIZED;
   try {
     const { loadConfig, resolveProviderName } = require("../../config/loader");
+    const { authorizeEntitlement } = require("../../entitlement/policy");
     const { detectAvailableProviders, verifyCredentials } = require("../../llm/provider");
     let preflightConfig;
     try {
@@ -41,6 +52,19 @@ async function cmdRun(task, opts) {
       // pipeline would otherwise proceed with defaults the user never wrote.
       console.error(`Error: ${configError.message}`);
       return 1;
+    }
+    // Authorization must precede every provider network probe. A provider health
+    // check is still billable/observable provider work, so an unentitled run must
+    // fail before detectAvailableProviders or verifyCredentials can contact an API.
+    if (opts.authorization !== PREAUTHORIZED) {
+      let gate;
+      try { gate = await authorizeEntitlement({ serverUrl: opts.serverUrl }); }
+      catch (error) { console.error(`Error: Entitlement check failed: ${error instanceof Error ? error.message : String(error)}`); return 1; }
+      if (!gate.allowed) {
+        console.error(`Error: Entitlement ${gate.state}: ${gate.message}`);
+        return 1;
+      }
+      preflightAuthorized = true;
     }
     const available = await detectAvailableProviders(preflightConfig);
     if (available.length === 0) {
@@ -64,8 +88,18 @@ async function cmdRun(task, opts) {
     // `minitok doctor --verify` is the command that audits all of them.
     const canonical = normalizeProvider;
     const override = canonical(opts.providerOverride);
-    const roleNames = Object.keys(preflightConfig.roles || {});
-    let needed = [...new Set(roleNames.map(role => canonical(resolveProviderName(preflightConfig, role, opts.providerOverride))).filter(Boolean))];
+    const adapterOverrides = { work: opts.codingAdapter, intel: opts.researchAdapter, review: opts.reviewAdapter };
+    const preflightRoles = JSON.parse(JSON.stringify(preflightConfig));
+    for (const [role, adapter] of Object.entries(adapterOverrides)) {
+      if (typeof adapter !== "string" || !adapter.trim()) continue;
+      preflightRoles.roles = preflightRoles.roles || {};
+      // Match runPipeline: a CLI role-adapter flag is an explicit provider
+      // choice and must win over default_provider during preflight too.
+      preflightRoles.roles[role] = { ...(preflightRoles.roles[role] || {}), provider: adapter.trim(), adapter: adapter.trim() };
+    }
+    const researchEnabled = preflightRoles.execution?.research_enabled !== false;
+    const roleNames = Object.keys(preflightRoles.roles || {}).filter(role => researchEnabled || role !== "intel");
+    let needed = [...new Set(roleNames.map(role => canonical(resolveProviderName(preflightRoles, role, opts.providerOverride))).filter(Boolean))];
     if (override) needed = [override];
     // Nothing selects a provider anywhere -> the pipeline auto-detects, so every
     // available provider is a live candidate and each one has to be healthy.
@@ -73,22 +107,21 @@ async function cmdRun(task, opts) {
 
     const health = new Map();
     for (const name of needed) {
-      health.set(name, await verifyCredentials(name, preflightConfig.providers?.[name] || {}));
+      health.set(name, await verifyCredentials(name, preflightRoles.providers?.[name] || preflightConfig.providers?.[name] || {}));
     }
-    const statusOf = (name) => {
-      if (!available.includes(name)) return "absent";
-      if (!health.has(name)) return "unprobed";
-      return (health.get(name) || {}).status === "invalid" ? "dead" : "ok";
-    };
-    const neededOk = needed.filter(name => statusOf(name) === "ok");
+    const statusOf = (name) => classifyProviderHealth(name, available, health);
+    const blocking = needed.filter(name => !["ok", "skipped"].includes(statusOf(name)));
     const alternatives = available.filter(name => !needed.includes(name));
 
-    if (neededOk.length === 0) {
-      console.error("Error: no usable LLM provider for the configured roles (401/403 on every candidate):\n");
-      for (const name of needed) {
+    const skipped = needed.filter(name => statusOf(name) === "skipped");
+    if (skipped.length > 0) console.warn(`[warn] provider preflight skipped for local/no-auth provider(s): ${skipped.join(", ")}`);
+
+    if (blocking.length > 0) {
+      console.error("Error: one or more providers required by the configured roles are not ready:\n");
+      for (const name of blocking) {
         const state = statusOf(name);
-        const detail = state === "dead" ? (health.get(name) || {}).detail || "key rejected" : "no credentials configured";
-        console.error(`  ${name}: ${detail}`);
+        const detail = health.get(name)?.detail || (state === "absent" ? "no credentials configured" : "provider preflight failed");
+        console.error(`  ${name}: ${state} — ${detail}`);
       }
       if (alternatives.length > 0) {
         console.error(`\nOther configured providers: ${alternatives.join(", ")} (not probed)`);
@@ -100,10 +133,7 @@ async function cmdRun(task, opts) {
       return 1;
     }
 
-    const deadNeeded = needed.filter(name => statusOf(name) === "dead");
-    if (deadNeeded.length > 0) {
-      console.warn(`[warn] some roles point at a rejected provider (${deadNeeded.join(", ")}); they will fail unless failover is configured.`);
-    }
+
   } catch (preflightError) {
     if (preflightError && preflightError.code) throw preflightError;
     // Config load failure surfaces below with full context; do not mask it.
@@ -112,6 +142,11 @@ async function cmdRun(task, opts) {
   try {
     const result = await runPipeline(task, {
       repoRoot,
+      // cmdRun already performed the gate before provider preflight. Pass the
+      // internal authorization marker so runPipeline does not perform a second
+      // network validation after the provider checks.
+      authorization: preflightAuthorized ? PREAUTHORIZED : opts.authorization,
+      serverUrl: opts.serverUrl,
       dryRun: opts.dryRun,
       // Approval and cancellation options must reach the pipeline. They were
       // parsed by the CLI and then dropped here, so the documented
@@ -120,6 +155,7 @@ async function cmdRun(task, opts) {
       // non-TTY run refused every change for lack of a terminal.
       approvalFile: opts.approvalFile,
       approvalTimeoutMs: Number.isFinite(Number(opts.approvalTimeoutMs)) ? Number(opts.approvalTimeoutMs) : undefined,
+      evidencePath: typeof opts.evidencePath === "string" ? opts.evidencePath : undefined,
       runId: typeof opts.runId === "string" ? opts.runId : undefined,
       signal: opts.signal,
       autoAccept: opts.autoAccept,
@@ -157,4 +193,4 @@ async function cmdRun(task, opts) {
   }
 }
 
-module.exports = { cmdRun };
+module.exports = { cmdRun, classifyProviderHealth };

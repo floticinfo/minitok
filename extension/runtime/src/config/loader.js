@@ -10,9 +10,12 @@ const path = require("path");
 const os = require("os");
 const yaml = require("js-yaml");
 const { ConfigError } = require("../core/errors");
+const { normalizeProvider } = require("../auth/aliases");
 
 const ENV_ALLOWLIST = new Set([
-  "minitok_offline", "minitok_default_provider", "minitok_server_url",
+  "minitok_offline", "minitok_default_provider", "minitok_model", "minitok_server_url",
+  "minitok_plan_provider", "minitok_plan_model", "minitok_review_provider", "minitok_review_model",
+  "minitok_work_provider", "minitok_work_model", "minitok_intel_provider", "minitok_intel_model",
   "minitok_project_name", "minitok_project_stack",
   "minitok_budget_max_cycles", "minitok_budget_token_budget", "minitok_budget_max_cycles_hard_limit",
   "minitok_budget_token_hard_limit", "minitok_budget_stagnation_limit",
@@ -90,6 +93,15 @@ function loadEnvVars() {
   const envPaths = {
     offline: ["offline"],
     default_provider: ["default_provider"],
+    model: ["model"],
+    plan_provider: ["plan", "provider"],
+    plan_model: ["plan", "model"],
+    review_provider: ["review", "provider"],
+    review_model: ["review", "model"],
+    work_provider: ["work", "provider"],
+    work_model: ["work", "model"],
+    intel_provider: ["intel", "provider"],
+    intel_model: ["intel", "model"],
     project_name: ["project", "name"],
     project_stack: ["project", "stack"],
     budget_max_cycles: ["budget", "max_cycles"],
@@ -155,13 +167,12 @@ function loadYaml(filePath) {
 function resolveProviderName(config, role, override) {
   const providers = config?.providers || {};
   const roleConfig = config?.roles?.[role] || {};
-  // Priority: explicit override > role provider > role adapter > default_provider
-  // > first configured provider. The role adapter fallback is a deliberate
-  // backwards-compatibility contract (tests/test-providers-tiers.js: "uses
-  // legacy adapter before default for compatibility"); provider aliases such as
-  // "claude"/"gpt"/"gemini" are resolved by createProvider(), so it cannot
-  // mis-route a role.
-  return override || roleConfig.provider || roleConfig.adapter || config?.default_provider || Object.keys(providers)[0] || "";
+  // Priority: explicit override > role provider > explicit default_provider
+  // > configured legacy adapter > first configured provider. A default adapter
+  // from the built-in defaults must not hide the only provider the user added.
+  if (override || roleConfig.provider || config?.default_provider) return override || roleConfig.provider || config.default_provider;
+  const configuredAdapter = typeof roleConfig.adapter === "string" && Object.prototype.hasOwnProperty.call(providers, roleConfig.adapter) ? roleConfig.adapter : "";
+  return configuredAdapter || Object.keys(providers)[0] || roleConfig.adapter || "";
 }
 
 // Provider names reach storage paths, keychain commands and shell arguments.
@@ -172,6 +183,31 @@ const UNSAFE_PROVIDER_NAME_PATTERN = /['"`$;|&()<>\r\n\t\\]|\.\./;
 function assertSafeProviderName(name, label) {
   if (typeof name !== "string" || !name.trim()) return; // unset values fall through to the next source
   if (UNSAFE_PROVIDER_NAME_PATTERN.test(name)) throw new ConfigError(`${label} ${JSON.stringify(name.slice(0, 40))} contains characters that are not allowed in a provider name`);
+}
+
+function normalizeProviderConfig(config) {
+  if (!config || typeof config !== "object") return config;
+  if (config.providers && typeof config.providers === "object" && !Array.isArray(config.providers)) {
+    const providers = Object.create(null);
+    const aliases = [];
+    for (const [name, value] of Object.entries(config.providers)) {
+      const canonical = normalizeProvider(name);
+      if (canonical === name.toLowerCase()) providers[canonical] = value;
+      else aliases.push([canonical, value]);
+    }
+    // A canonical key is authoritative when both `gpt` and `openai` exist.
+    for (const [canonical, value] of aliases) if (!Object.prototype.hasOwnProperty.call(providers, canonical)) providers[canonical] = value;
+    config.providers = providers;
+  }
+  for (const role of Object.values(config.roles || {})) {
+    if (!role || typeof role !== "object") continue;
+    // `provider` selects a configured provider and is canonicalized. `adapter` is
+    // a legacy display/fallback field; preserve aliases such as `claude` there so
+    // generated configs and existing callers keep their established contract.
+    if (typeof role.provider === "string" && role.provider.trim()) role.provider = normalizeProvider(role.provider);
+  }
+  if (typeof config.default_provider === "string" && config.default_provider.trim()) config.default_provider = normalizeProvider(config.default_provider);
+  return config;
 }
 
 function validateConfig(config) {
@@ -188,10 +224,12 @@ function validateConfig(config) {
   }
   if (config.roles !== undefined && (typeof config.roles !== "object" || Array.isArray(config.roles))) throw new ConfigError("roles must be a mapping");
   for (const [role, value] of Object.entries(config.roles || {})) {
-    if (!_ROLE_KEYS.has(role) || !value || typeof value !== "object" || Array.isArray(value)) continue;
+    if (!_ROLE_KEYS.has(role)) throw new ConfigError(`Unknown role '${role}'. Supported roles: ${[..._ROLE_KEYS].join(", ")}`);
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new ConfigError(`roles.${role} must be a mapping`);
     for (const key of ["provider", "model", "fallback_model"]) if (value[key] !== undefined && typeof value[key] !== "string") throw new ConfigError(`roles.${role}.${key} must be a string`);
     for (const key of ["provider", "adapter"]) assertSafeProviderName(value[key], `roles.${role}.${key}`);
   }
+  if (config.default_provider !== undefined && config.default_provider !== null && typeof config.default_provider !== "string") throw new ConfigError("default_provider must be a string");
   assertSafeProviderName(config.default_provider, "default_provider");
   if (config.validation?.script_path !== undefined && typeof config.validation.script_path !== "string") throw new ConfigError("validation.script_path must be a string");
   if (config.security?.blocked_extensions !== undefined && (!Array.isArray(config.security.blocked_extensions) || config.security.blocked_extensions.some(value => typeof value !== "string"))) throw new ConfigError("security.blocked_extensions must be an array of strings");
@@ -256,8 +294,8 @@ function loadConfig(configPath, overrides) {
   if (overrides) raw = deepMerge(raw, overrides);
 
   // Merge with defaults
-  const config = deepMerge(DEFAULTS, raw);
+  const config = normalizeProviderConfig(deepMerge(DEFAULTS, raw));
   return validateConfig(config);
 }
 
-module.exports = { loadConfig, deepMerge, coerceValue, resolveProviderName, validateConfig, DEFAULTS };
+module.exports = { loadConfig, deepMerge, coerceValue, resolveProviderName, validateConfig, normalizeProviderConfig, DEFAULTS };

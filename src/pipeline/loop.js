@@ -28,8 +28,7 @@ const { authorizeEntitlement } = require("../entitlement/policy");
 const { ALLOWED_FIELDS } = require("../evolution/sanitize");
 const { findEscalationModel } = require("../llm/models");
 const { resolveServerUrl } = require("../cli/commands/server-config");
-let TEST_AUTHORIZATION = Object.freeze({});
-try { ({ TEST_AUTHORIZATION } = require("./test-seam")); } catch {}
+const { PREAUTHORIZED } = require("./authorization");
 const git = require("../git/operations");
 const readline = require("readline");
 const os = require("os");
@@ -298,14 +297,16 @@ async function runPipelineInWorkspace(task, opts = {}) {
   // (paid tokens) and still demanded intel provider credentials.
   const researchEnabled = config.execution?.research_enabled !== false;
 
-  // --coding-adapter / --research-adapter / --review-adapter were parsed by the
-  // CLI, forwarded into runPipeline and then never read. They name the role they
-  // configure, so map them onto the role adapter (which resolveProviderName
-  // consults) and clear the role provider so the flag actually takes effect.
+  // --coding-adapter / --research-adapter / --review-adapter select a role
+  // explicitly. Store the selection in both provider and adapter fields so the
+  // resolver and status output agree, even when default_provider is configured.
   const adapterOverrides = { work: opts.codingAdapter, intel: opts.researchAdapter, review: opts.reviewAdapter };
   for (const [role, adapter] of Object.entries(adapterOverrides)) {
     if (typeof adapter !== "string" || !adapter.trim()) continue;
-    config.roles[role] = { ...config.roles[role], provider: "", adapter: adapter.trim() };
+    // A CLI role-adapter flag is an explicit role selection. Store it as the
+    // role provider so default_provider cannot silently override the flag in
+    // resolveProviderName(). Keep adapter for status/legacy compatibility.
+    config.roles[role] = { ...config.roles[role], provider: adapter.trim(), adapter: adapter.trim() };
   }
 
   // security.blocked_extensions is a floor, not a replacement: the built-in list
@@ -340,7 +341,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
   writeContract(repoRoot, { status: "running", goal: task, verify_command: config.validation?.script_path || "VERIFY_CMD.sh" });
 
   let gateResult = null;
-  if (opts.authorization !== TEST_AUTHORIZATION) {
+  if (opts.authorization !== PREAUTHORIZED) {
     const { GateState } = require("../entitlement/gate");
     gateResult = await authorizeEntitlement({ entitlementDir: opts.entitlementDir, serverUrl: opts.serverUrl || resolveServerUrl() });
     if (!gateResult.allowed) {
@@ -816,7 +817,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
         passed: results.cycles.at(-1)?.check?.status === "passed",
       },
       outcome: success ? "success" : approved ? "approved-not-merged" : "verification-failed",
-    });
+    }, { evidencePath: opts.evidencePath });
   } catch (error) {
     console.warn(`⚠️  Could not save run evidence: ${error.message}`);
   }
@@ -911,10 +912,13 @@ async function runPipeline(task, opts = {}) {
     // removes the isolated workspace, which would otherwise destroy
     // .minitok/evidence/ before it reaches the real repository (README:39-41).
     try {
-      const evidencePath = path.join(isolated.path, ".minitok", "evidence", "runs", "latest.json");
+      const configuredEvidencePath = typeof opts.evidencePath === "string" && opts.evidencePath.trim() ? opts.evidencePath.trim() : path.join(".minitok", "evidence", "runs", "latest.json");
+      const evidencePath = path.resolve(isolated.path, configuredEvidencePath);
+      const isolatedRoot = path.resolve(isolated.path) + path.sep;
+      if (!evidencePath.startsWith(isolatedRoot)) throw new Error("evidencePath must stay inside the workspace");
       const evidence = JSON.parse(fs.readFileSync(evidencePath, "utf-8"));
       if (evidence && evidence.run_id) {
-        await recordRunEvidence({ workspaceRoot: repoRoot, ...evidence });
+        await recordRunEvidence({ workspaceRoot: repoRoot, ...evidence }, { evidencePath: opts.evidencePath });
       }
     } catch {
       // Evidence propagation is best-effort and must never fail the run.

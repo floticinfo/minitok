@@ -106,8 +106,26 @@ export function spawnSpec(command: string, args: string[]) {
  * Windows verbatim-argument fix and the Electron-as-Node environment a
  * JavaScript CLI entry needs when the extension host itself is Electron.
  */
+export function configuredServerUrl() {
+  const configured = vscode.workspace.getConfiguration("minitok").get<string>("serverUrl", "https://api.minitok.dev").trim();
+  let url: URL;
+  try { url = new URL(configured); } catch { throw new Error("minitok.serverUrl must be a valid URL"); }
+  const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
+  if ((url.protocol !== "https:" && !(loopback && url.protocol === "http:")) || url.username || url.password || url.search || url.hash || (url.pathname !== "/" && url.pathname !== "")) throw new Error("minitok.serverUrl must use HTTPS and contain only an origin");
+  return url.origin;
+}
+
+/** Environment shared by every Extension-owned CLI subprocess. */
+export function extensionCliEnvironment(extra: NodeJS.ProcessEnv = {}) {
+  const env: NodeJS.ProcessEnv = { ...process.env, ...extra, MINITOK_UPDATE_CHECK: "0" };
+  // The CLI resolver intentionally uses the lower-case name so this also works
+  // on POSIX hosts, where environment variable names are case-sensitive.
+  env.minitok_server_url = configuredServerUrl();
+  return env;
+}
+
 export function spawnOptionsFor(spec: SpawnSpec, extra: { cwd?: string; env?: NodeJS.ProcessEnv; detached?: boolean } = {}) {
-  const env: NodeJS.ProcessEnv = { ...(extra.env || process.env) };
+  const env = extensionCliEnvironment(extra.env || {});
   if (spec.command === process.execPath && !env.ELECTRON_RUN_AS_NODE) env.ELECTRON_RUN_AS_NODE = "1";
   return { cwd: extra.cwd, env, shell: spec.shell, windowsHide: true, windowsVerbatimArguments: spec.windowsVerbatimArguments, ...(extra.detached === undefined ? {} : { detached: extra.detached }) };
 }
@@ -127,12 +145,31 @@ export function mcpCommand() {
   return packagedMcpCommand(path.resolve(__dirname, "../.."), process.execPath);
 }
 
+export const MCP_SCOPES = ["read", "write", "auto_accept", "verify_exec"] as const;
+
+export function normalizeProviderName(value: string) {
+  const aliases: Record<string, string> = { claude: "anthropic", gpt: "openai", gemini: "google" };
+  const key = String(value || "").trim().toLowerCase();
+  return aliases[key] || key;
+}
+
+export function configuredMcpScopes() {
+  const configuredValue = vscode.workspace.getConfiguration("minitok").get<string>("mcpScopes", "read");
+  if (typeof configuredValue !== "string") throw new Error("minitok.mcpScopes must be a comma-separated string");
+  const configured = configuredValue.trim() || "read";
+  const scopes = [...new Set(configured.split(",").map(scope => scope.trim()).filter(Boolean))];
+  const invalid = scopes.filter(scope => !(MCP_SCOPES as readonly string[]).includes(scope));
+  if (invalid.length) throw new Error(`Unsupported MCP scope(s): ${invalid.join(", ")}. Allowed: ${MCP_SCOPES.join(", ")}`);
+  return scopes.length ? scopes : ["read"];
+}
+
 export function mcpEnvironment() {
-  return { ...process.env, MINITOK_MCP_AUTH_TOKEN_FILE: path.join(os.homedir(), ".minitok", "mcp", "runtime-token.json") };
+  const scopes = configuredMcpScopes().join(",");
+  return { ...process.env, minitok_server_url: configuredServerUrl(), MINITOK_MCP_AUTH_TOKEN_FILE: path.join(os.homedir(), ".minitok", "mcp", "runtime-token.json"), MINITOK_MCP_SCOPES: scopes };
 }
 
 export function mcpAuthToken() {
-  const tokenFile = mcpEnvironment().MINITOK_MCP_AUTH_TOKEN_FILE;
+  const tokenFile = path.join(os.homedir(), ".minitok", "mcp", "runtime-token.json");
   try {
     const value = JSON.parse(fs.readFileSync(tokenFile, "utf8")) as { token?: unknown; expires_at?: unknown; revoked_at?: unknown };
     if (typeof value.token !== "string" || !value.token || value.revoked_at || typeof value.expires_at !== "number" || Date.now() >= value.expires_at) return undefined;

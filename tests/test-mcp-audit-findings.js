@@ -6,7 +6,7 @@ const os = require("os");
 const path = require("path");
 const { RuntimeStdio } = require("../src/runtime/test-seam");
 const { requireApprovalPath, getToolHandler, getToolDefinitions, requiredScopeFor } = require("../src/mcp/tools");
-const { writeConfig, planChange } = require("../src/cli/commands/mcp");
+const { writeConfig, planChange, configuredScopes } = require("../src/cli/commands/mcp");
 
 test("stdio auth accepts bearer and rotated tokens with expiry and revoke", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-mcp-"));
@@ -52,6 +52,27 @@ test("MCP config writes remove stale locks and leave owner-only config", () => {
     assert.deepEqual(JSON.parse(fs.readFileSync(file, "utf8")).mcpServers.minitok, { command: "minitok" });
     assert.equal(fs.existsSync(`${file}.lock`), false);
     if (process.platform !== "win32") assert.equal(fs.statSync(file).mode & 0o777, 0o600);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("MCP host scope diagnostics report valid and invalid grants", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-mcp-scopes-"));
+  try {
+    const file = path.join(root, "mcp.json");
+    fs.writeFileSync(file, JSON.stringify({ mcpServers: { minitok: { env: { MINITOK_MCP_SCOPES: "read,write,unknown" } } } }));
+    assert.deepEqual(configuredScopes(file), { scopes: ["read", "write", "unknown"], scopes_explicit: true, scopes_source: "explicit", invalid_scopes: ["unknown"] });
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("MCP reconnect preserves existing scopes when --scopes is omitted", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-mcp-reconnect-"));
+  try {
+    const file = path.join(root, "mcp.json");
+    fs.writeFileSync(file, JSON.stringify({ mcpServers: { minitok: { env: { MINITOK_MCP_SCOPES: "read,write,verify_exec" } } } }));
+    const plan = planChange(file, "connect", { tokenFile: path.join(root, "token.json") });
+    assert.equal(plan.data.mcpServers.minitok.env.MINITOK_MCP_SCOPES, "read,write,verify_exec");
+    const explicit = planChange(file, "connect", { tokenFile: path.join(root, "token.json"), scopes: "read" });
+    assert.equal(explicit.data.mcpServers.minitok.env.MINITOK_MCP_SCOPES, "read");
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 

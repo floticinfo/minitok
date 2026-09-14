@@ -93,6 +93,14 @@ describe("createProvider tier routing", () => {
     assert.equal(createProvider("openrouter", { base_url: "https://openrouter.ai/api/v1", api_key: "k" }).constructor.name, "CustomProvider");
   });
 
+  it("detects alias-keyed built-in provider configuration", async () => {
+    const { detectAvailableProviders } = require("../src/llm/provider");
+    const previous = process.env.OPENAI_API_KEY;
+    process.env.OPENAI_API_KEY = "alias-key";
+    try { assert.ok((await detectAvailableProviders({ providers: { gpt: {} } })).includes("openai")); }
+    finally { if (previous === undefined) delete process.env.OPENAI_API_KEY; else process.env.OPENAI_API_KEY = previous; }
+  });
+
   it("tier 3: custom via base_url", () => {
     const { createProvider } = require("../src/llm/provider");
     const p = createProvider("ollama", { base_url: "http://localhost:11434/v1" });
@@ -119,9 +127,15 @@ describe("Provider selection by role", () => {
     assert.equal(resolveProviderName(config, "review"), "review");
   });
 
-  it("uses legacy adapter before default for compatibility", () => {
+  it("uses explicit default_provider before the legacy adapter", () => {
     const { resolveProviderName } = require("../src/config/loader");
     const config = { default_provider: "default", providers: { default: {}, plan: {} }, roles: { plan: { adapter: "plan" } } };
+    assert.equal(resolveProviderName(config, "plan"), "default");
+  });
+
+  it("keeps the legacy adapter fallback when no default_provider is configured", () => {
+    const { resolveProviderName } = require("../src/config/loader");
+    const config = { providers: { plan: {}, other: {} }, roles: { plan: { adapter: "plan" } } };
     assert.equal(resolveProviderName(config, "plan"), "plan");
   });
 
@@ -129,6 +143,12 @@ describe("Provider selection by role", () => {
     const { resolveProviderName } = require("../src/config/loader");
     const config = { providers: { first: {}, second: {} }, roles: { plan: {} } };
     assert.equal(resolveProviderName(config, "plan"), "first");
+  });
+
+  it("does not let an unconfigured legacy adapter hide the first provider", () => {
+    const { resolveProviderName } = require("../src/config/loader");
+    const config = { providers: { openai: {} }, roles: { plan: { adapter: "claude" } } };
+    assert.equal(resolveProviderName(config, "plan"), "openai");
   });
 
   it("uses a CLI override for every role", () => {

@@ -22,7 +22,7 @@ function createRuntimeServices(options = {}) {
     evidence: new EvidenceService({ workspaceRoots: options.workspaceRoots || [], evidenceDirectory: options.evidenceDirectory }),
     workspace: new WorkspaceService(),
     audit: new AuditService(auditPath),
-    entitlement: new EntitlementService(entitlementDir),
+    entitlement: new EntitlementService(entitlementDir, options.serverUrl || process.env.minitok_server_url || process.env.MINITOK_SERVER_URL),
     observation: new ObservationService({ storageDir: options.observationDir || (runtimeDir && require("path").join(runtimeDir, "observations")) }),
   };
 }

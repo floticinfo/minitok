@@ -220,6 +220,7 @@ test("cmdRun forwards the approval, run id, and cancellation options into the pi
       approvalTimeoutMs: "600000",
       runId: "run-1234",
       signal: controller.signal,
+      authorization: require("../src/pipeline/test-seam").TEST_AUTHORIZATION,
       autoAccept: false,
     });
 

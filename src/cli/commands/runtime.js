@@ -97,6 +97,7 @@ async function cmdRuntimeStart(opts) {
     const bin = path.resolve(String(process.argv[1] || ""));
     const port = String(opts.port ?? 4578);
     const args = [bin, "runtime", "start", "--port", port];
+    if (opts.server) args.push("--server", String(opts.server));
     if (scopes) args.push("--scopes", scopes);
     if (opts.idleTimeoutMs !== undefined) args.push("--idle-timeout", String(Math.round(opts.idleTimeoutMs / 60000)));
     spawn(process.execPath, args, { stdio: "ignore", detached: true, windowsHide: true });
@@ -118,6 +119,7 @@ async function cmdRuntimeStart(opts) {
     idleTimeoutMs: opts.idleTimeoutMs,
     knowledgePath: opts.knowledgePath,
     entitlementDir: opts.entitlementDir,
+    serverUrl: opts.server,
     auditPath: opts.auditPath,
     runtimeToken: opts.runtimeToken || process.env.minitok_runtime_token,
     permissions: scopes || undefined,

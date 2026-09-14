@@ -3,7 +3,7 @@
 const { TokenStore } = require("../../auth/token-store");
 const { OAuthFlow, OAUTH_CONFIGS } = require("../../auth/oauth");
 const { ALIAS_MAP, normalizeProvider } = require("../../auth/aliases");
-const { saveCustomerToken } = require("../../auth/customer-token");
+const { saveCustomerToken, saveCustomerSession, loadCustomerSession, removeCustomerToken, revokeCustomerSession } = require("../../auth/customer-token");
 const { resetVerifyCache } = require("../../llm/provider");
 const { resolveServerUrl } = require("./server-config");
 const readline = require("readline");
@@ -30,8 +30,10 @@ function prompt(question) {
 async function cmdAuthCustomerLogin(server, email, password) {
   if (!email || !password) { console.error("Usage: minitok auth customer-login <email>"); return 1; }
   const result = await customerAuthRequest("/v1/auth/login", { email, password }, server);
-  if (!result.ok || !result.body?.token) { console.error(`[error] Customer login failed: ${result.body?.error || "request failed"}`); return 1; }
-  saveCustomerToken(result.body.token);
+  const token = result.body?.token || result.body?.access_token || result.body?.accessToken;
+  if (!result.ok || !token) { console.error(`[error] Customer login failed: ${result.body?.error || "request failed"}`); return 1; }
+  if (result.body?.refresh_token || result.body?.refreshToken) { removeCustomerToken(); saveCustomerSession(result.body); }
+  else saveCustomerToken(token);
   console.log("[ok] Customer login successful. Token stored securely.");
   return 0;
 }
@@ -83,9 +85,28 @@ async function cmdAuthLogout(provider) {
   const name = normalizeProvider(provider); tokenStore.remove(name); afterCredentialChange(); console.log("Logged out from " + name + "."); return 0;
 }
 
+async function customerLogout(server) {
+  const session = loadCustomerSession();
+  let remoteRevoked = false;
+  if (session?.refresh_token) {
+    try {
+      const result = await postJson(resolveServerUrl({ cliServer: server }) + "/v1/auth/logout", { refresh_token: session.refresh_token }, 10000);
+      remoteRevoked = result.status === 204 || result.ok === true;
+    } catch {}
+  }
+  removeCustomerToken();
+  // Leave an explicit local tombstone so an Extension or CLI process cannot
+  // resurrect the previous SecretStorage/shared session after local logout.
+  revokeCustomerSession();
+  if (remoteRevoked) console.log("Remote customer session revoked; local credentials removed.");
+  else console.log("Remote logout unavailable; local credentials removed. Sign in again to revoke the server session.");
+  return remoteRevoked;
+}
+
 function addCustomerLogin(command, description) {
   const login = command.command("customer-login").description(description).argument("[email]", "Customer email").option("--email-env <name>", "Read customer email from an environment variable").option("--password-env <name>", "Read customer password from an environment variable").option("--server <url>", "minitok server URL");
-  login.action(async (email, options) => { const resolvedEmail = email || (options.emailEnv && process.env[options.emailEnv]); const value = options.passwordEnv ? process.env[options.passwordEnv] : await prompt("Customer password: "); process.exit(await cmdAuthCustomerLogin(options.server, resolvedEmail, value)); });
+  login.action(async (email, options) => { const resolvedEmail = email || (options.emailEnv && process.env[options.emailEnv]); if (!options.passwordEnv && !process.stdin.isTTY) { console.error("Customer password is required via --password-env in non-interactive mode."); process.exit(1); } const value = options.passwordEnv ? process.env[options.passwordEnv] : await prompt("Customer password: "); process.exit(await cmdAuthCustomerLogin(options.server, resolvedEmail, value)); });
+  command.command("customer-logout").description("Revoke the server session and remove local customer credentials").option("--server <url>", "minitok server URL").action(async options => { await customerLogout(options.server); });
 }
 
 function register(program) {

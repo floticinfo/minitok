@@ -39,33 +39,38 @@ exports.deviceLogin = deviceLogin;
 exports.logoutExtension = logoutExtension;
 exports.authErrorText = authErrorText;
 const vscode = __importStar(require("vscode"));
-function normalizeCustomerSession(value) {
-    const accessToken = value?.access_token || value?.accessToken;
-    const refreshToken = value?.refresh_token || value?.refreshToken;
-    if (!accessToken || !refreshToken)
-        return undefined;
-    const expiresIn = Number(value.expires_in ?? value.expiresIn);
-    const expiresAt = value.expires_at || value.expiresAt || (Number.isFinite(expiresIn) && expiresIn > 0 ? new Date(Date.now() + expiresIn * 1000).toISOString() : undefined);
-    return { access_token: accessToken, refresh_token: refreshToken, customer_id: value.customer_id || value.customerId, token_type: value.token_type || value.tokenType || "Bearer", ...(Number.isFinite(expiresIn) && expiresIn > 0 ? { expires_in: expiresIn } : {}), ...(expiresAt ? { expires_at: expiresAt } : {}) };
-}
-const SESSION_KEY = "minitok.secret.accountSession";
-const DEFAULT_SERVER = "https://api.minitok.dev";
-function serverUrl() {
-    const configured = vscode.workspace.getConfiguration("minitok").get("serverUrl", DEFAULT_SERVER).trim();
-    let url;
+const fs = __importStar(require("node:fs"));
+const path = __importStar(require("node:path"));
+const os = __importStar(require("node:os"));
+const workspace_1 = require("./workspace");
+function jwtExpiry(accessToken) {
     try {
-        url = new URL(configured);
+        const part = accessToken.split(".")[1];
+        if (!part)
+            return undefined;
+        const payload = JSON.parse(Buffer.from(part, "base64url").toString("utf8"));
+        return typeof payload.exp === "number" && Number.isFinite(payload.exp) ? new Date(payload.exp * 1000).toISOString() : undefined;
     }
     catch {
-        throw new Error("minitok.serverUrl must be a valid HTTPS URL");
+        return undefined;
     }
-    const loopback = ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname);
-    if ((url.protocol !== "https:" && !(loopback && url.protocol === "http:")) || url.username || url.password || url.search || url.hash || (url.pathname !== "/" && url.pathname !== ""))
-        throw new Error("minitok.serverUrl must use HTTPS and contain only an origin");
-    if (!loopback && url.hostname !== "api.minitok.dev")
-        throw new Error("minitok.serverUrl is not an allowed authentication origin");
-    return url.origin;
 }
+function normalizeAccessSession(value) {
+    const accessToken = value?.access_token || value?.accessToken;
+    if (!accessToken)
+        return undefined;
+    const refreshToken = value?.refresh_token || value?.refreshToken;
+    const expiresIn = Number(value.expires_in ?? value.expiresIn);
+    const expiresAt = value.expires_at || value.expiresAt || (Number.isFinite(expiresIn) && expiresIn > 0 ? new Date(Date.now() + expiresIn * 1000).toISOString() : jwtExpiry(accessToken));
+    return { access_token: accessToken, ...(refreshToken ? { refresh_token: refreshToken } : {}), customer_id: value.customer_id || value.customerId, token_type: value.token_type || value.tokenType || "Bearer", ...(Number.isFinite(expiresIn) && expiresIn > 0 ? { expires_in: expiresIn } : {}), ...(expiresAt ? { expires_at: expiresAt } : {}) };
+}
+function normalizeCustomerSession(value) {
+    const session = normalizeAccessSession(value);
+    return session?.refresh_token ? session : undefined;
+}
+const SESSION_KEY = "minitok.secret.accountSession";
+const SHARED_SESSION_FILE = path.join(os.homedir(), ".minitok", "account", "session.json");
+const LEGACY_CUSTOMER_TOKEN_FILE = path.join(os.homedir(), ".minitok", "entitlement", "customer-token.json");
 function expiry(session) {
     return session.expires_at || (Number.isFinite(Number(session.expires_in)) ? new Date(Date.now() + Number(session.expires_in) * 1000).toISOString() : undefined);
 }
@@ -81,7 +86,7 @@ async function request(path, body) {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-        response = await fetch(`${serverUrl()}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: controller.signal });
+        response = await fetch(`${(0, workspace_1.configuredServerUrl)()}${path}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body), signal: controller.signal });
     }
     catch (error) {
         const aborted = error instanceof Error && error.name === "AbortError";
@@ -108,12 +113,57 @@ async function request(path, body) {
     }
     return value;
 }
+function sharedSession() {
+    try {
+        const raw = JSON.parse(fs.readFileSync(SHARED_SESSION_FILE, "utf8"));
+        if (raw && raw.revoked_at)
+            return undefined;
+        const session = normalizeAccessSession(raw);
+        if (session && (!session.expires_at || Date.now() < Date.parse(session.expires_at) - 60000))
+            return session;
+    }
+    catch { }
+    return undefined;
+}
+function writeSharedSession(session) {
+    fs.mkdirSync(path.dirname(SHARED_SESSION_FILE), { recursive: true });
+    const temp = `${SHARED_SESSION_FILE}.tmp.${process.pid}`;
+    fs.writeFileSync(temp, JSON.stringify({ ...session, saved_at: new Date().toISOString() }, null, 2), { encoding: "utf8", mode: 0o600 });
+    try {
+        fs.chmodSync(temp, 0o600);
+    }
+    catch { }
+    fs.renameSync(temp, SHARED_SESSION_FILE);
+    try {
+        fs.chmodSync(SHARED_SESSION_FILE, 0o600);
+    }
+    catch { }
+}
 async function readExtensionSession(context) {
+    const shared = sharedSession();
+    // A present shared file is authoritative, including a CLI logout/revocation
+    // marker. Do not resurrect a stale SecretStorage session in that case.
+    if (fs.existsSync(SHARED_SESSION_FILE)) {
+        if (!shared) {
+            try {
+                fs.unlinkSync(SHARED_SESSION_FILE);
+            }
+            catch { }
+            await context.secrets.delete(SESSION_KEY);
+        }
+        return shared;
+    }
     const raw = await context.secrets.get(SESSION_KEY);
     if (!raw)
         return undefined;
     try {
-        return JSON.parse(raw);
+        const session = normalizeAccessSession(JSON.parse(raw));
+        const expiresAt = session?.expires_at ? Date.parse(session.expires_at) : 0;
+        if (!session || (expiresAt > 0 && Date.now() >= expiresAt - 60000)) {
+            await context.secrets.delete(SESSION_KEY);
+            return undefined;
+        }
+        return session;
     }
     catch {
         await context.secrets.delete(SESSION_KEY);
@@ -124,7 +174,15 @@ async function save(context, session) {
     const normalized = normalizeCustomerSession(session);
     if (!normalized)
         throw new Error("Account session is incomplete");
-    await context.secrets.store(SESSION_KEY, JSON.stringify({ ...normalized, expires_at: expiry(normalized) }));
+    const saved = { ...normalized, expires_at: expiry(normalized) };
+    await context.secrets.store(SESSION_KEY, JSON.stringify(saved));
+    writeSharedSession(saved);
+    // A browser login is an explicit account switch. Remove the legacy CLI token
+    // so the CLI cannot prefer a stale account over this shared session.
+    try {
+        fs.unlinkSync(LEGACY_CUSTOMER_TOKEN_FILE);
+    }
+    catch { }
 }
 async function refreshExtensionSession(context) {
     const session = await readExtensionSession(context);
@@ -182,13 +240,26 @@ async function deviceLogin(context, onStatus) {
 }
 async function logoutExtension(context) {
     const session = await readExtensionSession(context);
+    let remoteRevoked = false;
     if (session?.refresh_token) {
         try {
             await request("/v1/auth/logout", { refresh_token: session.refresh_token });
+            remoteRevoked = true;
         }
         catch { }
     }
     await context.secrets.delete(SESSION_KEY);
+    try {
+        fs.unlinkSync(SHARED_SESSION_FILE);
+    }
+    catch { }
+    // Browser sign-out must also end a CLI customer-login session; otherwise the
+    // CLI token file would immediately authenticate the next Extension check.
+    try {
+        fs.unlinkSync(LEGACY_CUSTOMER_TOKEN_FILE);
+    }
+    catch { }
+    return remoteRevoked;
 }
 function authErrorText(error) {
     const kind = error?.kind || "login";
