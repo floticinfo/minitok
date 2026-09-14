@@ -4,4 +4,4 @@ export function redactSensitiveText(value: string) {
     .replace(/([?&](?:token|api[_-]?key|secret|password|authorization)=)[^&\s]+/gi, "$1[REDACTED]")
     .replace(/Bearer\s+[^\s]+/gi, "Bearer [REDACTED]")
     .replace(/\b(sk-[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{12,})\b/g, "[REDACTED]");
-} 
+}
