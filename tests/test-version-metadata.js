@@ -15,11 +15,16 @@ test("version metadata is synchronized with the canonical CLI version", () => {
   const extension = JSON.parse(fs.readFileSync(path.join(root, "extension", "package.json"), "utf8"));
   const runtime = JSON.parse(fs.readFileSync(path.join(root, "extension", "runtime", "package.json"), "utf8"));
   const manifest = JSON.parse(fs.readFileSync(path.join(root, "extension", "runtime", "runtime-manifest.json"), "utf8"));
+  const server = JSON.parse(fs.readFileSync(path.join(root, "server.json"), "utf8"));
+  const marketplace = JSON.parse(fs.readFileSync(path.join(root, "mcp-marketplace.json"), "utf8"));
   assert.equal(lock.version, cli.version);
   assert.equal(lock.packages[""].version, cli.version);
   assert.equal(extension.minitok.cliVersion, cli.version);
   assert.equal(runtime.version, cli.version);
   assert.equal(manifest.cliVersion, cli.version);
+  assert.equal(server.version, cli.version);
+  assert.equal(server.packages[0].version, cli.version);
+  assert.equal(marketplace.version, cli.version);
 });
 
 test("version check is clean and extension marketplace version remains independent", () => {

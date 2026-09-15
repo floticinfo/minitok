@@ -14,6 +14,7 @@ const textFiles = [
   "LAUNCH_CHECKLIST.md",
   "COMMUNITY_SUBMISSION_PREVIEW.example.json",
   "extension/README.md",
+  "promotion-posts/mcp-directory.md",
 ];
 
 function updateText(file, transform) {
@@ -37,6 +38,13 @@ function updateJson(file, transform) {
 const changed = [];
 const mark = (file, didChange) => { if (didChange) changed.push(file); };
 
+mark("server.json", updateJson("server.json", server => {
+  server.version = version;
+  if (Array.isArray(server.packages)) for (const pkg of server.packages) if (pkg.registryType === "npm" && pkg.identifier === packageJson.name) pkg.version = version;
+}));
+mark("mcp-marketplace.json", updateJson("mcp-marketplace.json", marketplace => {
+  marketplace.version = version;
+}));
 mark("package-lock.json", updateJson("package-lock.json", lock => {
   lock.version = version;
   if (lock.packages?.[""]) lock.packages[""].version = version;

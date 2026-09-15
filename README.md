@@ -258,6 +258,36 @@ The stdio runtime token recorded by `minitok mcp connect` is short lived (15 min
 
 The same contract is available from the CLI, which is what the VS Code sidebar uses for its Approve and Reject buttons: `minitok run "<task>" --approval-file .minitok/approval.json` writes that request, prints `MINITOK_APPROVAL_REQUEST {…}` on stdout, and completes when `<file>.response` carries the matching nonce and run id. `--approval-timeout-ms` bounds the wait, an unanswered request fails closed, and without `--approval-file` a non-TTY run still refuses every change unless `--auto-accept` was given. The approval file must live inside the run's workspace (`<workspace>/.minitok/...`), which is also true for the default isolated runs: they execute in a disposable clone, but the request is written to, and the response is read from, the operator's workspace, so the sidebar, the TUI GUI, and the MCP approval tools all watch the path they were told about. Ctrl+C cancels a run cooperatively (a second Ctrl+C exits immediately).
 
+## MCP Registry and marketplace publication
+
+The npm package, the official MCP Registry, and downstream MCP directories are separate publication surfaces.
+
+- `server.json` is the standard metadata consumed by the official MCP Registry.
+- `mcp-marketplace.json` contains downstream directory metadata for authentication, paid entitlement, scopes, privacy, safety, and supported transports.
+- `package.json.mcpName` is the npm ownership-verification value and must exactly match `server.json.name`.
+- `npm run check:mcp-registry` validates the local commercial metadata contract without network access.
+- `npm run community:preview -- --platforms mcp-directory` creates a side-effect-free submission preview.
+
+The official Registry uses a verified namespace. This release uses `io.github.floticinfo/minitok`, which requires GitHub ownership of the `floticinfo` namespace. The package must be published publicly to npm before Registry publication.
+
+Local dry-run validation:
+
+```bash
+npm run check:mcp-registry
+npm run mcp:registry:check
+npm pack --dry-run --json
+```
+
+Operator-controlled publication after review:
+
+```bash
+npm publish --access public
+mcp-publisher login github
+mcp-publisher publish
+```
+
+The repository workflow `.github/workflows/publish-mcp.yml` can perform the npm and Registry steps on an approved `v*` tag using GitHub OIDC. It does not run from local preview commands. Never place npm tokens, Registry tokens, customer JWTs, runtime-token files, provider keys, or account cookies in `server.json`, `mcp-marketplace.json`, or repository history.
+
 ## Stage 3 parity and artifact checks
 
 Run `npm run stage2:parity` for deterministic local contract checks. Artifact evidence is generated independently with `npm run package:cli`, `npm run artifact:runtime`, `npm run artifact:http`, `node scripts/artifact-report.mjs extension`, and `npm run release:artifacts`. Reports classify each result as `generated`, `missing`, `stale`, or `unverified`; the authoritative VSIX is `extension/artifacts/minitok-extension-<version>.vsix`. Historical or unrelated VSIX files are reported as stale candidates and are never deleted automatically. CLI reports include the full manifest and `npm pack --dry-run --json` metadata; runtime reports include deterministic file hashes and the packaged stdio entrypoint; HTTP reports capture the loopback host, `/mcp` contract, bearer authentication, health route, and notification status. These checks do not contact production by default and do not establish publication or deployment.

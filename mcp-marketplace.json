@@ -1,0 +1,100 @@
+{
+  "$schemaVersion": 1,
+  "server": "io.github.floticinfo/minitok",
+  "package": "@flotic/minitok",
+  "version": "1.4.4",
+  "registry": {
+    "officialMcpRegistry": "server.json",
+    "npmPackage": "https://www.npmjs.com/package/@flotic/minitok",
+    "submissionCommand": "mcp-publisher publish",
+    "authenticationCommand": "mcp-publisher login github"
+  },
+  "display": {
+    "title": "minitok",
+    "shortDescription": "Repository-aware autonomous coding workflows with planning, verification, bounded retries, evidence, and local evolution controls.",
+    "website": "https://minitok.dev/docs",
+    "repository": "https://github.com/floticinfo/minitok",
+    "privacyPolicy": "https://minitok.dev/privacy",
+    "support": "mailto:support@minitok.dev"
+  },
+  "transports": {
+    "stdio": {
+      "supported": true,
+      "command": "minitok",
+      "args": [
+        "mcp",
+        "serve"
+      ],
+      "protocolVersions": [
+        "2025-11-25",
+        "2025-06-18",
+        "2025-03-26",
+        "2024-11-05",
+        "2024-10-07"
+      ]
+    },
+    "localhostHttp": {
+      "supported": true,
+      "endpoint": "POST /mcp",
+      "host": "127.0.0.1",
+      "authentication": "Bearer runtime token"
+    },
+    "remoteHttp": {
+      "supported": true,
+      "endpoint": "https://api.minitok.dev/mcp",
+      "authentication": "customer JWT plus MCP session",
+      "toolBoundary": "read_only_remote_allowlist"
+    }
+  },
+  "capabilities": {
+    "tools": [
+      "minitok_run",
+      "minitok_run_list",
+      "minitok_run_get",
+      "minitok_run_cancel",
+      "minitok_approve_run",
+      "minitok_reject_run",
+      "minitok_knowledge_query",
+      "minitok_knowledge_record",
+      "minitok_analyze_failures",
+      "minitok_recommend_policy",
+      "minitok_compact_context",
+      "minitok_collect_evidence",
+      "minitok_status",
+      "minitok_observe"
+    ],
+    "resources": [
+      "minitok://status",
+      "minitok://runs"
+    ],
+    "prompts": [
+      "minitok_task"
+    ]
+  },
+  "commercial": {
+    "userAuthenticationRequired": true,
+    "activePaidEntitlementRequired": true,
+    "defaultScope": "read",
+    "writeScopes": [
+      "write",
+      "verify_exec"
+    ],
+    "autoAcceptScope": "auto_accept",
+    "providerCredentialsRequiredForRun": true,
+    "providerCostsBilledSeparately": true
+  },
+  "privacy": {
+    "repositoryContent": "local_only_except_configured_llm_provider",
+    "secrets": "never_sent_to_minitok_telemetry",
+    "evolutionUpload": "allowlisted_metrics_only_after_entitlement_and_explicit_opt_in",
+    "telemetryDefault": "disabled",
+    "dataClassification": "DATA_CLASSIFICATION.md",
+    "policy": "POLICY.md"
+  },
+  "safety": {
+    "autoApproveDefault": false,
+    "approvalRequiredForRepositoryChanges": true,
+    "verificationExecutionRequiresExplicitScope": true,
+    "tokensMustNotBePublished": true
+  }
+}
