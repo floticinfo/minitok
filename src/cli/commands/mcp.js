@@ -286,7 +286,14 @@ function planChange(file, action, options = {}) {
     const existingEntry = container.value?.minitok;
     const existingServer = existingEntry && typeof existingEntry === "object" ? existingEntry.env?.minitok_server_url : undefined;
     const serverUrl = options.serverUrl || (typeof existingServer === "string" && existingServer.trim() ? existingServer : resolveServerUrl());
+    const useClineBridge = options.host === "cline";
+    const bridge = path.resolve(__dirname, "../../mcp/cline-compat.js");
+    const runtimeEntry = path.resolve(__dirname, "../../runtime/stdio-entry.js");
     const env = { MINITOK_MCP_AUTH_TOKEN_FILE: tokenFile, minitok_server_url: serverUrl };
+    if (useClineBridge) {
+      env.MINITOK_MCP_TARGET_COMMAND = process.execPath;
+      env.MINITOK_MCP_TARGET_ARGS = JSON.stringify([runtimeEntry]);
+    }
     // The grant has to travel in the MCP server's environment: the transport
     // reads it at startup, and options.permissions is only reachable in-process.
     // Reconnects without --scopes are non-destructive: retain the existing grant.
@@ -298,7 +305,7 @@ function planChange(file, action, options = {}) {
     }
     servers.minitok = {
       command: process.execPath,
-      args: [path.resolve(__dirname, "../../runtime/stdio-entry.js")],
+      args: [useClineBridge ? bridge : runtimeEntry],
       env,
       disabled: false,
       autoApprove: [],
@@ -401,7 +408,7 @@ async function runMcpOnboarding({ input = process.stdin, output = process.stderr
   if (!entitlement.allowed) throw new Error(entitlement.message || "An active paid entitlement is required before MCP setup");
   const tokenFile = ensureRuntimeToken({});
   for (const host of hosts) {
-    const plan = planChange(host.file, "connect", { tokenFile: tokenFile.path, scopes: "read" });
+    const plan = planChange(host.file, "connect", { host: host.name, tokenFile: tokenFile.path, scopes: "read" });
     if (plan.changed) writeConfig(host.file, plan.data, { backup: true });
   }
   output.write(`MCP configured for ${names} (read-only).\\n`);
@@ -484,7 +491,7 @@ function register(program) {
           tokenFile = ensureRuntimeToken({});
         }
 
-        const plan = planChange(file, action, { tokenFile: tokenFile?.path || runtimeTokenPath(), scopes, serverUrl: opts.server ? effectiveServerUrl : undefined });
+        const plan = planChange(file, action, { host, tokenFile: tokenFile?.path || runtimeTokenPath(), scopes, serverUrl: opts.server ? effectiveServerUrl : undefined });
         if (!plan.changed && !opts.force) {
           console.log(`${action === "connect" ? "Already connected" : "Already disconnected"} ${host}`);
           return;
@@ -541,7 +548,7 @@ function register(program) {
       }
       for (const targetHost of targets) {
         const target = resolveHost(targetHost, targets.length === 1 ? opts.hostFile : undefined);
-        const plan = planChange(target.file, "connect", { tokenFile: tokenFile?.path || runtimeTokenPath(), scopes, serverUrl: opts.server ? resolveServerUrl({ cliServer: opts.server }) : undefined });
+        const plan = planChange(target.file, "connect", { host: targetHost, tokenFile: tokenFile?.path || runtimeTokenPath(), scopes, serverUrl: opts.server ? resolveServerUrl({ cliServer: opts.server }) : undefined });
         if (opts.dryRun || opts.preview) { console.log(JSON.stringify({ action: "setup", host: targetHost, file: target.file, schema: plan.schema, changed: plan.changed, scopes })); continue; }
         if (!plan.changed && !opts.force) { console.log(`Already configured minitok for ${targetHost} (${target.file})`); continue; }
         writeConfig(target.file, plan.data, { backup: opts.backup !== false, keepBackup: opts.keepBackup === true, rollback: opts.rollback === true });

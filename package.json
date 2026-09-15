@@ -1,6 +1,6 @@
 {
   "name": "@flotic/minitok",
-  "version": "1.4.7-rc.2",
+  "version": "1.4.7-rc.3",
   "description": "Verified repository-aware coding workflow CLI for AI agents",
   "main": "src/index.js",
   "bin": {
@@ -10,6 +10,7 @@
     "access": "public"
   },
   "scripts": {
+    "postinstall": "node scripts/postinstall-mcp.mjs",
     "gui": "node bin/minitok.js gui",
     "package:cli": "node scripts/artifact-report.mjs cli",
     "sync:version-metadata": "node scripts/sync-version-metadata.mjs",
@@ -122,7 +123,8 @@
     "EULA.md",
     "POLICY.md",
     "DATA_CLASSIFICATION.md",
-    "assets/"
+    "assets/",
+    "scripts/postinstall-mcp.mjs"
   ],
   "devDependencies": {
     "@eslint/js": "^10.0.1",

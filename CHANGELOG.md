@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.4.7-rc.3 - 2026-09-16
+
+### Added
+
+- Added consent-based npm postinstall onboarding for Cline MCP setup. CI, non-TTY, and explicit skip environments remain side-effect free; existing Cline settings and user guidance are backed up and preserved.
+- Added the packaged Cline stdio compatibility bridge, global Cline routing rule, and `/minitok` skill. The rule and skill guide ordinary repository tasks toward `minitok_run`; explicit `/minitok` invocation is available because Cline does not expose a supported hard router for every user message.
+
+### Changed
+
+- Cline alone uses the compatibility bridge; Cursor, Claude Desktop, Windsurf, and other direct MCP registrations retain the direct runtime entrypoint.
+- Bumped the npm CLI candidate to `1.4.7-rc.3` and the VS Code Extension candidate to `0.3.6`.
+
 ## 1.4.7-rc.2 - 2026-09-16
 
 ### Added

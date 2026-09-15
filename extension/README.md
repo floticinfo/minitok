@@ -22,7 +22,7 @@ minitok brings repository-aware coding workflows into VS Code. Describe a task, 
 1. Install `@flotic/minitok` globally:
 
    ```bash
-   npm install -g @flotic/minitok@1.4.7-rc.2
+   npm install -g @flotic/minitok@1.4.7-rc.3
    ```
 
 2. Open a trusted VS Code workspace.

@@ -3,10 +3,10 @@
   "displayName": "minitok",
   "description": "Run AI coding tasks through planning, verification, review, repair, and evidence",
   "publisher": "Flotic",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "minitok": {
     "cliPackage": "@flotic/minitok",
-    "cliVersion": "1.4.7-rc.2"
+    "cliVersion": "1.4.7-rc.3"
   },
   "author": "Flotic",
   "license": "SEE LICENSE IN LICENSE",
