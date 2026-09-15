@@ -339,6 +339,13 @@ async function remoteStatus(url, token, options = {}) {
 function register(program) {
   const mcp = program.command("mcp");
 
+  mcp.command("serve")
+    .description("Run the authenticated MCP stdio server for package and marketplace clients")
+    .action(() => {
+      const { RuntimeStdio } = require("../../runtime/stdio");
+      new RuntimeStdio().start();
+    });
+
   mcp.command("status")
     .option("--server <url>", "minitok server URL")
     .option("--json")
