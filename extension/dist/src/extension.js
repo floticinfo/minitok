@@ -131,8 +131,28 @@ function activate(context) {
     context.subscriptions.push(output);
     const sidebar = new sidebar_1.minitokSidebar(context.extensionUri, context);
     context.subscriptions.push(sidebar, vscode.window.registerWebviewViewProvider(sidebar_1.minitokSidebar.viewType, sidebar));
+    const onboardingKey = `mcpOnboardingPrompted:${extensionVersion(context)}`;
+    if (!context.globalState.get(onboardingKey)) {
+        void context.globalState.update(onboardingKey, true).then(() => vscode.window.showInformationMessage("minitok MCP is ready to connect.", "Connect MCP Hosts", "Later").then(answer => { if (answer === "Connect MCP Hosts")
+            return vscode.commands.executeCommand("minitok.connectMcp"); return undefined; }));
+    }
     context.subscriptions.push(vscode.commands.registerCommand("minitok.openPanel", () => panel_1.minitokPanel.createOrShow(context)));
     context.subscriptions.push(vscode.commands.registerCommand("minitok.openSettings", () => vscode.commands.executeCommand("workbench.action.openSettings", "@ext:flotic.minitok-extension")));
+    context.subscriptions.push(vscode.commands.registerCommand("minitok.connectMcp", async () => {
+        const answer = await vscode.window.showInformationMessage("Connect minitok to detected MCP hosts with read-only access?", "Connect", "Not now");
+        if (answer !== "Connect")
+            return;
+        output.show(true);
+        try {
+            output.appendLine(redactExtensionOutput(await runCli((0, workspace_2.cliPath)(), ["mcp", "setup", "all", "--only-unconfigured", "--scopes", "read"], { timeoutMs: CLI_STATUS_TIMEOUT_MS, requireWorkspace: false })));
+            vscode.window.showInformationMessage("minitok MCP setup completed. Restart or refresh the MCP host if required.");
+        }
+        catch (error) {
+            const message = redactExtensionOutput(String(error));
+            output.appendLine(message);
+            vscode.window.showErrorMessage(`minitok MCP setup failed: ${message}`);
+        }
+    }));
     context.subscriptions.push(vscode.commands.registerCommand("minitok.mcpStatus", async () => {
         try {
             (0, workspace_1.requireTrustedWorkspace)((0, workspace_2.workspacePath)());
