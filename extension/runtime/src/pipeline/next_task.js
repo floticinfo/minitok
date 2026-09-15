@@ -51,7 +51,7 @@ async function generateNextTask(provider, goal, completedCycles, latestReview, o
 
   const result = await provider.complete(messages, {
     ...options,
-    max_tokens: 1024,
+    max_tokens: options.max_tokens || 512,
     temperature: 0.3,
   });
 

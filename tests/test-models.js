@@ -159,6 +159,23 @@ describe("Reasoning in Provider", () => {
     assert.equal(p.config.thinking_budget, 5000);
   });
 
+  it("provider cache metadata is added without exposing credentials", async () => {
+    const { OpenAIProvider } = require("../src/llm/provider");
+    const oldFetch = global.fetch;
+    let requestBody = null;
+    process.env.OPENAI_API_KEY = "test-key";
+    global.fetch = async (_url, options) => {
+      requestBody = JSON.parse(options.body);
+      return { ok: true, status: 200, headers: { get: () => null }, json: async () => ({ model: "test", choices: [{ message: { content: "{}" }, finish_reason: "stop" }], usage: { prompt_tokens: 10, completion_tokens: 2, prompt_tokens_details: { cached_tokens: 4 } } }) };
+    };
+    try {
+      const provider = new OpenAIProvider({ api_key: "test-key", endpoint: "https://api.openai.com" });
+      const result = await provider.complete([{ role: "user", content: "hello" }], { cache_input: true, cache_key: "fixed-cache" });
+      assert.equal(requestBody.metadata.minitok_cache_key, "fixed-cache");
+      assert.equal(result.usage.prompt_tokens_details.cached_tokens, 4);
+    } finally { global.fetch = oldFetch; }
+  });
+
   it("_countTokens handles all providers", () => {
     const { _countTokens } = require("../src/llm/provider");
     // Anthropic format

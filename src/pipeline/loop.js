@@ -21,7 +21,17 @@ const { writeContract, writeContextManifest, readContract } = require("../state/
 const { recordRunEvidence } = require("../run-evidence");
 const { generateNextTask } = require("./next_task");
 const { compactText, DEFAULT_CONTEXT_BUDGET_CHARS } = require("../context/compaction");
+const { capText } = require("./prompt-utils");
+const { buildFocusedContext } = require("../context/retrieval");
+const { buildWorkflowContext, updateWorkflowContext, serializeWorkflowContext, attachFileExcerpts } = require("../context/workflow-ir");
+const { expandEditChanges, buildEditManifest, decodeEditChanges } = require("./edit-ir");
+const { chooseEditRepresentation } = require("./edit-policy");
+const { classifyTask, shouldSkipIntel } = require("./task-routing");
+const { directEditDecision, projectStageContext, dynamicOutputBudget, repairContext, providerCacheOptions } = require("./optimization");
 const { KnowledgeStore } = require("../evolution/knowledge");
+const { selectProviderByLearnedCost } = require("../evolution/provider-learning");
+const { StageCache } = require("./stage-cache");
+const { optimizationIdentity, compareOptimizationProof } = require("./strict-proof");
 const { analyzeFailurePatterns, FailureAnalyzer } = require("../evolution/analyzer");
 const { recommendPolicy, EscalationEngine } = require("../evolution/policy");
 const { uploadEvolutionOutcome } = require("../evolution/upload");
@@ -89,7 +99,9 @@ function getRepoContext(repoRoot, maxFiles = 50) {
   const recent = git.logRecent(repoRoot, 5);
   if (recent) lines.push(`Recent:\n${recent}`);
 
-  // Read key files
+  // Keep project contracts in every representation. Source previews are bounded
+  // and deterministic so focused retrieval has a real baseline to reduce rather
+  // than adding source material to a metadata-only context.
   const keyFiles = ["package.json", "pyproject.toml", "README.md", "minitok.yml", "Cargo.toml", "go.mod"];
   for (const f of keyFiles) {
     const fp = path.join(repoRoot, f);
@@ -100,7 +112,42 @@ function getRepoContext(repoRoot, maxFiles = 50) {
       } catch {}
     }
   }
+
+  const ignored = new Set([".git", ".minitok", "node_modules", "dist", "build", "coverage", ".vscode"]);
+  const sourceExtensions = new Set([".js", ".jsx", ".mjs", ".cjs", ".ts", ".tsx", ".py", ".go", ".rs", ".java", ".kt", ".rb", ".php", ".cs", ".c", ".cpp", ".h", ".hpp", ".swift", ".vue", ".svelte"]);
+  const sourceFiles = [];
+  const visit = directory => {
+    if (sourceFiles.length >= maxFiles) return;
+    let entries;
+    try { entries = fs.readdirSync(directory, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name)); } catch { return; }
+    for (const entry of entries) {
+      if (entry.isDirectory() && ignored.has(entry.name)) continue;
+      const absolute = path.join(directory, entry.name);
+      if (entry.isDirectory()) visit(absolute);
+      else if (entry.isFile() && sourceExtensions.has(path.extname(entry.name).toLowerCase())) {
+        sourceFiles.push(absolute);
+        if (sourceFiles.length >= maxFiles) return;
+      }
+    }
+  };
+  visit(repoRoot);
+  for (const absolute of sourceFiles) {
+    try {
+      const relative = path.relative(repoRoot, absolute).replaceAll(path.sep, "/");
+      const content = fs.readFileSync(absolute, "utf-8").slice(0, 2000);
+      lines.push(`\n--- ${relative} ---\n${content}`);
+    } catch {}
+  }
   return lines.join("\n");
+}
+
+function repositoryChangeFingerprint(repoRoot) {
+  const status = git.status(repoRoot, { excludeRuntime: true });
+  const files = status.split("\n").filter(Boolean).map(line => line.slice(3).replace(/^"|"$/g, "").replace(/\\/g, "/")).sort();
+  const contents = files.map(file => {
+    try { return `${file}:${crypto.createHash("sha256").update(fs.readFileSync(path.join(repoRoot, file))).digest("hex")}`; } catch { return `${file}:missing`; }
+  });
+  return crypto.createHash("sha256").update(`${status}\n${contents.join("\n")}`).digest("hex");
 }
 
 function compactContext(repoContext, budgetChars) {
@@ -126,6 +173,7 @@ function buildRoleOptions(role = {}, signal, timeoutMs) {
     roleOptions.thinking_budget = role.thinking_budget;
     roleOptions.thinking = { enabled: true, budget_tokens: role.thinking_budget };
   }
+  if (Number.isFinite(Number(role.max_tokens)) && Number(role.max_tokens) > 0) roleOptions.max_tokens = Number(role.max_tokens);
   return roleOptions;
 }
 
@@ -293,10 +341,17 @@ async function runPipelineInWorkspace(task, opts = {}) {
   const repoRoot = opts.repoRoot || process.cwd();
   const configPath = opts.configPath || path.join(repoRoot, "minitok.yml");
   const config = loadConfig(configPath, opts.overrides);
+  const strictOptimization = config.execution?.strict_optimization === true;
+  const requestedOptimizationProof = opts.optimizationProof || null;
   // execution.research_enabled was accepted, env-mapped and written by `migrate`
   // but never read, so disabling research still ran the intel phase every cycle
   // (paid tokens) and still demanded intel provider credentials.
   const researchEnabled = config.execution?.research_enabled !== false;
+  const optimizationMode = config.execution?.optimization_mode || "auto";
+  const optimizationAuto = optimizationMode === "auto";
+  const optimizationManual = optimizationMode === "manual";
+  const optimizationOff = optimizationMode === "off";
+  const taskClassification = classifyTask(task);
 
   // --coding-adapter / --research-adapter / --review-adapter select a role
   // explicitly. Store the selection in both provider and adapter fields so the
@@ -333,6 +388,25 @@ async function runPipelineInWorkspace(task, opts = {}) {
   if (!git.isGitRepo(repoRoot)) {
     throw new Error(`Not a git repository: ${repoRoot}`);
   }
+  const initialRepositoryFingerprint = repositoryChangeFingerprint(repoRoot);
+  const optimizationPolicy = {
+    context_retrieval: config.execution?.context_retrieval || "full",
+    context_representation: config.execution?.context_representation || "text",
+    context_budget_chars_by_stage: config.execution?.context_budget_chars_by_stage || {},
+    max_output_tokens_by_stage: config.execution?.max_output_tokens_by_stage || {},
+    edit_representation: config.execution?.edit_representation || "full_file",
+  };
+  const expectedOptimizationIdentity = optimizationIdentity({ task, repository_fingerprint: initialRepositoryFingerprint, policy: optimizationPolicy });
+  const submittedOptimizationComparison = requestedOptimizationProof?.baseline && requestedOptimizationProof?.candidate
+    ? compareOptimizationProof({ ...requestedOptimizationProof.baseline, identity: expectedOptimizationIdentity }, { ...requestedOptimizationProof.candidate, identity: expectedOptimizationIdentity })
+    : null;
+  const optimizationProofPassed = Boolean(submittedOptimizationComparison?.passed && requestedOptimizationProof.identity === expectedOptimizationIdentity);
+  const optimizationAllowed = !strictOptimization || optimizationProofPassed;
+  const compactOutput = optimizationAllowed && (config.execution?.compact_output === true || ["edit_ir", "adaptive"].includes(config.execution?.edit_representation));
+  const optimizationSafe = !optimizationOff && (!strictOptimization || optimizationAllowed);
+  const intelSkipDecision = shouldSkipIntel(task, { enabled: optimizationSafe && config.execution?.research_auto_skip_simple === true, strict_optimization: strictOptimization, force_research: opts.forceResearch === true });
+  const directEdit = directEditDecision(task, repoRoot, { enabled: optimizationSafe && (optimizationAuto || (optimizationManual && config.execution?.direct_edit_enabled === true)), max_file_bytes: config.execution?.direct_edit_max_file_bytes, classification: taskClassification });
+  const effectiveResearchEnabled = researchEnabled && !intelSkipDecision.skip && !directEdit.eligible;
 
   // A contract still marked "running" before this run starts belongs to a
   // crashed predecessor run — mark it interrupted so it cannot survive forever.
@@ -361,6 +435,10 @@ async function runPipelineInWorkspace(task, opts = {}) {
   const providersConfig = config.providers || {};
   const configuredProviderNames = Object.keys(providersConfig);
   const defaultProvider = config.default_provider || configuredProviderNames[0] || "";
+  const knowledgeStore = new KnowledgeStore(opts.knowledgePath);
+  const learningConfig = config.execution?.provider_learning || {};
+  const learningDecisions = [];
+  const originalProviderFor = role => resolveProviderName(config, role, opts.providerOverride) || defaultProvider;
   providerModule.configureRetries({
     maxRetries: config.execution?.max_retries === "unlimited" ? (Number(config.execution?.retry_hard_limit) || 5) : (Number(config.execution?.max_retries) || 5),
     backoffMs: (Number(config.execution?.retry_backoff_sec) || 1) * 1000,
@@ -370,8 +448,13 @@ async function runPipelineInWorkspace(task, opts = {}) {
     const canonical = normalizeProvider(providerName);
     return providersConfig[providerName]?.pricing || providersConfig[canonical]?.pricing || null;
   };
-  const createRoleProvider = (role) => {
-    const providerName = resolveProviderName(config, role, opts.providerOverride) || defaultProvider;
+  const createRoleProvider = (role, forceConfigured = false) => {
+    const configuredName = originalProviderFor(role);
+    const decision = optimizationAllowed && !forceConfigured && !opts.providerOverride && learningConfig.enabled !== false
+      ? selectProviderByLearnedCost(configuredName, configuredProviderNames, knowledgeStore.getAll(), { role, allow_unproven: !strictOptimization, ...learningConfig })
+      : { provider: configuredName, selected: false, reason: optimizationAllowed ? "learning_disabled_or_override" : "strict_proof_required" };
+    learningDecisions.push({ role, current: configuredName, selected: decision.provider, applied: decision.selected && !forceConfigured, reason: decision.reason, stats: decision.stats || [] });
+    const providerName = forceConfigured ? configuredName : decision.provider;
     if (!providerName) throw new Error(`No provider configured for role '${role}'. Configure default_provider or providers.`);
     const canonicalName = normalizeProvider(providerName);
     const roleCfg = config.roles?.[role] || {};
@@ -385,10 +468,16 @@ async function runPipelineInWorkspace(task, opts = {}) {
   for (const role of ["plan", "work", "review", "intel"]) {
     // The intel role is only needed when research is enabled; requiring its
     // credentials unconditionally made an unrelated missing key fatal.
-    if (role === "intel" && !researchEnabled) continue;
+    if (role === "intel" && !effectiveResearchEnabled) continue;
     roleProviders[role] = createRoleProvider(role);
     if (!(await roleProviders[role].provider.isAvailable())) {
-      throw new Error(`Provider '${roleProviders[role].name}' for role '${role}' is not available. Configure its credentials or choose another provider.`);
+      const configuredName = originalProviderFor(role);
+      if (roleProviders[role].name !== configuredName) {
+        roleProviders[role] = createRoleProvider(role, true);
+      }
+      if (!(await roleProviders[role].provider.isAvailable())) {
+        throw new Error(`Provider '${roleProviders[role].name}' for role '${role}' is not available. Configure its credentials or choose another provider.`);
+      }
     }
   }
 
@@ -402,7 +491,32 @@ async function runPipelineInWorkspace(task, opts = {}) {
   const hardTimeoutMs = (Number(config.execution?.timeout_hard_limit_sec) || 86400) * 1000;
   const deadline = Date.now() + hardTimeoutMs;
   const budgetChars = config.execution?.context_budget_chars || DEFAULT_CONTEXT_BUDGET_CHARS;
-  const results = { cycles: [], totalTokens: { input: 0, output: 0 }, totalCost: 0, goal: originalGoal, evolution: {} };
+  const results = {
+    cycles: [],
+    totalTokens: { input: 0, output: 0 },
+    totalCost: 0,
+    goal: originalGoal,
+    evolution: {},
+    metrics: {
+      provider_calls: 0,
+      provider_usage: { input: 0, output: 0, total: 0, cached_input: 0, cache_write: 0, billable_input: 0 },
+      provider_cost_usd: 0,
+      stages: {},
+      review: { verdicts: {}, changes_requested: 0, rejected: 0 },
+      repair_cycles: 0,
+      compaction: { stages: {}, compacted_count: 0 },
+      context: { representation: "text", requested_representation: "text", schema_version: null, stages: {}, adaptive_estimates: null, adaptive_decision: null, retrieval: { mode: "full", requested_mode: "focused", selected_stages: 0, fallback_stages: 0, selected_files: [], stages: {} } },
+      repair: { cache_hits: { intelligence: 0, plan: 0 }, persistent_cache_hits: { intelligence: 0, plan: 0 }, persistent_cache_misses: { intelligence: 0, plan: 0 }, cache_invalidations: 0, work_only_cycles: 0, intelligence_calls: 0, plan_calls: 0 },
+      provider_outcomes: [],
+      provider_learning: { decisions: [], samples: [] },
+      optimization: { strict: strictOptimization, allowed: optimizationAllowed, proof_passed: optimizationProofPassed, identity: expectedOptimizationIdentity, proof: submittedOptimizationComparison, fallback_reason: optimizationAllowed ? null : "strict_proof_required" },
+      effective: { optimization_allowed: optimizationAllowed, strict_optimization: strictOptimization, context_representation: config.execution?.context_representation || "text", context_retrieval: config.execution?.context_retrieval || "full", edit_representation: config.execution?.edit_representation || "full_file", max_output_tokens_by_stage: config.execution?.max_output_tokens_by_stage || {}, research_enabled: effectiveResearchEnabled, research_skip_reason: intelSkipDecision.skip ? intelSkipDecision.reason : null },
+      task_routing: { ...taskClassification, intel: intelSkipDecision, direct_edit: directEdit },
+      routing: { decisions: learningDecisions },
+      optimization_savings: { mode: optimizationMode, direct_edit: { enabled: optimizationAuto || (optimizationManual && config.execution?.direct_edit_enabled === true), selected: directEdit.eligible, reason: directEdit.reason, estimated_provider_calls_saved: directEdit.eligible ? 2 : 0 }, context_deduplication: { enabled: config.execution?.context_deduplication !== false, stages: {}, original_chars: 0, projected_chars: 0, saved_chars: 0 }, repair_minimal_context: { enabled: config.execution?.repair_minimal_context !== false, applied: false }, dynamic_output_budgets: { enabled: config.execution?.dynamic_output_budgets !== false, stages: {} }, provider_cache: { enabled: config.execution?.provider_cache_input !== false, hits: 0, misses: 0 } },
+      edits: { requested_mode: config.execution?.edit_representation || "full_file", strategy: "full_file", policy_reason: null, manifest_files: 0, ir_changes: 0, full_file_changes: 0, expanded_changes: 0, rejected_changes: 0 },
+    },
+  };
   let confirmationGranted = false; // Track whether user approved changes for this run
   let stagnantCycles = 0;
   let lastChangeSignature = "";
@@ -410,7 +524,24 @@ async function runPipelineInWorkspace(task, opts = {}) {
   let implementationRejections = 0;
   let repeatedVerificationOutput = 0;
   let lastVerificationFingerprint = "";
+  let contextFingerprint = "";
   let humanEscalation = false;
+  let cachedIntelligence = null;
+  let cachedIntelligenceKey = null;
+  let cachedPlan = null;
+  let cachedPlanKey = null;
+  const stageCacheConfig = config.execution?.stage_cache || {};
+  const stageCache = !optimizationAllowed || stageCacheConfig.enabled === false ? null : new StageCache(
+    stageCacheConfig.persistent === false ? null : (opts.stageCachePath || path.join(repoRoot, ".minitok", "cache", "stages.json")),
+    { maxEntries: stageCacheConfig.max_entries },
+  );
+  let taskEpoch = 0;
+  let repairMode = false;
+  let repairReason = null;
+  let compactEditFallback = false;
+  const buildRepairPrompt = (reason, details, patch = "") => optimizationOff || (optimizationManual && config.execution?.repair_minimal_context === false)
+    ? (reason === "implementation" ? buildImplementationRepairTask(originalGoal, details) : buildRepairTask(originalGoal, details?.review || details, details?.check || null))
+    : repairContext(originalGoal, { files: directEdit.paths, failure: Array.isArray(details) ? details.join("\n") : details?.failure || details?.check?.evidence?.output || "repair required", patch });
 
   // Model escalation + token hard guardrail.
   // Escalation moves the "work" adapter up the model-tier chain on repeated
@@ -458,8 +589,39 @@ async function runPipelineInWorkspace(task, opts = {}) {
     return cost;
   };
 
+  const recordProviderCall = (stage, response) => {
+    const input = Number(response?.tokens?.input) || 0;
+    const output = Number(response?.tokens?.output) || 0;
+    const usage = response?.usage || {};
+    const cachedInput = Number(usage.cache_read_input_tokens || usage.cached_input_tokens || usage.prompt_tokens_details?.cached_tokens || usage.cachedContentTokenCount) || 0;
+    const cacheWrite = Number(usage.cache_creation_input_tokens || usage.cache_write_input_tokens || usage.cache_creation?.ephemeral_5m_input_tokens) || 0;
+    const billableInput = Math.max(0, input - cachedInput - cacheWrite);
+    const reportedCost = Number(usage.cost_details?.upstream_inference_cost) || 0;
+    const stageMetrics = results.metrics.stages[stage] || { calls: 0, input: 0, output: 0, total: 0, cached_input: 0, cache_write: 0, billable_input: 0, provider_cost_usd: 0 };
+    stageMetrics.calls += 1;
+    stageMetrics.input += input;
+    stageMetrics.output += output;
+    stageMetrics.total += input + output;
+    stageMetrics.cached_input += cachedInput;
+    stageMetrics.cache_write += cacheWrite;
+    stageMetrics.billable_input += billableInput;
+    stageMetrics.provider_cost_usd += reportedCost;
+    results.metrics.stages[stage] = stageMetrics;
+    results.metrics.provider_calls += 1;
+    results.metrics.provider_usage.input += input;
+    results.metrics.provider_usage.output += output;
+    results.metrics.provider_usage.total += input + output;
+    results.metrics.provider_usage.cached_input += cachedInput;
+    results.metrics.provider_usage.cache_write += cacheWrite;
+    results.metrics.provider_usage.billable_input += billableInput;
+    results.metrics.provider_cost_usd += reportedCost;
+    const role = stage === "next_task" ? "plan" : stage;
+    const estimatedCost = providerModule._estimateCost({ ...(response?.tokens || {}), cached_input: cachedInput, cache_write: cacheWrite }, pricingFor(roleProviders[role]?.name)).total;
+    if (cachedInput > 0) results.metrics.optimization_savings.provider_cache.hits += 1; else results.metrics.optimization_savings.provider_cache.misses += 1;
+    results.metrics.provider_outcomes.push({ role, provider: roleProviders[role]?.name || null, model: response?.model || config.roles?.[role]?.model || "", input_tokens: input, output_tokens: output, cached_input_tokens: cachedInput, cache_write_tokens: cacheWrite, billable_input_tokens: billableInput, cost_usd: reportedCost || estimatedCost, complete_run: true, strict_proof: optimizationProofPassed });
+  };
+
   // Self-evolution: adapt policy from past outcomes
-  const knowledgeStore = new KnowledgeStore(opts.knowledgePath);
   let adaptedMaxCycles = Math.min(maxCycles, hardCycleLimit);
   if (knowledgeStore.size > 0) {
     const patterns = analyzeFailurePatterns(knowledgeStore.getAll());
@@ -536,19 +698,170 @@ async function runPipelineInWorkspace(task, opts = {}) {
     console.log(`\n Cycle ${cycle}/${adaptedMaxCycles}`);
     // Context compaction (token savings)
     // P1: repo context is static on the real (non-isolated) repo while the
-    // pipeline edits the disposable clone — compute once per run instead of
-    // paying ~5 git spawns every cycle.
-    rawRepoContext ??= getRepoContext(repoRoot);
-    const repoContext = compactContext(rawRepoContext, budgetChars);
-    writeContextManifest(repoRoot, { goal: task, source: "pipeline", budget_chars: budgetChars, original_chars: rawRepoContext.length, final_chars: repoContext.length, files: ["package.json", "README.md", "minitok.yml"].filter(file => fs.existsSync(path.join(repoRoot, file))) });
+    // Cache repository intelligence/plan across repair cycles, but invalidate both
+    // when a file changes so a repair never reasons from stale repository state.
+    const currentFingerprint = repositoryChangeFingerprint(repoRoot);
+    if (contextFingerprint && currentFingerprint !== contextFingerprint) {
+      cachedIntelligence = null;
+      cachedIntelligenceKey = null;
+      cachedPlan = null;
+      cachedPlanKey = null;
+      repairMode = false;
+      repairReason = null;
+      results.metrics.repair.cache_invalidations += 1;
+      console.log("   Repository changed; invalidating cached intelligence and plan.");
+    }
+    contextFingerprint = currentFingerprint;
+    rawRepoContext = getRepoContext(repoRoot);
+    const cacheConfigKey = JSON.stringify({ epoch: taskEpoch, fingerprint: currentFingerprint, profile: taskClassification.profile, retrieval: config.execution?.context_retrieval || "full", representation: config.execution?.context_representation || "text", edit_representation: config.execution?.edit_representation || "full_file", stage_budgets: config.execution?.context_budget_chars_by_stage || {}, output_limits: config.execution?.max_output_tokens_by_stage || {}, intel_provider: roleProviders.intel?.name || null, intel_model: config.roles?.intel?.model || null, plan_provider: roleProviders.plan?.name || null, plan_model: config.roles?.plan?.model || null });
+    const taskDigest = crypto.createHash("sha256").update(String(originalGoal)).digest("hex");
+    const intelligenceCacheKey = `${cacheConfigKey}:intel:${taskDigest}`;
+    const planCacheKey = `${cacheConfigKey}:plan:${taskDigest}`;
+    if (cachedIntelligence && cachedIntelligenceKey !== intelligenceCacheKey) cachedIntelligence = null;
+    if (cachedPlan && cachedPlanKey !== planCacheKey) cachedPlan = null;
+    if (!cachedIntelligence && stageCache) {
+      cachedIntelligence = stageCache.get(intelligenceCacheKey);
+      if (cachedIntelligence) {
+        cachedIntelligenceKey = intelligenceCacheKey;
+        results.metrics.repair.persistent_cache_hits.intelligence += 1;
+      } else {
+        results.metrics.repair.persistent_cache_misses.intelligence += 1;
+      }
+    }
+    if (!cachedPlan && stageCache) {
+      cachedPlan = stageCache.get(planCacheKey);
+      if (cachedPlan) {
+        cachedPlanKey = planCacheKey;
+        results.metrics.repair.persistent_cache_hits.plan += 1;
+      } else {
+        results.metrics.repair.persistent_cache_misses.plan += 1;
+      }
+    }
 
-    // project.name and project.stack are written by `minitok migrate` and mapped
-    // from MINITOK_PROJECT_*, but no consumer read them. They label the prompts
-    // the model sees, so a renamed or re-detected project reaches the planner.
+    // Stage-specific budgets avoid sending the same large repository context at
+    // the same size to intelligence, planning, and implementation. The legacy
+    // execution.context_budget_chars remains the fallback for every stage.
+    const stageBudget = stage => {
+      if (!optimizationAllowed) return budgetChars;
+      const configured = Number(config.execution?.context_budget_chars_by_stage?.[stage]);
+      return Number.isFinite(configured) && configured > 0 ? configured : budgetChars;
+    };
+    const configuredRepresentation = optimizationAllowed ? (config.execution?.context_representation || "text") : "text";
+    results.metrics.context.requested_representation = config.execution?.context_representation || "text";
+    results.metrics.context.retrieval.requested_mode = config.execution?.context_retrieval || "full";
+    const thresholdChars = Number(config.execution?.context_representation_threshold_chars) || 40000;
+    const minSavingsRatio = Number.isFinite(Number(config.execution?.context_representation_min_savings_ratio)) ? Number(config.execution.context_representation_min_savings_ratio) : 0.40;
+    const stageNames = ["intel", "plan", "work", "review"];
+    const textEstimate = stageNames.reduce((sum, stage) => sum + compactText(rawRepoContext, { budget_chars: stageBudget(stage) }).final_chars, 0);
+    let workflowContext = null;
+    let representation = configuredRepresentation === "workflow_ir" ? "workflow_ir" : "text";
+    if (configuredRepresentation === "adaptive" || configuredRepresentation === "workflow_ir") {
+      workflowContext = buildWorkflowContext(repoRoot, { task, max_files: 5000 });
+      if (cachedIntelligence) workflowContext = updateWorkflowContext(workflowContext, { intelligence: cachedIntelligence.intelligence });
+      if (cachedPlan) workflowContext = updateWorkflowContext(workflowContext, { plan: cachedPlan });
+      const irEstimate = stageNames.reduce((sum, stage) => sum + compactText(serializeWorkflowContext(workflowContext, stage), { budget_chars: stageBudget(stage) }).final_chars, 0);
+      const savingsRatio = textEstimate > 0 ? (textEstimate - irEstimate) / textEstimate : 0;
+      const marginSatisfied = savingsRatio >= minSavingsRatio;
+      results.metrics.context.adaptive_estimates = { text_chars: textEstimate, workflow_ir_chars: irEstimate, text_tokens_estimate: Math.ceil(textEstimate / 4), workflow_ir_tokens_estimate: Math.ceil(irEstimate / 4), savings_ratio: savingsRatio, min_savings_ratio: minSavingsRatio };
+      results.metrics.context.adaptive_decision = configuredRepresentation === "adaptive" ? { selected: marginSatisfied ? "workflow_ir" : "text", reason: marginSatisfied ? "minimum_savings_margin_met" : "minimum_savings_margin_not_met" } : null;
+      if (configuredRepresentation === "adaptive") representation = marginSatisfied ? "workflow_ir" : "text";
+      if (representation !== "workflow_ir") workflowContext = null;
+    }
+    results.metrics.context.requested_representation = configuredRepresentation;
+    results.metrics.context.representation = representation;
+    if (workflowContext) results.metrics.context.retrieval.mode = "workflow_ir";
+    results.metrics.context.threshold_chars = thresholdChars;
+    if (workflowContext) results.metrics.context.schema_version = workflowContext.schema_version;
     const projectLabel = [config.project?.name, config.project?.stack]
       .filter(value => typeof value === "string" && value.trim() && !["unknown", "generic"].includes(value.trim().toLowerCase()))
       .join(" · ");
-    const promptContext = projectLabel ? `Project: ${projectLabel}\n${repoContext}` : repoContext;
+    const promptContextFor = stage => {
+      if (workflowContext) {
+        if (stage === "work") {
+          const targetPaths = [...workflowContext.plan.steps, ...workflowContext.changes].map(item => item.file).filter(Boolean);
+          attachFileExcerpts(workflowContext, repoRoot, 4000, targetPaths);
+        }
+        const serialized = serializeWorkflowContext(workflowContext, stage);
+        const compacted = compactText(serialized, { budget_chars: stageBudget(stage) });
+        results.metrics.context.stages[stage] = { original_chars: serialized.length, final_chars: compacted.final_chars, compacted: compacted.compacted, retrieval: "workflow_ir_context" };
+        results.metrics.context.retrieval.stages[stage] = { selected: false, full_chars: serialized.length, focused_chars: null, savings_ratio: null, min_savings_ratio: null, selected_files: [], selected_ranges: 0, fallback_reason: "workflow_ir_selected" };
+        return compacted.text;
+      }
+      const full = compactText(rawRepoContext, { budget_chars: stageBudget(stage) });
+      let compacted = full;
+      const requestedRetrieval = optimizationAllowed ? (config.execution?.context_retrieval || "full") : "full";
+      if (requestedRetrieval === "focused") {
+        const focused = buildFocusedContext(repoRoot, {
+          base_context: rawRepoContext,
+          task,
+          plan: cachedPlan,
+          intelligence: cachedIntelligence?.intelligence,
+          max_files: config.execution?.context_retrieval_max_files,
+          max_file_chars: config.execution?.context_retrieval_max_file_chars,
+          max_total_chars: config.execution?.context_retrieval_max_total_chars,
+          protected_paths: [config.validation?.script_path].filter(Boolean),
+        });
+        const focusedCompacted = compactText(focused.text, { budget_chars: stageBudget(stage) });
+        const savingsRatio = full.final_chars > 0 ? (full.final_chars - focusedCompacted.final_chars) / full.final_chars : 0;
+        const minSavingsRatio = Number(config.execution?.context_retrieval_min_savings_ratio) || 0;
+        const selected = !focused.fallback_reason && savingsRatio >= minSavingsRatio;
+        results.metrics.context.retrieval.stages[stage] = { selected, full_chars: full.final_chars, focused_chars: focusedCompacted.final_chars, savings_ratio: savingsRatio, min_savings_ratio: minSavingsRatio, selected_files: focused.selected_files, selected_ranges: focused.selected_ranges, fallback_reason: selected ? null : (focused.fallback_reason || "minimum_savings_margin_not_met") };
+        if (selected) {
+          compacted = focusedCompacted;
+          results.metrics.context.retrieval.mode = "focused";
+          results.metrics.context.retrieval.selected_stages += 1;
+          results.metrics.context.retrieval.selected_files = [...new Set([...results.metrics.context.retrieval.selected_files, ...focused.selected_files])];
+        } else {
+          results.metrics.context.retrieval.fallback_stages += 1;
+        }
+      } else {
+        results.metrics.context.retrieval.stages[stage] = { selected: false, full_chars: full.final_chars, focused_chars: null, savings_ratio: 0, min_savings_ratio: 0, selected_files: [], selected_ranges: 0, fallback_reason: "disabled" };
+      }
+      const compactionMetrics = results.metrics.compaction.stages[stage] || {
+        calls: 0,
+        compacted_count: 0,
+        original_chars: 0,
+        final_chars: 0,
+        budget_chars: stageBudget(stage),
+      };
+      compactionMetrics.calls += 1;
+      compactionMetrics.original_chars += compacted.original_chars;
+      compactionMetrics.final_chars += compacted.final_chars;
+      if (compacted.compacted) compactionMetrics.compacted_count += 1;
+      compactionMetrics.last_original_chars = compacted.original_chars;
+      compactionMetrics.last_final_chars = compacted.final_chars;
+      compactionMetrics.last_compacted = compacted.compacted;
+      results.metrics.compaction.stages[stage] = compactionMetrics;
+      if (compacted.compacted) {
+        results.metrics.compaction.compacted_count += 1;
+        console.log(`   ${stage} context compacted: ${compacted.original_chars} → ${compacted.final_chars} chars`);
+      }
+      const projected = optimizationOff || (optimizationManual && config.execution?.context_deduplication === false)
+        ? { text: compacted.text, original_chars: compacted.final_chars, reason: "disabled" }
+        : projectStageContext(compacted.text, stage, {
+          intelligence: cachedIntelligence?.intelligence,
+          plan: cachedPlan,
+          max_chars: stage === "plan" ? Math.min(stageBudget(stage), 12000) : stage === "review" ? Math.min(stageBudget(stage), 8000) : undefined,
+        });
+      const dedup = results.metrics.optimization_savings.context_deduplication;
+      results.metrics.context.stages[stage] = results.metrics.context.stages[stage] || { original_chars: 0, final_chars: 0, compacted: false, budget_chars: stageBudget(stage) };
+      dedup.stages[stage] = { original_chars: projected.original_chars, projected_chars: projected.text.length, saved_chars: Math.max(0, projected.original_chars - projected.text.length), reason: projected.reason };
+      dedup.original_chars += projected.original_chars;
+      dedup.projected_chars += projected.text.length;
+      dedup.saved_chars += Math.max(0, projected.original_chars - projected.text.length);
+      results.metrics.context.stages[stage].deduplication = dedup.stages[stage];
+      return projectLabel ? `Project: ${projectLabel}\n${projected.text}` : projected.text;
+    };
+    writeContextManifest(repoRoot, {
+      goal: task,
+      source: "pipeline",
+      budget_chars: budgetChars,
+      context_representation: representation,
+      context_schema_version: workflowContext?.schema_version || null,
+      stage_budgets: Object.fromEntries(stageNames.map(stage => [stage, stageBudget(stage)])),
+      original_chars: rawRepoContext.length,
+      files: ["package.json", "README.md", "minitok.yml"].filter(file => fs.existsSync(path.join(repoRoot, file))),
+    });
 
     // roles.<role>.timeout_sec is the documented per-request budget;
     // execution.timeout_hard_limit_sec bounds it (a role may not exceed the
@@ -559,30 +872,82 @@ async function runPipelineInWorkspace(task, opts = {}) {
       const seconds = Number(config.roles?.[role]?.timeout_sec);
       return Number.isFinite(seconds) && seconds > 0 ? Math.min(seconds * 1000, timeoutCeilingMs) : timeoutCeilingMs;
     };
-    const roleOpts = (role) => buildRoleOptions(config.roles[role], opts.signal, roleTimeoutMs(role));
+    const roleOpts = (role, budgetStage = role) => {
+      const options = buildRoleOptions(config.roles[role], opts.signal, roleTimeoutMs(role));
+      const configured = optimizationAllowed ? Number(config.execution?.max_output_tokens_by_stage?.[budgetStage]) : NaN;
+      if (Number.isFinite(configured) && configured > 0) {
+        const targetBytes = directEdit.paths.length === 1 ? (() => { try { return fs.statSync(path.resolve(repoRoot, directEdit.paths[0])).size; } catch { return 0; } })() : 0;
+        const dynamic = dynamicOutputBudget(budgetStage, configured, { enabled: !optimizationOff && (optimizationAuto || config.execution?.dynamic_output_budgets !== false), profile: taskClassification.profile, target_bytes: targetBytes, operations: 1 });
+        options.max_tokens = dynamic || configured;
+        results.metrics.optimization_savings.dynamic_output_budgets.stages[budgetStage] = { configured, selected: options.max_tokens, target_bytes: targetBytes, profile: taskClassification.profile };
+      }
+      Object.assign(options, providerCacheOptions({ enabled: !optimizationOff && (optimizationAuto || config.execution?.provider_cache_input !== false), static_prefix: `${role}:${config.roles?.[role]?.model || ""}:${config.execution?.context_representation || "text"}` }));
+      options.budget_stage = budgetStage;
+      return options;
+    };
 
+    const cycleRepairMode = repairMode;
+    const cycleRepairReason = repairReason;
+    let intelState = "skipped";
+    let planState = "executed";
     opts.onProgress?.({ phase: "intel", state: "started", cycle });
-    let intelResult = { intelligence: undefined, tokens: { input: 0, output: 0 } };
-    if (researchEnabled) {
+    let intelResult = cachedIntelligence || { intelligence: undefined, tokens: { input: 0, output: 0 } };
+    if (directEdit.eligible && !repairMode) {
+      intelState = "direct_edit_skipped";
+      console.log("   Direct-edit fast path: intelligence skipped.");
+      opts.onProgress?.({ phase: "intel", state: "skipped_direct_edit", cycle });
+    } else if (effectiveResearchEnabled && !cachedIntelligence) {
       console.log("   Gathering repository intelligence...");
-      intelResult = await intel(roleProviders.intel.provider, task, promptContext, roleOpts("intel"));
+      intelResult = await intel(roleProviders.intel.provider, task, promptContextFor("intel"), { ...roleOpts("intel"), compact_output: compactOutput });
+      intelState = "executed";
+      cachedIntelligence = intelResult;
+      cachedIntelligenceKey = intelligenceCacheKey;
+      if (stageCache && intelResult.intelligence && !intelResult.intelligence.error) stageCache.set(intelligenceCacheKey, intelResult, { stage: "intel", profile: taskClassification.profile, fingerprint: currentFingerprint, input_tokens: intelResult.tokens?.input || 0, output_tokens: intelResult.tokens?.output || 0, cost_usd: providerModule._estimateCost(intelResult.tokens, pricingFor(roleProviders.intel?.name)).total });
+      results.metrics.repair.intelligence_calls += 1;
+      if (workflowContext) workflowContext = updateWorkflowContext(workflowContext, { intelligence: intelResult.intelligence });
+      recordProviderCall("intel", intelResult);
       results.totalTokens.input += intelResult.tokens?.input || 0;
       results.totalTokens.output += intelResult.tokens?.output || 0;
       addCost("intel", intelResult.tokens);
       opts.onProgress?.({ phase: "intel", state: "completed", cycle, tokens: intelResult.tokens, total_tokens: results.totalTokens, total_cost: results.totalCost });
+    } else if (cachedIntelligence) {
+      intelState = "cached";
+      results.metrics.repair.cache_hits.intelligence += 1;
+      console.log("   Reusing cached repository intelligence...");
+      opts.onProgress?.({ phase: "intel", state: "cached", cycle, tokens: intelResult.tokens, total_tokens: results.totalTokens, total_cost: results.totalCost });
     } else {
-      console.log("   Repository intelligence disabled (execution.research_enabled: false)");
+      console.log(`   Repository intelligence skipped (${intelSkipDecision.skip ? intelSkipDecision.reason : "execution.research_enabled: false"})`);
       opts.onProgress?.({ phase: "intel", state: "skipped", cycle });
     }
 
     // Phase 2: Plan
     opts.onProgress?.({ phase: "plan", state: "started", cycle });
     console.log("   Planning...");
-    const planResult = await plan(roleProviders.plan.provider, task, promptContext, { ...roleOpts("plan"), intelligence: intelResult.intelligence });
-    results.totalTokens.input += planResult.tokens?.input || 0;
-    results.totalTokens.output += planResult.tokens?.output || 0;
-    addCost("plan", planResult.tokens);
-    opts.onProgress?.({ phase: "plan", state: "completed", cycle, tokens: planResult.tokens, total_tokens: results.totalTokens, total_cost: results.totalCost });
+    const directPlan = directEdit.eligible && !repairMode
+      ? { task_summary: originalGoal, steps: [{ id: 1, action: "modify", file: directEdit.paths[0], description: originalGoal, rationale: "explicit low-risk single-file task" }], estimated_files: 1, risk_level: "low", notes: "direct-edit fast path" }
+      : null;
+    const planResult = directPlan
+      ? { plan: directPlan, tokens: { input: 0, output: 0 }, model: "direct-edit" }
+      : repairMode && cachedPlan
+        ? { plan: cachedPlan, tokens: { input: 0, output: 0 }, model: "cached" }
+        : await plan(roleProviders.plan.provider, task, promptContextFor("plan"), { ...roleOpts("plan"), compact_output: compactOutput, intelligence: intelResult.intelligence });
+    if (repairMode && cachedPlan) {
+      planState = "cached";
+      results.metrics.repair.cache_hits.plan += 1;
+      results.metrics.repair.work_only_cycles += 1;
+      console.log("   Reusing cached plan for repair work...");
+    } else {
+      cachedPlan = planResult.plan;
+      cachedPlanKey = planCacheKey;
+      if (stageCache && planResult.plan && !planResult.plan.error && Array.isArray(planResult.plan.steps)) stageCache.set(planCacheKey, planResult.plan, { stage: "plan", profile: taskClassification.profile, fingerprint: currentFingerprint, input_tokens: planResult.tokens?.input || 0, output_tokens: planResult.tokens?.output || 0, cost_usd: providerModule._estimateCost(planResult.tokens, pricingFor(roleProviders.plan?.name)).total });
+      results.metrics.repair.plan_calls += 1;
+      if (workflowContext) workflowContext = updateWorkflowContext(workflowContext, { plan: planResult.plan });
+      recordProviderCall("plan", planResult);
+      results.totalTokens.input += planResult.tokens?.input || 0;
+      results.totalTokens.output += planResult.tokens?.output || 0;
+      addCost("plan", planResult.tokens);
+    }
+    opts.onProgress?.({ phase: "plan", state: repairMode && cachedPlan ? "cached" : "completed", cycle, tokens: planResult.tokens, total_tokens: results.totalTokens, total_cost: results.totalCost });
     console.log(`     Plan: ${planResult.plan.error ? " " + planResult.plan.error : " " + (planResult.plan.steps?.length || 0) + " steps"}`);
 
     if (planResult.plan.error || !Array.isArray(planResult.plan.steps) || planResult.plan.steps.length === 0) {
@@ -592,14 +957,74 @@ async function runPipelineInWorkspace(task, opts = {}) {
       const _pfRec = escalationEngine.recordCycleOutcome(originalGoal, { success: false, category: _pfCat, tokens: (intelResult.tokens?.input || 0) + (intelResult.tokens?.output || 0) });
       if (_pfRec.stop) { console.log(`\n${_pfRec.stopReason}`); if (_pfRec.humanEscalation) humanEscalation = true; break; }
       if (_pfRec.escalate) escalateWorkRole(_pfRec.targetTier, _pfRec.model);
-      results.cycles.push({ cycle, plan: planResult.plan, status: planResult.plan.error ? "MODEL_OUTPUT_INVALID" : "NO_ACTIONABLE_PLAN", error: planError });
+      results.cycles.push({ cycle, repair_mode: cycleRepairMode, repair_reason: cycleRepairReason, intel_state: intelState, plan_state: planState, work_only: cycleRepairMode && planState === "cached", plan: planResult.plan, status: planResult.plan.error ? "MODEL_OUTPUT_INVALID" : "NO_ACTIONABLE_PLAN", error: planError });
       break;
     }
 
     // Phase 3: Implement
     opts.onProgress?.({ phase: "work", state: "started", cycle });
     console.log("   Implementing...");
-    const implResult = await implement(roleProviders.work.provider, planResult, promptContext, roleOpts("work"));
+    const requestedEditRepresentation = config.execution?.edit_representation || "full_file";
+    const plannedSteps = Array.isArray(planResult.plan?.steps) ? planResult.plan.steps : [];
+    const plannedTargetPaths = plannedSteps.map(step => step?.file).filter(Boolean);
+    const editManifest = optimizationAllowed && ["edit_ir", "adaptive"].includes(requestedEditRepresentation)
+      ? buildEditManifest(repoRoot, plannedTargetPaths)
+      : { version: 2, files: [] };
+    const manifestByPath = new Map(editManifest.files.map(file => [file.file, file]));
+    const policyFiles = plannedSteps.map(step => ({
+      action: step?.action,
+      bytes: manifestByPath.get(step?.file)?.bytes || 0,
+      file: step?.file,
+    }));
+    const editDecision = chooseEditRepresentation({
+      requested: requestedEditRepresentation,
+      optimization_allowed: optimizationAllowed,
+      files: policyFiles,
+      small_file_max_bytes: config.execution?.edit_small_file_max_bytes,
+    });
+    const compactEditEligible = !compactEditFallback && editManifest.files.length > 0 && editDecision.representation === "edit_ir";
+    results.metrics.edits.strategy = compactEditEligible ? "compact_edit_ir_v2" : "full_file";
+    results.metrics.edits.policy_reason = editDecision.reason;
+    results.metrics.edits.manifest_files = editManifest.files.length;
+/** @type {any} */
+    const directTargetContext = directEdit.eligible ? (() => { try { return `--- ${directEdit.paths[0]} ---\n${capText(fs.readFileSync(path.resolve(repoRoot, directEdit.paths[0]), "utf8"), 12000)}`; } catch { return ""; } })() : "";
+    // implement(roleProviders.work.provider, planResult, promptContextFor("work"), legacy context) remains the non-direct-edit conceptual path.
+    // The selected context is projected for direct-edit tasks to avoid repeating repository-wide input.
+    // Compatibility marker: implement(roleProviders.work.provider, planResult, promptContextFor("work"), legacyOptions);
+    const workContext = directEdit.eligible ? directTargetContext : promptContextFor("work");
+/** @type {any} */
+    const workOptions = { ...roleOpts("work", cycleRepairMode ? "repair" : "work"), task, verification_path: config.validation?.script_path || "VERIFY_CMD.mjs", edit_representation: compactEditEligible ? "edit_ir" : "full_file", edit_manifest: editManifest, target_context: directTargetContext };
+    const dslAttempt = optimizationSafe && directEdit.eligible && !cycleRepairMode && (optimizationAuto || (optimizationManual && config.execution?.llm_to_dsl === true));
+    if (dslAttempt) workOptions.output_format = "dsl";
+    /** @type {any} */
+    let implResult = await implement(roleProviders.work.provider, planResult, workContext, workOptions);
+    if (dslAttempt && implResult.dsl) {
+      try {
+        const { compileDslToEditIr, parseDsl } = require("./dsl");
+        const compiledDsl = compileDslToEditIr(repoRoot, parseDsl(implResult.dsl));
+        implResult = { ...implResult, changes: expandEditChanges(repoRoot, decodeEditChanges({ changes: compiledDsl.changes }, compiledDsl.manifest)), dsl: { accepted: true, source_chars: implResult.dsl.length } };
+        results.metrics.edits.strategy = "llm_to_dsl_compiled";
+        results.metrics.optimization_savings.direct_edit.dsl = { attempted: true, accepted: true, source_chars: implResult.dsl.length };
+      } catch (error) {
+        results.metrics.optimization_savings.direct_edit.dsl = { attempted: true, accepted: false, reason: error.message };
+        implResult = await implement(roleProviders.work.provider, planResult, workContext, { ...workOptions, output_format: undefined });
+      }
+    }
+    const rawChanges = Array.isArray(implResult.changes?.changes) ? implResult.changes.changes : [];
+    results.metrics.edits.ir_changes += rawChanges.filter(change => Array.isArray(change.edits)).length;
+    results.metrics.edits.full_file_changes += rawChanges.filter(change => !Array.isArray(change.edits) && typeof change.content === "string").length;
+    if (compactEditEligible) {
+      implResult = { ...implResult, changes: decodeEditChanges(implResult.changes, editManifest) };
+      implResult = { ...implResult, changes: expandEditChanges(repoRoot, implResult.changes) };
+      results.metrics.edits.expanded_changes += Array.isArray(implResult.changes?.changes) ? implResult.changes.changes.filter(change => typeof change.content === "string" && change.edits === undefined).length : 0;
+      if (implResult.changes?.error) {
+        results.metrics.edits.rejected_changes += rawChanges.length;
+        compactEditFallback = true;
+        results.metrics.edits.strategy = "full_file_fallback_after_ir_error";
+      }
+    }
+    if (workflowContext) workflowContext = updateWorkflowContext(workflowContext, { changes: implResult.changes?.changes || [] });
+    recordProviderCall("work", implResult);
     results.totalTokens.input += implResult.tokens?.input || 0;
     results.totalTokens.output += implResult.tokens?.output || 0;
     addCost("work", implResult.tokens);
@@ -610,19 +1035,21 @@ async function runPipelineInWorkspace(task, opts = {}) {
       const _icCat = failureAnalyzer.categorize(implResult.changes.error || "");
       lastFailureCategory = _icCat;
       implementationRejections += 1;
-      results.cycles.push({ cycle, plan: planResult.plan, implement: implResult.changes, status: "MODEL_OUTPUT_INVALID", implementation_errors: [implResult.changes.error] });
+      results.cycles.push({ cycle, repair_mode: cycleRepairMode, repair_reason: cycleRepairReason, intel_state: intelState, plan_state: planState, work_only: cycleRepairMode && planState === "cached", plan: planResult.plan, implement: implResult.changes, status: "MODEL_OUTPUT_INVALID", implementation_errors: [implResult.changes.error] });
       if (implementationRejections >= 2) {
         console.log("   Repeated invalid implementation output; stopping without verification.");
         break;
       }
-      task = buildImplementationRepairTask(originalGoal, [implResult.changes.error]);
+      repairMode = true;
+      repairReason = "implementation";
+      task = buildRepairPrompt("implementation", [implResult.changes.error], JSON.stringify(implResult.changes));
       continue;
     }
 
     const changeList = Array.isArray(implResult.changes?.changes) ? implResult.changes.changes : [];
     if (changeList.length === 0) {
       console.log("   No actionable changes were produced; stopping without verification.");
-      results.cycles.push({ cycle, plan: planResult.plan, implement: implResult.changes, status: "NO_ACTIONABLE_PLAN", implementation_errors: ["The implementation returned zero changes"] });
+      results.cycles.push({ cycle, repair_mode: cycleRepairMode, repair_reason: cycleRepairReason, intel_state: intelState, plan_state: planState, work_only: cycleRepairMode && planState === "cached", plan: planResult.plan, implement: implResult.changes, status: "NO_ACTIONABLE_PLAN", implementation_errors: ["The implementation returned zero changes"] });
       break;
     }
 
@@ -633,6 +1060,11 @@ async function runPipelineInWorkspace(task, opts = {}) {
       console.log(`      ${changeList.length} files changed, above validation.max_changed_files (${maxChangedFiles}). Nothing was applied.`);
       results.cycles.push({
         cycle,
+        repair_mode: cycleRepairMode,
+        repair_reason: cycleRepairReason,
+        intel_state: intelState,
+        plan_state: planState,
+        work_only: cycleRepairMode && planState === "cached",
         plan: planResult.plan,
         implement: implResult.changes,
         status: "IMPLEMENTATION_REJECTED",
@@ -655,6 +1087,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
       applyResult = applyChanges(repoRoot, implResult.changes, opts.dryRun, applyOptions);
     }
     console.log(`     Applied: ${applyResult.applied} changes${applyResult.errors.length ? `, ${applyResult.errors.length} errors` : ""}`);
+    if (applyResult.applied > 0) contextFingerprint = repositoryChangeFingerprint(repoRoot);
     if (applyResult.errors.length > 0) {
       implementationRejections += 1;
       const implementationErrors = applyResult.errors.slice();
@@ -671,7 +1104,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
         console.log("   Repeated implementation rejection; stopping without verification.");
         break;
       }
-      task = buildImplementationRepairTask(originalGoal, implementationErrors);
+      task = buildRepairPrompt("implementation", implementationErrors, JSON.stringify(implResult.changes));
       continue;
     }
 
@@ -689,10 +1122,16 @@ async function runPipelineInWorkspace(task, opts = {}) {
         ? await verifyCommandAsync(repoRoot, { script_path: config.validation?.script_path, timeout_ms: config.validation?.timeout_ms })
         : { passed: true, evidence: { status: "skipped", command: "validation.enabled=false", output: "Verification command skipped by configuration." } };
     opts.onProgress?.({ phase: "verify", state: "completed", cycle, passed: checkResult.passed, total_tokens: results.totalTokens, total_cost: results.totalCost });
+    if (workflowContext) workflowContext = updateWorkflowContext(workflowContext, { verification: { passed: checkResult.passed, exit_code: checkResult.evidence?.exit_code ?? null, status: checkResult.evidence?.status || null } });
     if (!checkResult.passed) {
       const verificationStatus = classifyVerificationEvidence(checkResult.evidence);
       const verificationCycle = {
         cycle,
+        repair_mode: cycleRepairMode,
+        repair_reason: cycleRepairReason,
+        intel_state: intelState,
+        plan_state: planState,
+        work_only: cycleRepairMode && planState === "cached",
         plan: planResult.plan,
         implement: { summary: implResult.changes.summary, files_changed: implResult.changes.files_changed, changed_files: changeList.map(change => change.file) },
         check: checkResult.evidence,
@@ -712,19 +1151,29 @@ async function runPipelineInWorkspace(task, opts = {}) {
         console.log("   Identical verification output repeated; stopping instead of sending a duplicate repair.");
         break;
       }
-      task = buildRepairTask(originalGoal, null, checkResult);
+      results.metrics.repair_cycles += 1;
+      repairMode = true;
+      repairReason = "verification";
+      task = buildRepairPrompt("verification", { failure: checkResult.evidence?.output || "verification failed", check: checkResult }, JSON.stringify(changeList));
       continue;
     }
 
     // Phase 5: Review
     opts.onProgress?.({ phase: "review", state: "started", cycle });
     console.log("   Reviewing...");
-    const verifyResult = await verify(roleProviders.review.provider, task, { changes: implResult.changes, check: checkResult }, repoRoot, roleOpts("review"));
+    const reviewBudget = stageBudget("review");
+    const verifyResult = await verify(roleProviders.review.provider, task, { changes: implResult.changes, check: checkResult }, repoRoot, { ...roleOpts("review"), compact_output: compactOutput, max_diff_chars: Math.max(1000, Math.floor(reviewBudget * 0.65)), max_status_chars: Math.max(500, Math.floor(reviewBudget * 0.2)) });
+    recordProviderCall("review", verifyResult);
+    results.metrics.context.stages.review = { original_chars: verifyResult.prompt_chars || 0, final_chars: verifyResult.prompt_chars || 0, compacted: true, budget_chars: reviewBudget };
     results.totalTokens.input += verifyResult.tokens?.input || 0;
     results.totalTokens.output += verifyResult.tokens?.output || 0;
     addCost("review", verifyResult.tokens);
     opts.onProgress?.({ phase: "review", state: "completed", cycle, tokens: verifyResult.tokens, total_tokens: results.totalTokens, total_cost: results.totalCost });
     const reviewVerdict = verifyResult.review.verdict || "UNKNOWN";
+    if (workflowContext) workflowContext = updateWorkflowContext(workflowContext, { review: verifyResult.review });
+    results.metrics.review.verdicts[reviewVerdict] = (results.metrics.review.verdicts[reviewVerdict] || 0) + 1;
+    if (reviewVerdict === "CHANGES_REQUESTED") results.metrics.review.changes_requested += 1;
+    if (reviewVerdict === "REJECT") results.metrics.review.rejected += 1;
     const checkPassed = checkResult.passed;
     // validation.confidence_threshold was documented and unused. It is applied
     // only when the model reported a numeric confidence; a missing value keeps the
@@ -752,6 +1201,11 @@ async function runPipelineInWorkspace(task, opts = {}) {
 
     results.cycles.push({
       cycle,
+      repair_mode: cycleRepairMode,
+      repair_reason: cycleRepairReason,
+      intel_state: intelState,
+      plan_state: planState,
+      work_only: cycleRepairMode && planState === "cached",
       intelligence: intelResult.intelligence,
       plan: planResult.plan,
       implement: { summary: implResult.changes.summary, files_changed: implResult.changes.files_changed, changed_files: (implResult.changes.changes || []).map(change => change.file) },
@@ -793,7 +1247,11 @@ async function runPipelineInWorkspace(task, opts = {}) {
     if (verdict === "APPROVE" && (Number(verifyResult.review.confidence) || 0) >= goalConfidenceFloor) {
       if (cycle < adaptedMaxCycles && !opts.dryRun) {
         console.log("   Evaluating goal progress...");
-        const nextResult = await generateNextTask(roleProviders.plan.provider, originalGoal, results.cycles, verifyResult.review, roleOpts("plan"));
+        const nextTaskOptions = roleOpts("plan");
+        const nextTaskLimit = optimizationAllowed ? Number(config.execution?.max_output_tokens_by_stage?.next_task) : NaN;
+        if (Number.isFinite(nextTaskLimit) && nextTaskLimit > 0) nextTaskOptions.max_tokens = nextTaskLimit;
+        const nextResult = await generateNextTask(roleProviders.plan.provider, originalGoal, results.cycles, verifyResult.review, nextTaskOptions);
+        recordProviderCall("next_task", nextResult);
         results.totalTokens.input += nextResult.tokens?.input || 0;
         results.totalTokens.output += nextResult.tokens?.output || 0;
         if (nextResult.done) {
@@ -802,6 +1260,11 @@ async function runPipelineInWorkspace(task, opts = {}) {
         } else if (nextResult.next_task) {
           console.log(`   Next task: ${nextResult.next_task}`);
           task = nextResult.next_task;
+          taskEpoch += 1;
+          cachedIntelligence = null;
+          cachedIntelligenceKey = null;
+          cachedPlan = null;
+          cachedPlanKey = null;
         }
       } else {
         console.log("\n Task completed successfully!");
@@ -812,7 +1275,10 @@ async function runPipelineInWorkspace(task, opts = {}) {
     // Phase 6: Repair
     if (verdict === "REVIEW_REJECTED" || verdict === "VERIFICATION_FAILED" || verdict === "REJECT") {
       console.log(`   Preparing ${verdict === "VERIFICATION_FAILED" ? "verification repair" : "review repair"} task...`);
-      task = buildRepairTask(originalGoal, verifyResult.review, checkResult);
+      results.metrics.repair_cycles += 1;
+      repairMode = true;
+      repairReason = "review";
+      task = buildRepairPrompt("review", { review: verifyResult.review, check: checkResult, failure: (verifyResult.review?.findings || []).map(finding => finding.message || "").join("\n") }, JSON.stringify(implResult.changes));
     }
   }
   } catch (error) {
@@ -840,6 +1306,13 @@ async function runPipelineInWorkspace(task, opts = {}) {
   // lost that distinction.
   const runStatus = success ? "success" : approved ? "partial" : "failure";
   const filesChanged = results.cycles.reduce((sum, c) => sum + (c.implement?.files_changed || 0), 0);
+  results.metrics.latency_ms = elapsed;
+  results.metrics.changed_files = filesChanged;
+  results.metrics.verification = {
+    passed: results.cycles.at(-1)?.check?.status === "passed",
+    exit_code: results.cycles.at(-1)?.check?.exit_code ?? null,
+  };
+  results.metrics.final_status = runStatus;
   knowledgeStore.record(/** @type {any} */ ({
     project: path.resolve(repoRoot),
     goal: originalGoal,
@@ -850,8 +1323,15 @@ async function runPipelineInWorkspace(task, opts = {}) {
     duration_ms: elapsed,
     files_changed: filesChanged,
     failure_category: lastFailureCategory,
-     summary: `${results.cycles.length} cycles, ${runStatus} (last cycle: ${lastCycleStatus || "none"})`,
+    quality_outcome: success ? "approved" : lastCycleStatus === "REJECT" || lastCycleStatus === "REVIEW_REJECTED" ? "review_rejected" : lastFailureCategory === "timeout" ? "timeout" : "incomplete",
+    complete_run: lastCycleStatus !== null && lastFailureCategory !== "timeout",
+    approval_eligible: success,
+    provider_outcomes: results.metrics.provider_outcomes,
+    strict_proof: optimizationProofPassed,
+    optimization_proof: results.metrics.optimization,
+    summary: `${results.cycles.length} cycles, ${runStatus} (last cycle: ${lastCycleStatus || "none"})`,
    }));
+  results.metrics.provider_learning.decisions = learningDecisions;
   results.evolution.knowledge_size = knowledgeStore.size;
 
   // M14: Attempt evolution upload (non-blocking, errors swallowed).
@@ -920,6 +1400,8 @@ async function runPipelineInWorkspace(task, opts = {}) {
         passed: results.cycles.at(-1)?.check?.status === "passed",
       },
       outcome: success ? "success" : approved ? "approved-not-merged" : "verification-failed",
+      optimization_savings: results.metrics.optimization_savings,
+      metrics: results.metrics,
     }, { evidencePath: opts.evidencePath });
   } catch (error) {
     console.warn(`  Could not save run evidence: ${error.message}`);
@@ -980,7 +1462,7 @@ async function runPipeline(task, opts = {}) {
     // is `repoRoot` for everything the pipeline writes, but an approval request
     // must land in the workspace the human/editor is actually watching.
     try {
-      result = await runPipelineInWorkspace(task, { ...opts, repoRoot: isolated.path, approvalRoot: repoRoot, isolatedWorkspace: true });
+      result = await runPipelineInWorkspace(task, { ...opts, repoRoot: isolated.path, approvalRoot: repoRoot, stageCachePath: path.join(repoRoot, ".minitok", "cache", "stages.json"), isolatedWorkspace: true });
     } catch (error) {
       // The clone's own "failed" contract is deleted with the clone, so the
       // failure has to be recorded where the operator can still read it.

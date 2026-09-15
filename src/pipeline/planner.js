@@ -4,6 +4,11 @@
  * Planner — generates implementation plans from task descriptions.
  */
 
+const { compactJson } = require("./prompt-utils");
+const { decodePlan } = require("./compact-ir");
+
+const COMPACT_PLAN_SYSTEM_PROMPT = `You are a senior software architect. Return only compact JSON: {"t":"summary","s":[{"i":1,"a":"modify","f":"file","d":"description","r":"reason"}],"n":1,"risk":"low|medium|high"}. No markdown.`;
+
 const PLAN_SYSTEM_PROMPT = `You are a senior software architect. Given a task description and repository context, produce a detailed implementation plan.
 
 Output format (strict JSON):
@@ -24,9 +29,9 @@ Output format (strict JSON):
 }`;
 
 async function plan(provider, task, repoContext, options = {}) {
-  const intelligence = options.intelligence ? `\n\n## Repository Intelligence\n${JSON.stringify(options.intelligence, null, 2)}` : "";
+  const intelligence = options.intelligence ? `\n\n## Repository Intelligence\n${compactJson(options.intelligence)}` : "";
   const messages = [
-    { role: "system", content: PLAN_SYSTEM_PROMPT },
+    { role: "system", content: options.compact_output ? COMPACT_PLAN_SYSTEM_PROMPT : PLAN_SYSTEM_PROMPT },
     {
       role: "user",
       content: `## Task\n${task}\n\n## Repository Context\n${repoContext}${intelligence}\n\n## Constraints\n- Minimize file changes\n- Follow existing code patterns\n- Include error handling`,
@@ -35,7 +40,7 @@ async function plan(provider, task, repoContext, options = {}) {
 
   const result = await provider.complete(messages, {
     ...options,
-    max_tokens: 4096,
+    max_tokens: options.max_tokens || 4096,
     temperature: 0.3,
   });
 
@@ -43,7 +48,7 @@ async function plan(provider, task, repoContext, options = {}) {
 
   let plan;
   const { parsed, valid } = parseResponseJSON(result.text, { error: "No JSON in response", raw: result.text });
-  plan = valid ? parsed : { error: parsed.error || "Invalid JSON", raw: parsed.raw || result.text };
+  plan = valid ? decodePlan(parsed) : { error: parsed.error || "Invalid JSON", raw: parsed.raw || result.text };
   // A reply cut off by the output token limit is not a formatting mistake. Say so
   // instead of letting the run retry, escalate and pay for the same overflow.
   if (!valid && result.truncated) plan = { error: `The model stopped at its output token limit (finish_reason: ${result.finish_reason}) before it produced valid JSON`, raw: plan.raw, truncated: true };

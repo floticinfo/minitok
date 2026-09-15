@@ -14,6 +14,33 @@ minitok is paid software with three canonical plans: Open, Select, and Private; 
 
 The npm tarball includes only the runtime and end-user documentation listed by `package.json`; development and release verification scripts are not published, and source tests are not published. Release validation runs the packed-install smoke against a temporary npm prefix and executes the packaged CLI help, status, and auth status commands.
 
+## Task DSL (fail-closed, optional)
+
+For explicit, deterministic edits that do not require an LLM, `minitok run --dsl <file>` compiles a repository-local task DSL into Compact Edit IR v2 and then uses the normal hash, path, protected-file, atomic-write, and verification gates. Natural-language runs use `execution.optimization_mode: auto` by default: safe explicit small-file tasks may automatically use direct-edit and LLM-to-DSL, while risky or ambiguous tasks stay on the conservative pipeline. Natural-language runs never interpret arbitrary task text as DSL.
+
+```text
+task "Change the value" {
+  target file "src/config.js"
+  operation replace_exact {
+    before "export const VALUE = 1;"
+    after "export const VALUE = 2;"
+  }
+  verify command "VERIFY_CMD.mjs"
+}
+```
+
+Supported operations are `replace_exact`, `replace_lines`, `create`, and `delete`. Every task requires an existing repository-relative verification command. Unknown syntax, traversal, duplicate targets, stale hashes, protected paths, symlinks, and malformed operations fail before a write. Execute with `minitok run --dsl task.mtk --repo <repository>`; use `--dry-run` to validate and preview without changing files.
+
+### DSL representation benchmark
+
+Compare DSL, Compact Edit IR v2, and full-file payloads with synthetic local fixtures:
+
+```bash
+npm run benchmark:dsl-representation
+```
+
+The report records UTF-8 payload bytes, Compact IR manifest bytes, estimated tokens (`ceil(bytes / 4)`), equivalent output cost at the configured rate, and reduction relative to full-file output. The benchmark also compiles and expands each case through the existing hash-validated Edit IR path. DSL has no provider call, so its cost is reported only as an equivalent output estimate—not as an actual provider bill. A negative byte reduction is valid: DSL prioritizes explicit syntax, local fail-closed validation, and zero LLM calls rather than guaranteeing the smallest serialized payload for every small edit.
+
 ## For AI tools and agents
 
 minitok is a CLI runtime for repository-aware coding workflows. It does not train or modify an AI model. AI models provide repository research, planning, implementation, and review through configured providers; minitok controls the execution loop, token budgets, deterministic verification gate, retries, evidence, and safe file operations.
@@ -182,15 +209,23 @@ roles:
   plan: { provider: anthropic }
   work: { provider: anthropic, fallback_model: claude-haiku-4-20250514 }
 execution:
+  # Adaptive mode uses compact IR/retrieval and falls back on validation failure.
+  # Set true for fail-closed baseline-only execution.
+  strict_optimization: false
+  compact_output: true
   max_retries: 5
   retry_backoff_sec: 1
   retry_max_sec: 30
   research_enabled: true
+  context_budget_chars_by_stage: { intel: 16000, plan: 24000, work: 36000, review: 12000 }
+  max_output_tokens_by_stage: { intel: 4096, plan: 4096, work: 8192, review: 4096, next_task: 512 }
+  stage_cache: { enabled: true, persistent: true, max_entries: 24 }
+  provider_learning: { enabled: true, min_samples: 3, min_approval_rate: 0.8, min_complete_rate: 0.9 }
 validation:
   script_path: VERIFY_CMD.mjs
 ```
 
-`execution.research_enabled: false` (or `MINITOK_EXECUTION_RESEARCH_ENABLED=0`) skips the repository-intelligence phase that otherwise runs before planning on every cycle; the `intel` provider credentials are not required in that case. When `roles.<role>.provider` is empty, the role resolves through its legacy `adapter` (default `claude`), so a repository whose only key is for another provider must set `roles.<role>.provider` or run with `--provider-override <provider>`. `minitok run` live-checks only the providers the configured roles resolve to — a stale key for a provider no role uses no longer delays or blocks the run — and `minitok doctor --verify` probes every configured key when a full audit is wanted.
+`execution.strict_optimization: false` enables adaptive developer mode: focused retrieval, compact stage IR, adaptive Edit IR, stage output caps, repair/cache reuse, and provider cost learning are available with deterministic verification and fallback. Set `execution.strict_optimization: true` for fail-closed baseline-only execution; optimized paths then require a strict proof showing the same canonical patch, review contract, verification contract, and a strictly lower measured cost. Adaptive mode is the practical cost-saving mode and does not provide a formal per-run equivalence proof. `execution.research_enabled: false` (or `MINITOK_EXECUTION_RESEARCH_ENABLED=0`) skips the repository-intelligence phase that otherwise runs before planning on every cycle; the `intel` provider credentials are not required in that case. When `roles.<role>.provider` is empty, the role resolves through its legacy `adapter` (default `claude`), so a repository whose only key is for another provider must set `roles.<role>.provider` or run with `--provider-override <provider>`. `minitok run` live-checks only the providers the configured roles resolve to — a stale key for a provider no role uses no longer delays or blocks the run — and `minitok doctor --verify` probes every configured key when a full audit is wanted.
 
 **Provider surface.** Anthropic, OpenAI, and Google are the three first-class providers (`claude`, `gpt`, and `gemini` are accepted aliases), and every other OpenAI-compatible endpoint is a custom provider configured with `base_url`. Providers that used to have their own entry are configured that way now, and `api_key_env` names the environment variable that holds the vendor key:
 

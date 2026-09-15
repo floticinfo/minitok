@@ -15,8 +15,8 @@ function classifyProviderHealth(name, available, health) {
 }
 
 async function cmdRun(task, opts) {
-  if (!task) {
-    console.error("Error: Task description required.\n\nUsage: minitok run \"Fix authentication bug\"");
+  if (!task && !opts.dsl) {
+    console.error("Error: Task description required.\n\nUsage: minitok run \"Fix authentication bug\" or minitok run --dsl task.mtk");
     return 1;
   }
 
@@ -36,7 +36,38 @@ async function cmdRun(task, opts) {
     }
   }
 
-    // Preflight: fail fast with a setup guide when no provider credentials exist,
+    if (opts.dsl) {
+    try {
+      const dslFs = require("node:fs");
+      const { executeDsl } = require("../../pipeline/dsl");
+      const dslPath = path.resolve(repoRoot, opts.dsl);
+      const root = dslFs.realpathSync(repoRoot);
+      if (dslPath !== root && !dslPath.startsWith(root + path.sep)) throw new Error("DSL file must be inside the repository");
+      if (!dslFs.existsSync(dslPath) || !dslFs.statSync(dslPath).isFile()) throw new Error(`DSL file not found: ${opts.dsl}`);
+      const dslRealPath = dslFs.realpathSync(dslPath);
+      if (dslRealPath !== root && !dslRealPath.startsWith(root + path.sep)) throw new Error("DSL file must resolve inside the repository");
+      if (dslFs.lstatSync(dslPath).isSymbolicLink()) throw new Error("DSL file must not be a symbolic link");
+      const result = await executeDsl(repoRoot, dslFs.readFileSync(dslPath, "utf8"), { dryRun: opts.dryRun, timeout_ms: opts.approvalTimeoutMs, auditPath: path.join(repoRoot, ".minitok", "evidence", "runs", "file-operations.jsonl") });
+      if (result.errors?.length) { result.errors.forEach(error => console.error(`DSL error: ${error}`)); return 1; }
+      try {
+        const { recordRunEvidence } = require("../../run-evidence");
+        const dslVerification = "verification_result" in result ? result.verification_result : undefined;
+        await recordRunEvidence({ workspaceRoot: repoRoot, task: result.task, dry_run: Boolean(opts.dryRun), changed_files: result.metrics.changed_files, verification: { commands: [result.verification.path], passed: dslVerification?.passed ?? (opts.dryRun ? true : null), exit_status: dslVerification?.evidence?.exit_code ?? null }, outcome: result.success ? "success" : "verification-failed", optimization_savings: { dsl: { provider_calls: 0, provider_tokens: 0, token_savings: result.metrics.token_savings } }, metrics: result.metrics });
+      } catch (evidenceError) { console.warn(`  Could not save DSL run evidence: ${evidenceError.message}`); }
+      console.log(`DSL task: ${result.task}`);
+      console.log(`Provider calls: 0 (local DSL execution)`);
+      console.log(`Applied: ${result.applied || 0} changes`);
+      const verificationResult = "verification_result" in result ? result.verification_result : undefined;
+      const verificationPassed = verificationResult?.passed;
+      if (verificationResult) console.log(`Verification: ${verificationPassed ? "passed" : "failed"}`);
+      return result.success ? 0 : 1;
+    } catch (error) {
+      console.error(`DSL error: ${error.message}`);
+      return 1;
+    }
+  }
+
+  // Preflight: fail fast with a setup guide when no provider credentials exist,
   // or when a provider key is rejected by the API (401/403). Otherwise
   // runPipeline would burn cycles and only fail at the first real request.
   let preflightAuthorized = opts.authorization === PREAUTHORIZED;

@@ -6,6 +6,8 @@
 
 const fs = require("fs");
 const path = require("path");
+const { compactJson } = require("./prompt-utils");
+const { serializeEditManifest } = require("./edit-ir");
 const { auditLog } = require("../core/audit");
 const { randomBytes } = require("crypto");
 
@@ -140,21 +142,42 @@ Output format (strict JSON):
     {
       "file": "path/to/file",
       "action": "create|modify|delete",
-      "content": "full file content for create or modify"
+      "content": "full file content for create or modify",
+      "before_hash": "required full 64-character sha256 for edit_ir",
+      "edits": [{ "kind": "replace_exact", "before": "old block", "after": "new block" }]
     }
   ],
   "summary": "what was implemented",
   "files_changed": 3
 }`;
 
+const COMPACT_EDIT_SYSTEM_PROMPT = `You are an expert software engineer and precise code edit engine. Return only one compact JSON object: {"v":2,"changes":[{"f":"f0","h":"sha256","e":[{"k":"x","b":"old exact block","a":"new exact block"}]}]}. Use k=x for exact replacement or k=l with s=start line,n=end line,c=replacement. Use file IDs from the manifest. Never repeat file paths or unchanged file contents. No markdown, explanation, or full-file content for existing files.`;
+const DSL_SYSTEM_PROMPT = `You are a precise code editor. Return only the task DSL source, not JSON, markdown, or explanation. Use this exact grammar: task "description" { target file "relative/path" operation replace_exact { before "old" after "new" } verify command "VERIFY_CMD.mjs" }. Use replace_lines with start/end/content for line edits, create with content for new files, or delete with no fields. Every task must include the repository verification command path specified by the user.`;
+
 async function implement(provider, planResult, repoContext, options = {}) {
+  const taskContext = options.task ? `\n\n## Current Task\n${options.task}` : "";
+  if (options.output_format === "dsl") {
+    const messages = [
+      { role: "system", content: DSL_SYSTEM_PROMPT },
+      { role: "user", content: `${taskContext}\n\n## Plan\n${compactJson(planResult.plan)}\n\n## Repository Context\n${repoContext}\n\nReturn one valid DSL task. Use verification command ${options.verification_path || "VERIFY_CMD.mjs"} exactly as provided.` },
+    ];
+    const response = await provider.complete(messages, { ...options, max_tokens: options.max_tokens || 2048, temperature: 0.1 });
+    return { dsl: response.text, tokens: response.tokens, usage: response.usage, model: response.model, truncated: response.truncated };
+  }
+  const compactEditMode = ["edit_ir", "adaptive"].includes(options.edit_representation) && options.edit_manifest?.files?.length;
+  const editPolicy = compactEditMode
+    ? `- Use compact Edit IR v2 for existing files. Return {"v":2,"changes":[{"f":"f0","h":"full sha256","e":[{"k":"x","b":"old exact block","a":"new exact block"}]}]}; use f/file_id, h/before_hash, and e/edits aliases.\n- Do not repeat file paths or unchanged file contents.\n- New files may use {file, action, content}; existing files must use compact edits.`
+    : ["edit_ir", "adaptive"].includes(options.edit_representation)
+      ? "- For existing files MUST use edits with the required full 64-character before_hash and exact before/after or line ranges; do not return full replacement content unless necessary\n- New files may use complete content"
+      : "- For modify, content must be the complete replacement file contents";
+  const manifestContext = compactEditMode ? `\n\n## Edit Manifest\n${serializeEditManifest(options.edit_manifest)}` : "";
   const messages = [
-    { role: "system", content: IMPLEMENT_SYSTEM_PROMPT },
+    { role: "system", content: compactEditMode ? COMPACT_EDIT_SYSTEM_PROMPT : IMPLEMENT_SYSTEM_PROMPT },
     {
       role: "user",
-      content: `## Plan\n${JSON.stringify(planResult.plan, null, 2)}\n\n## Repository Context\n${repoContext}\n\n## Instructions\n- Produce complete, working code\n- Follow existing code style\n- Include imports and dependencies
-- For modify, content must be the complete replacement file contents
-- Do not include line_range or unified diff syntax
+      content: `${taskContext}\n## Plan\n${compactJson(planResult.plan)}\n\n## Repository Context\n${repoContext}${manifestContext}\n\n## Instructions\n- Produce complete, working code\n- Follow existing code style\n- Include imports and dependencies
+${editPolicy}
+- Do not include unified diff syntax
 - Never modify validation scripts, tests, scripts, minitok.yml, .minitok, credentials, CI/workflow files, or other protected paths
 - Do not return an empty changes array unless the goal is already satisfied`,
     },
@@ -180,11 +203,11 @@ async function implement(provider, planResult, repoContext, options = {}) {
     // Retrying a token-limit overflow with the same budget costs another call and
     // truncates again; fail with the real reason instead.
     if (parsedResult.valid || response.truncated || attempt === attempts) break;
-    messages.push({ role: "user", content: "Your previous response was not valid JSON. Return only the strict JSON object with a changes array; do not include markdown or explanation." });
+    messages.push({ role: "user", content: compactEditMode ? "Invalid compact Edit IR. Return only {\"v\":2,\"changes\":[{\"f\":\"f0\",\"h\":\"sha256\",\"e\":[{\"k\":\"x\",\"b\":\"old\",\"a\":\"new\"}]}]}; use only manifest file IDs and exact edits." : "Your previous response was not valid JSON. Return only the strict JSON object with a changes array; do not include markdown or explanation." });
   }
 
   const changes = parsedResult.valid ? parsedResult.parsed : { error: parsedResult.parsed.error || "Invalid JSON", raw: parsedResult.parsed.raw || result.text };
-  return { changes, tokens: result.tokens, model: result.model };
+  return { changes, tokens: result.tokens, usage: result.usage, model: result.model };
 }
 
 /**
@@ -509,4 +532,4 @@ function validateChanges(changesResult) {
   return { valid: errors.length === 0, errors, validatedChanges: validated };
 }
 
-module.exports = { implement, applyChanges, safePath, isProtectedPath, isBlockedExtension, unsafeFileNameReason, sensitiveFileNameReason, suspiciousShrinkReason, validateChange, validateChanges, temporaryWritePath, PROTECTED_PATHS, PROTECTED_EXECUTION_PATHS, GATE_PROTECTED_PATHS, RELEASE_PROTECTED_PATHS, VERIFICATION_PROTECTED_PATHS, SHRINK_GUARD_MIN_BYTES, SHRINK_GUARD_RATIO, DEFAULT_BLOCKED_EXTENSIONS, IMPLEMENT_SYSTEM_PROMPT };
+module.exports = { implement, applyChanges, safePath, isProtectedPath, isBlockedExtension, unsafeFileNameReason, sensitiveFileNameReason, suspiciousShrinkReason, validateChange, validateChanges, temporaryWritePath, PROTECTED_PATHS, PROTECTED_EXECUTION_PATHS, GATE_PROTECTED_PATHS, RELEASE_PROTECTED_PATHS, VERIFICATION_PROTECTED_PATHS, SHRINK_GUARD_MIN_BYTES, SHRINK_GUARD_RATIO, DEFAULT_BLOCKED_EXTENSIONS, IMPLEMENT_SYSTEM_PROMPT, DSL_SYSTEM_PROMPT };

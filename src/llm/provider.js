@@ -349,11 +349,26 @@ class FallbackProvider extends LLMProvider {
  * ({ input_per_mtok, output_per_mtok } from minitok.yml providers config).
  */
 function _estimateCost(tokens, pricing) {
-  if (!tokens || !pricing) return { input: 0, output: 0, total: 0 };
-  const input = ((tokens.input || 0) / 1e6) * (Number(pricing.input_per_mtok) || 0);
+  if (!tokens || !pricing) return { input: 0, output: 0, cached_input: 0, cache_write: 0, total: 0 };
+  const cachedInput = Number(tokens.cached_input || 0);
+  const cacheWrite = Number(tokens.cache_write || 0);
+  const billableInput = Math.max(0, Number(tokens.input || 0) - cachedInput - cacheWrite);
+  const input = (billableInput / 1e6) * (Number(pricing.input_per_mtok) || 0);
   const output = ((tokens.output || 0) / 1e6) * (Number(pricing.output_per_mtok) || 0);
-  const total = input + output;
-  return { input, output, total };
+  const cachedCost = (cachedInput / 1e6) * (Number(pricing.cache_read_per_mtok) || 0);
+  const writeCost = (cacheWrite / 1e6) * (Number(pricing.cache_write_per_mtok) || 0);
+  const total = input + output + cachedCost + writeCost;
+  return { input, output, cached_input: cachedInput, cache_write: cacheWrite, total };
+}
+
+function applyCacheMetadata(body, options = {}, providerName = "") {
+  if (options.cache_input !== true || typeof options.cache_key !== "string" || !options.cache_key) return body;
+  if (providerName === "anthropic" && typeof body.system === "string") {
+    body.system = [{ type: "text", text: body.system, cache_control: { type: "ephemeral" } }];
+    return body;
+  }
+  if (providerName !== "google") body.metadata = { ...(body.metadata || {}), minitok_cache_key: options.cache_key };
+  return body;
 }
 
 class AnthropicProvider extends LLMProvider {
@@ -380,6 +395,7 @@ class AnthropicProvider extends LLMProvider {
       messages: nonSystem.map((m) => ({ role: m.role, content: m.content })),
     };
     if (systemMsg) body.system = systemMsg.content;
+    applyCacheMetadata(body, options, "anthropic");
 
     //  Thinking support
     const thinking = options.thinking || this.config.thinking;
@@ -438,6 +454,7 @@ class OpenAIProvider extends LLMProvider {
     const officialEndpoint = (() => { try { return /(^|\.)api\.openai\.com$/i.test(new URL(this.baseUrl).hostname); } catch { return false; } })();
     const useCompletionTokens = reasoningModel && officialEndpoint;
     const body = { model, messages };
+    applyCacheMetadata(body, options, "openai");
     body[useCompletionTokens ? "max_completion_tokens" : "max_tokens"] = options.max_tokens || 4096;
     if (!reasoningModel) body.temperature = options.temperature ?? 0.7;
     else if (options.temperature !== undefined) body.temperature = options.temperature;
@@ -571,6 +588,7 @@ class CustomProvider extends LLMProvider {
     const apiKey = this.apiKey || auth.token || "";
     const model = validateProviderModel(this.name, options.model || this.config.model || (this.models[0]?.id) || "default", this.config);
     const body = { model, messages: messages.map(m => ({ role: m.role, content: m.content })), max_tokens: options.max_tokens || 4096 };
+    applyCacheMetadata(body, options, this.name);
     const headers = { "Content-Type": "application/json", ...(auth.headers || {}) };
     if (apiKey && !this.config.auth && headers["x-api-key"]) {
       delete headers["x-api-key"];

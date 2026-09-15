@@ -11,6 +11,7 @@ const { plan } = require("./planner");
 const { implement } = require("./implementer");
 const { verify } = require("./verifier");
 const { buildRepairTask } = require("./repair");
+const { capText, summarizeChanges } = require("./prompt-utils");
 const { approvalRequest, validateApprovalResponse, writeApprovalRequest, buildRoleOptions, summarizeRunOutcome } = require("./loop");
 
 describe("Pipeline stages", () => {
@@ -31,6 +32,19 @@ describe("Pipeline stages", () => {
   it("preserves provider-compatible options for roles without advanced settings", () => {
     const roleOptions = buildRoleOptions({ model: "standard-model" });
     assert.deepEqual(roleOptions, { model: "standard-model", signal: undefined });
+  });
+
+  it("propagates an explicit output token cap without changing other role options", () => {
+    const roleOptions = buildRoleOptions({ model: "compact-model", max_tokens: 1200 });
+    assert.equal(roleOptions.max_tokens, 1200);
+    assert.equal(roleOptions.model, "compact-model");
+  });
+
+  it("decodes compact stage IR outputs to the normal internal schemas", async () => {
+    const { decodeIntel, decodePlan, decodeReview } = require("./compact-ir");
+    assert.equal(decodeIntel({ s: "facts", f: ["a.js"] }).relevant_files[0], "a.js");
+    assert.equal(decodePlan({ s: [{ i: 1, a: "modify", f: "a.js", d: "change" }] }).steps[0].file, "a.js");
+    assert.equal(decodeReview({ v: "A", c: 0.9 }).verdict, "APPROVE");
   });
 
   it("parses repository intelligence from provider output", async () => {
@@ -145,6 +159,20 @@ describe("Pipeline stages", () => {
     } finally {
       fs.rmSync(repo, { recursive: true, force: true });
     }
+  });
+
+  it("caps verification prompt evidence while preserving head and tail", () => {
+    const value = `${"head ".repeat(2000)}TAIL_MARKER`;
+    const capped = capText(value, 1000);
+    assert.ok(capped.length < value.length);
+    assert.match(capped, /head/);
+    assert.match(capped, /TAIL_MARKER/);
+  });
+
+  it("summarizes review changes without embedding full file content", () => {
+    const summary = JSON.stringify(summarizeChanges({ changes: [{ file: "src/a.js", action: "modify", content: "SECRET_FULL_FILE_CONTENT" }] }));
+    assert.doesNotMatch(summary, /SECRET_FULL_FILE_CONTENT/);
+    assert.match(summary, /content_hash/);
   });
 
   it("builds a repair task from review and check failures", () => {

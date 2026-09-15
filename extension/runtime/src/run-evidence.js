@@ -63,6 +63,8 @@ function normalizeEvidence(input) {
       exit_status: input.verification?.exit_status ?? null,
       passed: input.verification?.passed ?? null
     },
+    optimization_savings: input.optimization_savings && typeof input.optimization_savings === 'object' ? input.optimization_savings : null,
+    metrics: input.metrics && typeof input.metrics === 'object' ? input.metrics : null,
     outcome: input.outcome || 'unknown',
     error: input.error || null
   };

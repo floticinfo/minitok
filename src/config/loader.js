@@ -21,8 +21,8 @@ const ENV_ALLOWLIST = new Set([
   "minitok_budget_token_hard_limit", "minitok_budget_stagnation_limit",
   "minitok_execution_max_retries", "minitok_execution_timeout_sec", "minitok_execution_retry_hard_limit",
   "minitok_execution_timeout_hard_limit_sec", "minitok_execution_retry_backoff_sec", "minitok_execution_retry_max_sec",
-  "minitok_execution_research_enabled", "minitok_validation_enabled", "minitok_validation_script_path",
-  "minitok_validation_timeout_ms", "minitok_validation_confidence_threshold", "minitok_validation_max_changed_files",
+  "minitok_execution_research_enabled", "minitok_execution_optimization_mode", "minitok_execution_direct_edit_enabled", "minitok_execution_direct_edit_max_file_bytes", "minitok_execution_context_deduplication", "minitok_execution_repair_minimal_context", "minitok_execution_dynamic_output_budgets", "minitok_execution_llm_to_dsl", "minitok_execution_provider_cache_input", "minitok_execution_context_retrieval", "minitok_execution_context_retrieval_min_savings_ratio", "minitok_execution_context_retrieval_max_files", "minitok_execution_context_retrieval_max_file_chars", "minitok_execution_context_retrieval_max_total_chars", "minitok_validation_enabled", "minitok_validation_script_path",
+  "minitok_validation_timeout_ms", "minitok_validation_confidence_threshold", "minitok_validation_max_changed_files", "minitok_execution_edit_small_file_max_bytes", "minitok_execution_research_auto_skip_simple",
 ]);
 const _ROLE_KEYS = new Set(["plan", "review", "work", "intel"]);
 
@@ -51,6 +51,31 @@ const DEFAULTS = {
     retry_backoff_sec: 90.0,
     retry_max_sec: 1800.0,
     research_enabled: true,
+    research_auto_skip_simple: true,
+    optimization_mode: "auto",
+    strict_optimization: false,
+    compact_output: true,
+    context_representation: "text",
+    context_representation_threshold_chars: 40000,
+    context_representation_min_savings_ratio: 0.40,
+    context_retrieval: "focused",
+    context_retrieval_min_savings_ratio: 0.10,
+    context_retrieval_max_files: 12,
+    context_retrieval_max_file_chars: 12000,
+    context_retrieval_max_total_chars: 24000,
+    context_budget_chars_by_stage: { intel: 16000, plan: 24000, work: 36000, review: 12000 },
+    max_output_tokens_by_stage: { intel: 1536, plan: 2048, work: 8192, review: 1536, next_task: 384, repair: 768 },
+    stage_cache: { enabled: true, persistent: true, max_entries: 24 },
+    provider_learning: { enabled: true, min_samples: 3, min_approval_rate: 0.8, min_complete_rate: 0.9 },
+    edit_representation: "adaptive",
+    edit_small_file_max_bytes: 1600,
+    direct_edit_enabled: false,
+    direct_edit_max_file_bytes: 1600,
+    context_deduplication: true,
+    repair_minimal_context: true,
+    dynamic_output_budgets: true,
+    llm_to_dsl: false,
+    provider_cache_input: true,
   },
   validation: { enabled: true, script_path: "VERIFY_CMD.mjs", timeout_ms: 120000, confidence_threshold: 0.8, max_changed_files: 20 },
   security: { blocked_extensions: [".env", ".pem", ".key", ".p12", ".pfx"] },
@@ -116,11 +141,26 @@ function loadEnvVars() {
     execution_retry_backoff_sec: ["execution", "retry_backoff_sec"],
     execution_retry_max_sec: ["execution", "retry_max_sec"],
     execution_research_enabled: ["execution", "research_enabled"],
+    execution_optimization_mode: ["execution", "optimization_mode"],
+    execution_direct_edit_enabled: ["execution", "direct_edit_enabled"],
+    execution_direct_edit_max_file_bytes: ["execution", "direct_edit_max_file_bytes"],
+    execution_context_deduplication: ["execution", "context_deduplication"],
+    execution_repair_minimal_context: ["execution", "repair_minimal_context"],
+    execution_dynamic_output_budgets: ["execution", "dynamic_output_budgets"],
+    execution_llm_to_dsl: ["execution", "llm_to_dsl"],
+    execution_provider_cache_input: ["execution", "provider_cache_input"],
+    execution_context_retrieval: ["execution", "context_retrieval"],
+    execution_context_retrieval_min_savings_ratio: ["execution", "context_retrieval_min_savings_ratio"],
+    execution_context_retrieval_max_files: ["execution", "context_retrieval_max_files"],
+    execution_context_retrieval_max_file_chars: ["execution", "context_retrieval_max_file_chars"],
+    execution_context_retrieval_max_total_chars: ["execution", "context_retrieval_max_total_chars"],
     validation_enabled: ["validation", "enabled"],
     validation_script_path: ["validation", "script_path"],
     validation_timeout_ms: ["validation", "timeout_ms"],
     validation_confidence_threshold: ["validation", "confidence_threshold"],
     validation_max_changed_files: ["validation", "max_changed_files"],
+    execution_edit_small_file_max_bytes: ["execution", "edit_small_file_max_bytes"],
+    execution_research_auto_skip_simple: ["execution", "research_auto_skip_simple"],
   };
   for (const [key, value] of Object.entries(process.env)) {
     const normalizedKey = key.toLowerCase();
@@ -231,6 +271,37 @@ function validateConfig(config) {
   }
   if (config.default_provider !== undefined && config.default_provider !== null && typeof config.default_provider !== "string") throw new ConfigError("default_provider must be a string");
   assertSafeProviderName(config.default_provider, "default_provider");
+  if (config.execution?.context_representation !== undefined && !["text", "workflow_ir", "adaptive"].includes(config.execution.context_representation)) throw new ConfigError("execution.context_representation must be 'text', 'workflow_ir', or 'adaptive'");
+  if (config.execution?.context_representation_threshold_chars !== undefined && (!Number.isFinite(Number(config.execution.context_representation_threshold_chars)) || Number(config.execution.context_representation_threshold_chars) <= 0)) throw new ConfigError("execution.context_representation_threshold_chars must be a positive number");
+  if (config.execution?.context_retrieval !== undefined && !["full", "focused"].includes(config.execution.context_retrieval)) throw new ConfigError("execution.context_retrieval must be 'full' or 'focused'");
+  for (const key of ["context_retrieval_min_savings_ratio"]) if (config.execution?.[key] !== undefined && (!Number.isFinite(Number(config.execution[key])) || Number(config.execution[key]) < 0 || Number(config.execution[key]) > 1)) throw new ConfigError(`execution.${key} must be between 0 and 1`);
+  for (const key of ["context_retrieval_max_files", "context_retrieval_max_file_chars", "context_retrieval_max_total_chars"]) if (config.execution?.[key] !== undefined && (!Number.isFinite(Number(config.execution[key])) || Number(config.execution[key]) <= 0)) throw new ConfigError(`execution.${key} must be a positive number`);
+  if (config.execution?.context_representation_min_savings_ratio !== undefined && (!Number.isFinite(Number(config.execution.context_representation_min_savings_ratio)) || Number(config.execution.context_representation_min_savings_ratio) < 0 || Number(config.execution.context_representation_min_savings_ratio) > 1)) throw new ConfigError("execution.context_representation_min_savings_ratio must be between 0 and 1");
+  if (config.execution?.edit_representation !== undefined && !["full_file", "edit_ir", "adaptive"].includes(config.execution.edit_representation)) throw new ConfigError("execution.edit_representation must be 'full_file', 'edit_ir', or 'adaptive'");
+  if (config.execution?.edit_small_file_max_bytes !== undefined && (!Number.isFinite(Number(config.execution.edit_small_file_max_bytes)) || Number(config.execution.edit_small_file_max_bytes) <= 0)) throw new ConfigError("execution.edit_small_file_max_bytes must be a positive number");
+  if (config.execution?.strict_optimization !== undefined && typeof config.execution.strict_optimization !== "boolean") throw new ConfigError("execution.strict_optimization must be a boolean");
+  if (config.execution?.research_auto_skip_simple !== undefined && typeof config.execution.research_auto_skip_simple !== "boolean") throw new ConfigError("execution.research_auto_skip_simple must be a boolean");
+  if (config.execution?.optimization_mode !== undefined && !["auto", "manual", "off"].includes(config.execution.optimization_mode)) throw new ConfigError("execution.optimization_mode must be 'auto', 'manual', or 'off'");
+  for (const key of ["direct_edit_enabled", "context_deduplication", "repair_minimal_context", "dynamic_output_budgets", "llm_to_dsl", "provider_cache_input"]) if (config.execution?.[key] !== undefined && typeof config.execution[key] !== "boolean") throw new ConfigError(`execution.${key} must be a boolean`);
+  if (config.execution?.direct_edit_max_file_bytes !== undefined && (!Number.isFinite(Number(config.execution.direct_edit_max_file_bytes)) || Number(config.execution.direct_edit_max_file_bytes) <= 0)) throw new ConfigError("execution.direct_edit_max_file_bytes must be a positive number");
+  if (config.execution?.compact_output !== undefined && typeof config.execution.compact_output !== "boolean") throw new ConfigError("execution.compact_output must be a boolean");
+  if (config.execution?.provider_learning?.enabled !== undefined && typeof config.execution.provider_learning.enabled !== "boolean") throw new ConfigError("execution.provider_learning.enabled must be a boolean");
+  for (const [name, values] of Object.entries(config.execution?.max_output_tokens_by_stage || {})) {
+    if (!["intel", "plan", "work", "review", "next_task", "repair"].includes(name)) throw new ConfigError(`Unknown output token stage '${name}'`);
+    if (!Number.isFinite(Number(values)) || Number(values) <= 0) throw new ConfigError(`execution.max_output_tokens_by_stage.${name} must be a positive number`);
+  }
+  for (const [name, value] of Object.entries(config.execution?.provider_learning || {})) {
+    if (["min_samples"].includes(name) && (!Number.isInteger(Number(value)) || Number(value) < 1)) throw new ConfigError(`execution.provider_learning.${name} must be a positive integer`);
+    if (["min_approval_rate", "min_complete_rate"].includes(name) && (!Number.isFinite(Number(value)) || Number(value) < 0 || Number(value) > 1)) throw new ConfigError(`execution.provider_learning.${name} must be between 0 and 1`);
+  }
+  const stageBudgets = config.execution?.context_budget_chars_by_stage;
+  if (stageBudgets !== undefined) {
+    if (!stageBudgets || typeof stageBudgets !== "object" || Array.isArray(stageBudgets)) throw new ConfigError("execution.context_budget_chars_by_stage must be a mapping");
+    for (const [stage, budget] of Object.entries(stageBudgets)) {
+      if (!["intel", "plan", "work", "review"].includes(stage)) throw new ConfigError(`Unknown context budget stage '${stage}'`);
+      if (!Number.isFinite(Number(budget)) || Number(budget) <= 0) throw new ConfigError(`execution.context_budget_chars_by_stage.${stage} must be a positive number`);
+    }
+  }
   if (config.validation?.script_path !== undefined && typeof config.validation.script_path !== "string") throw new ConfigError("validation.script_path must be a string");
   if (config.security?.blocked_extensions !== undefined && (!Array.isArray(config.security.blocked_extensions) || config.security.blocked_extensions.some(value => typeof value !== "string"))) throw new ConfigError("security.blocked_extensions must be an array of strings");
   return config;

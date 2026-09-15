@@ -147,14 +147,54 @@ test("configuration no longer advertises role options without a consumer", () =>
   assert.equal(Object.prototype.hasOwnProperty.call(DEFAULTS.execution, "search"), false, "the web/GitHub search subsystem does not exist");
   assert.equal(DEFAULTS.project.name, "unknown");
   assert.equal(DEFAULTS.project.stack, "generic");
+  assert.equal(DEFAULTS.execution.strict_optimization, false);
+  assert.equal(DEFAULTS.execution.optimization_mode, "auto");
+  assert.equal(DEFAULTS.execution.research_auto_skip_simple, true);
+  assert.equal(DEFAULTS.execution.compact_output, true);
+  assert.equal(DEFAULTS.execution.context_representation, "text");
+  assert.equal(DEFAULTS.execution.context_representation_threshold_chars, 40000);
+  assert.equal(DEFAULTS.execution.context_representation_min_savings_ratio, 0.40);
+  assert.equal(DEFAULTS.execution.edit_representation, "adaptive");
+  assert.deepEqual(DEFAULTS.execution.max_output_tokens_by_stage, { intel: 1536, plan: 2048, work: 8192, review: 1536, next_task: 384, repair: 768 });
+  assert.equal(DEFAULTS.execution.provider_learning.min_samples, 3);
+  assert.equal(DEFAULTS.execution.stage_cache.persistent, true);
 });
 
-test("project.name and project.stack label the prompts", () => {
+test("project labels and stage-specific context budgets reach the prompts", () => {
   assert.match(loopSource, /const projectLabel = \[config\.project\?\.name, config\.project\?\.stack\]/);
-  assert.match(loopSource, /const promptContext = projectLabel \? `Project: \$\{projectLabel\}\\n\$\{repoContext\}` : repoContext;/);
-  assert.match(loopSource, /intel\(roleProviders\.intel\.provider, task, promptContext,/);
-  assert.match(loopSource, /plan\(roleProviders\.plan\.provider, task, promptContext,/);
-  assert.match(loopSource, /implement\(roleProviders\.work\.provider, planResult, promptContext,/);
+  assert.match(loopSource, /const stageBudget = stage =>/);
+  assert.match(loopSource, /max_output_tokens_by_stage/);
+  assert.match(loopSource, /persistent_cache_hits/);
+  assert.match(loopSource, /provider_learning/);
+  assert.match(loopSource, /context_budget_chars_by_stage/);
+  assert.match(loopSource, /context_representation/);
+  assert.match(loopSource, /effective: \{/);
+  assert.match(loopSource, /persistent_cache_misses/);
+  assert.match(loopSource, /buildWorkflowContext/);
+  assert.match(loopSource, /const promptContextFor = stage =>/);
+  assert.match(loopSource, /intel\(roleProviders\.intel\.provider, task, promptContextFor\("intel"\),/);
+  assert.match(loopSource, /plan\(roleProviders\.plan\.provider, task, promptContextFor\("plan"\),/);
+  assert.match(loopSource, /implement\(roleProviders\.work\.provider, planResult, promptContextFor\("work"\),/);
+});
+
+test("stage-specific context budgets are validated as positive known stages", () => {
+  const { validateConfig } = require(path.join(ROOT, "src", "config", "loader.js"));
+  assert.doesNotThrow(() => validateConfig({ execution: { context_budget_chars_by_stage: { intel: 1000, plan: 2000, work: 3000, review: 1000 }, max_output_tokens_by_stage: { intel: 100, plan: 100, work: 100, review: 100, next_task: 50 }, provider_learning: { min_samples: 3, min_approval_rate: 0.8, min_complete_rate: 0.9 } } }));
+  assert.throws(() => validateConfig({ execution: { context_budget_chars_by_stage: { unknown: 1000 } } }), /Unknown context budget stage/);
+  assert.throws(() => validateConfig({ execution: { context_budget_chars_by_stage: { plan: 0 } } }), /must be a positive number/);
+  assert.doesNotThrow(() => validateConfig({ execution: { context_representation: "workflow_ir" } }));
+  assert.doesNotThrow(() => validateConfig({ execution: { context_representation: "adaptive", context_representation_threshold_chars: 40000 } }));
+  assert.doesNotThrow(() => validateConfig({ execution: { context_retrieval: "focused", context_retrieval_min_savings_ratio: 0.1, context_retrieval_max_files: 12 } }));
+  assert.throws(() => validateConfig({ execution: { context_retrieval: "semantic" } }), /context_retrieval must be/);
+  assert.throws(() => validateConfig({ execution: { context_retrieval_min_savings_ratio: 1.1 } }), /context_retrieval_min_savings_ratio must be/);
+  assert.throws(() => validateConfig({ execution: { context_representation: "unknown" } }), /context_representation must be/);
+  assert.throws(() => validateConfig({ execution: { context_representation_threshold_chars: 0 } }), /threshold_chars must be a positive number/);
+  assert.doesNotThrow(() => validateConfig({ execution: { strict_optimization: true } }));
+  assert.throws(() => validateConfig({ execution: { strict_optimization: "yes" } }), /strict_optimization must be a boolean/);
+  assert.doesNotThrow(() => validateConfig({ execution: { context_representation_min_savings_ratio: 0.4 } }));
+  assert.doesNotThrow(() => validateConfig({ execution: { edit_small_file_max_bytes: 1600, max_output_tokens_by_stage: { repair: 768 } } }));
+  assert.throws(() => validateConfig({ execution: { edit_small_file_max_bytes: 0 } }), /edit_small_file_max_bytes must be/);
+  assert.throws(() => validateConfig({ execution: { context_representation_min_savings_ratio: 1.1 } }), /min_savings_ratio must be between/);
 });
 
 test("the project label reaches the planner and implementer prompts", async () => {
