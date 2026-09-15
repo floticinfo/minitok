@@ -2,16 +2,16 @@
   "schemaVersion": 1,
   "release": {
     "package": "@flotic/minitok",
-    "version": "1.4.7-rc.2",
-    "commit": "95b29364f9ffdb47d12ab383d11a1fde92659720",
-    "tree": "43928a3c20e35a79db74564f0362ae51e1f00973",
-    "tag": "v1.4.7-rc.2",
-    "changelog": "## 1.4.7-rc.2",
+    "version": "1.4.7-rc.3",
+    "commit": "880ac0a3ed18d9e02f93f15a064ba68cb321655e",
+    "tree": "0e97436212ba130e6234dc680450b073d6a28c9c",
+    "tag": "v1.4.7-rc.3",
+    "changelog": "## 1.4.7-rc.3",
     "artifact": {
-      "filename": "flotic-minitok-1.4.7-rc.2.tgz",
-      "size": 243407,
-      "sha256": "f8268a8d9946abc9b88d9df19b77390b6eb7773164354dc7d113cc3160ef62c7",
-      "integrity": "sha512-uHpEqWH4Z3FjJWTQ/YoNlvUs29RASEXfy8D9K5JtMzQB5/FoKSA/yxU15Er3U2ZkBnTAAV1gTyz97OxxycubIw==",
+      "filename": "flotic-minitok-1.4.7-rc.3.tgz",
+      "size": 247324,
+      "sha256": "ece90c76ad3685c603329173c2f2800d5772f392bcdf2ead68c18fce4d1e86bf",
+      "integrity": "sha512-JpN2EOkoC28p+V/DhELg2T4+jEJu4Fq7LM2N+q+0Y+ywWi2P49WT7g7DkqGBBeaNxVnf0bOP4VTLzEnpNJ9dxg==",
       "files": [
         {
           "path": "BENCHMARK_EVIDENCE.json",
@@ -20,8 +20,8 @@
         },
         {
           "path": "CHANGELOG.md",
-          "size": 48338,
-          "sha256": "aedbc470e93bf724413c332f4c204b5bb65df00cf6101847f0bc6651064d6261"
+          "size": 49160,
+          "sha256": "4f2a72699a9dfa0c6b22be2cfe17277757518ebaab1dd3351b41d7d739c9d208"
         },
         {
           "path": "DATA_CLASSIFICATION.md",
@@ -41,7 +41,7 @@
         {
           "path": "LAUNCH_CHECKLIST.md",
           "size": 3338,
-          "sha256": "2f3bb56cbc60ee84ecc5b140112d44b84b1bf41671ee42f8159786d5e6aa489c"
+          "sha256": "3c740ed0b737563090cc62936e56246380a13bad93cbd303c7123b13ccf3ba37"
         },
         {
           "path": "LICENSE",
@@ -56,12 +56,12 @@
         {
           "path": "PROMOTION_KIT.md",
           "size": 6160,
-          "sha256": "75a8b205f427ec9d2d24ece665b0062f394784a56777b01c1c2127cba2bc6ff4"
+          "sha256": "9b3a49958200bda41a11482f90e3db64b26e76347e0cd80b49cf20a173e2c520"
         },
         {
           "path": "README.md",
-          "size": 37306,
-          "sha256": "79675c64cf8c36d9af1bb1f8820eca98c43dacd6a8cc553debaf335f6fd344ca"
+          "size": 37894,
+          "sha256": "e66c05d34b10a276d8f6710991bfaa1f0bc124d2de52017e88604581bbdd4bb2"
         },
         {
           "path": "assets/minitok-harlekin-mark.png",
@@ -80,8 +80,8 @@
         },
         {
           "path": "package.json",
-          "size": 5653,
-          "sha256": "af282285c7378ff57fc3001c88f6b8e7a7787c4019e15d1a69f04382c007284b"
+          "size": 5745,
+          "sha256": "2c6bf6f66d752d5ab37d6d3a748d15150fecd086be06dd6b0621e1d5a2e04bb5"
         },
         {
           "path": "promotion-posts/linkedin.md",
@@ -102,6 +102,11 @@
           "path": "promotion-posts/reddit.md",
           "size": 1264,
           "sha256": "e78aeb93c445b39fd940dde2b20349d740f85230410537a2ea48a110bdb1409e"
+        },
+        {
+          "path": "scripts/postinstall-mcp.mjs",
+          "size": 1997,
+          "sha256": "93a66f58061380eacfc26f2c8b4475a87fd30030972a254a2111da91ca027250"
         },
         {
           "path": "src/agent/host.mjs",
@@ -215,8 +220,8 @@
         },
         {
           "path": "src/cli/commands/mcp.js",
-          "size": 30541,
-          "sha256": "d606a33cc5aeccdfd2bc2c2ce23c702d2d63eae39cf64196aeedf9f7a083b332"
+          "size": 30937,
+          "sha256": "443c989d300682947fe8c29738ea05969e39200424905455d66dc8afdc42bc4c"
         },
         {
           "path": "src/cli/commands/migrate.js",
@@ -452,6 +457,16 @@
           "path": "src/llm/provider.js",
           "size": 41793,
           "sha256": "57c2d171d131f56b7227fae0417a0412ce713d5280bcd6da5298c289ca3c013e"
+        },
+        {
+          "path": "src/mcp/cline-compat.js",
+          "size": 5602,
+          "sha256": "0e02cc57f50b4125343f8109827c1e751413030635259b308bb9fbe36841dff0"
+        },
+        {
+          "path": "src/mcp/cline-integration.js",
+          "size": 4661,
+          "sha256": "5db51e08d645ecdeef205d02c24dbabd84b0dc0af83e70bec4e39b17dade0de3"
         },
         {
           "path": "src/mcp/remote.js",
