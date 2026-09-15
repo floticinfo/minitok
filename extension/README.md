@@ -14,6 +14,7 @@ minitok brings repository-aware coding workflows into VS Code. Describe a task, 
 - Deterministic verification and recorded evidence
 - Sidebar workflow status and session history
 - MCP stdio integration through the embedded runtime
+- First-activation `Connect MCP Hosts` onboarding with read-only defaults
 - Local-first execution with consent-controlled telemetry policies
 
 ## Getting started
@@ -21,7 +22,7 @@ minitok brings repository-aware coding workflows into VS Code. Describe a task, 
 1. Install `@flotic/minitok` globally:
 
    ```bash
-   npm install -g @flotic/minitok@1.4.7-rc.1
+   npm install -g @flotic/minitok@1.4.7-rc.2
    ```
 
 2. Open a trusted VS Code workspace.

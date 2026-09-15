@@ -8,7 +8,7 @@ const helpOrVersionInvocation = cliArgs.some(arg => ["--help", "-h", "--version"
 if (!helpOrVersionInvocation && (!bareInvocation || process.stdin.isTTY && process.stdout.isTTY) && process.env.MINITOK_UPDATE_CHECK !== "0") require("../src/core/update-check").checkForUpdate();
 if (process.env.MINITOK_NO_COLOR === "1" || !process.stdout.isTTY) { process.env.FORCE_COLOR = "0"; }
 const program = new Command();
-program.name("minitok").description("Repository-aware autonomous coding workflow driver").version(`minitok ${pkg.version}`);
+program.name("minitok").description("Repository-aware autonomous coding workflow driver").version(`minitok ${pkg.version}`).option("--no-mcp-setup", "skip first-run MCP onboarding");
 program.action(async () => {
   // commander hands an unrecognized command to this default action instead of
   // reporting it, so reject unknown operands first. Without this a typo such as
@@ -26,6 +26,8 @@ program.action(async () => {
     process.exitCode = 2;
     return;
   }
+  const { runMcpOnboarding } = require("../src/cli/commands/mcp");
+  await runMcpOnboarding();
   const { startGui } = require("../src/cli/commands/gui");
   await startGui();
 });

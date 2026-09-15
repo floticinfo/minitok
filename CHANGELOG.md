@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.7-rc.2 - 2026-09-16
+
+### Added
+
+- Added interactive first-run MCP onboarding to bare TTY CLI launches. It detects unconfigured hosts, asks for consent, and applies read-only setup without changing non-interactive or CI installs.
+- Added the Extension `Connect MCP Hosts` onboarding command and first-activation prompt. Existing host entries are preserved and broader scopes are never granted automatically.
+
 ## 1.4.7-rc.1 - 2026-09-16
 
 ### Fixed

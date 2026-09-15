@@ -55,6 +55,15 @@ test("setup defaults to the task-capable scopes while leaving auto_accept disabl
   }
 });
 
+test("setup exposes an only-unconfigured option and onboarding helpers", async () => {
+  assert.equal(typeof mcp.runMcpOnboarding, "function");
+  assert.equal(typeof mcp.unconfiguredHosts, "function");
+  const result = await mcp.runMcpOnboarding({ input: { isTTY: false }, output: { write() {} } });
+  assert.equal(result.status, "skipped");
+  const cli = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "src", "cli", "commands", "mcp.js"), "utf8");
+  assert.match(cli, /--only-unconfigured/);
+});
+
 test("invalid setup scopes fail before a configuration write", () => {
   const { root, file } = fixture({ mcpServers: { existing: { command: "keep" } } });
   try {

@@ -31,6 +31,10 @@ test("panel process lifecycle contract", () => {
 
 test("extension entitlement contract", () => {
   assert.match(extension, /checkEntitlement/);
+  assert.match(extension, /connectMcp/);
+  assert.match(extension, /mcpOnboardingPrompted/);
+  assert.match(extension, /Connect MCP Hosts/);
+  assert.match(extension, /--only-unconfigured/);
   assert.match(extension, /requireEntitlement/);
   assert.match(extension, /await requireEntitlement\(\)/);
   assert.match(extension, /An active paid minitok plan is required/);

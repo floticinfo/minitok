@@ -3,10 +3,10 @@
   "displayName": "minitok",
   "description": "Run AI coding tasks through planning, verification, review, repair, and evidence",
   "publisher": "Flotic",
-  "version": "0.3.4",
+  "version": "0.3.5",
   "minitok": {
     "cliPackage": "@flotic/minitok",
-    "cliVersion": "1.4.7-rc.1"
+    "cliVersion": "1.4.7-rc.2"
   },
   "author": "Flotic",
   "license": "SEE LICENSE IN LICENSE",
@@ -57,6 +57,7 @@
     "onCommand:minitok.openPanel",
     "onCommand:minitok.openSettings",
     "onCommand:minitok.mcpStatus",
+    "onCommand:minitok.connectMcp",
     "onView:minitok.sidebar"
   ],
   "main": "./dist/src/extension.js",
@@ -99,6 +100,10 @@
       {
         "command": "minitok.mcpStatus",
         "title": "minitok: MCP Status"
+      },
+      {
+        "command": "minitok.connectMcp",
+        "title": "minitok: Connect MCP Hosts"
       }
     ],
     "configuration": {

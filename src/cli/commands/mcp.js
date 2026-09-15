@@ -336,6 +336,78 @@ async function remoteStatus(url, token, options = {}) {
   const { remoteHealth } = require("../../mcp/remote");
   return remoteHealth({ url, token, allowOAuth: options.allowOAuth !== false, accountOptions: options });
 }
+
+function onboardingStatePath() {
+  return path.join(os.homedir(), ".minitok", "mcp", "onboarding.json");
+}
+
+function readOnboardingState() {
+  try {
+    const value = JSON.parse(fs.readFileSync(onboardingStatePath(), "utf8"));
+    return value && typeof value === "object" && Array.isArray(value.declinedHosts) ? value : { declinedHosts: [] };
+  } catch {
+    return { declinedHosts: [] };
+  }
+}
+
+function writeOnboardingState(declinedHosts) {
+  const file = onboardingStatePath();
+  fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+  fs.writeFileSync(file, `${JSON.stringify({ declinedHosts: [...new Set(declinedHosts)].sort() }, null, 2)}\\n`, { mode: 0o600 });
+  try { fs.chmodSync(file, 0o600); } catch {}
+}
+
+function unconfiguredHosts() {
+  const state = readOnboardingState();
+  const hosts = [];
+  for (const [name, candidates] of Object.entries(hostCandidates())) {
+    if (state.declinedHosts.includes(name)) continue;
+    const file = candidates.find(candidate => fs.existsSync(candidate)) || candidates.find(candidate => fs.existsSync(path.dirname(candidate)));
+    if (!file) continue;
+    try {
+      const entry = serverContainer(readConfig(file)).value?.minitok;
+      if (!entry || typeof entry !== "object") hosts.push({ name, file });
+    } catch {}
+  }
+  return hosts;
+}
+
+function askOnboarding(question, input = process.stdin, output = process.stderr) {
+  const readline = require("readline");
+  return new Promise(resolve => {
+    const rl = readline.createInterface({ input, output });
+    rl.question(question, answer => { rl.close(); resolve(answer.trim().toLowerCase()); });
+  });
+}
+
+/**
+ * Offer first-run MCP setup only from an interactive bare CLI invocation.
+ * Installation itself never mutates host configuration, CI stays side-effect free,
+ * and a declined host is not repeatedly prompted on every GUI launch.
+ */
+async function runMcpOnboarding({ input = process.stdin, output = process.stderr } = {}) {
+  if (!input.isTTY || !process.stdout.isTTY || process.env.CI || process.env.MINITOK_NO_MCP_SETUP === "1" || process.argv.includes("--no-mcp-setup")) return { status: "skipped", hosts: [] };
+  const hosts = unconfiguredHosts();
+  if (!hosts.length) return { status: "not_needed", hosts: [] };
+  const names = hosts.map(host => host.name).join(", ");
+  const answer = await askOnboarding(`minitok MCP is not connected for ${names}. Configure with read-only access now? [Y/n] `, input, output);
+  if (answer && !["y", "yes"].includes(answer)) {
+    writeOnboardingState([...readOnboardingState().declinedHosts, ...hosts.map(host => host.name)]);
+    output.write("MCP setup skipped. Run `minitok mcp setup all --scopes read` when ready.\\n");
+    return { status: "declined", hosts: hosts.map(host => host.name) };
+  }
+  const { authorizeEntitlement } = require("../../entitlement/policy");
+  const entitlement = await authorizeEntitlement({ serverUrl: resolveServerUrl() });
+  if (!entitlement.allowed) throw new Error(entitlement.message || "An active paid entitlement is required before MCP setup");
+  const tokenFile = ensureRuntimeToken({});
+  for (const host of hosts) {
+    const plan = planChange(host.file, "connect", { tokenFile: tokenFile.path, scopes: "read" });
+    if (plan.changed) writeConfig(host.file, plan.data, { backup: true });
+  }
+  output.write(`MCP configured for ${names} (read-only).\\n`);
+  return { status: "configured", hosts: hosts.map(host => host.name) };
+}
+
 function register(program) {
   const mcp = program.command("mcp");
 
@@ -450,9 +522,15 @@ function register(program) {
     .option("--rollback", "restore the previous configuration on failure")
     .option("--scopes <scopes>", "local MCP scopes to grant (read,write,auto_accept,verify_exec)", "read,write,verify_exec")
     .option("--server <url>", "minitok server URL")
+    .option("--only-unconfigured", "configure only hosts without an existing minitok entry")
     .action(async (host, opts) => {
-      const targets = host === "all" ? detect().filter(row => row.name !== "token" && row.name !== "server" && row.detected).map(row => row.name) : [host];
-      if (!targets.length) throw new Error("No supported MCP host was detected.");
+      const targets = host === "all"
+        ? (opts.onlyUnconfigured ? unconfiguredHosts().map(row => row.name) : detect().filter(row => row.name !== "token" && row.name !== "server" && row.detected).map(row => row.name))
+        : [host];
+      if (!targets.length) {
+        if (opts.onlyUnconfigured) { console.log(JSON.stringify({ action: "setup", host: "all", changed: false, configured: 0 })); return; }
+        throw new Error("No supported MCP host was detected.");
+      }
       const scopes = require("../../runtime/stdio").parseLocalMcpScopes(opts.scopes).join(",");
       let tokenFile;
       if (!(opts.dryRun || opts.preview)) {
@@ -489,4 +567,4 @@ function register(program) {
       console.log(JSON.stringify({ status: "ok", path: record.path, expires_at: new Date(record.expires_at).toISOString() }));
     });
 }
-module.exports = { register, detect, configuredScopes, readConfig, writeConfig, configs, serverContainer, configuredServerUrl, planChange, readLock, processIsRunning, hostCandidates, resolveHost, configuredTokenFiles };
+module.exports = { register, detect, configuredScopes, readConfig, writeConfig, configs, serverContainer, configuredServerUrl, planChange, readLock, processIsRunning, hostCandidates, resolveHost, configuredTokenFiles, runMcpOnboarding, unconfiguredHosts };

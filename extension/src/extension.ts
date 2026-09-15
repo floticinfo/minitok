@@ -87,8 +87,25 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(output);
   const sidebar = new minitokSidebar(context.extensionUri, context);
   context.subscriptions.push(sidebar, vscode.window.registerWebviewViewProvider(minitokSidebar.viewType, sidebar));
+  const onboardingKey = `mcpOnboardingPrompted:${extensionVersion(context)}`;
+  if (!context.globalState.get<boolean>(onboardingKey)) {
+    void context.globalState.update(onboardingKey, true).then(() => vscode.window.showInformationMessage("minitok MCP is ready to connect.", "Connect MCP Hosts", "Later").then(answer => { if (answer === "Connect MCP Hosts") return vscode.commands.executeCommand("minitok.connectMcp"); return undefined; }));
+  }
   context.subscriptions.push(vscode.commands.registerCommand("minitok.openPanel", () => minitokPanel.createOrShow(context)));
   context.subscriptions.push(vscode.commands.registerCommand("minitok.openSettings", () => vscode.commands.executeCommand("workbench.action.openSettings", "@ext:flotic.minitok-extension")));
+  context.subscriptions.push(vscode.commands.registerCommand("minitok.connectMcp", async () => {
+    const answer = await vscode.window.showInformationMessage("Connect minitok to detected MCP hosts with read-only access?", "Connect", "Not now");
+    if (answer !== "Connect") return;
+    output.show(true);
+    try {
+      output.appendLine(redactExtensionOutput(await runCli(cliPath(), ["mcp", "setup", "all", "--only-unconfigured", "--scopes", "read"], { timeoutMs: CLI_STATUS_TIMEOUT_MS, requireWorkspace: false })));
+      vscode.window.showInformationMessage("minitok MCP setup completed. Restart or refresh the MCP host if required.");
+    } catch (error) {
+      const message = redactExtensionOutput(String(error));
+      output.appendLine(message);
+      vscode.window.showErrorMessage(`minitok MCP setup failed: ${message}`);
+    }
+  }));
   context.subscriptions.push(vscode.commands.registerCommand("minitok.mcpStatus", async () => {
 try { requireTrustedWorkspace(workspacePath()); } catch (error) { vscode.window.showErrorMessage(redactExtensionOutput(String(error))); return; }
      output.show(true);
