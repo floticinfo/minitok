@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.2 - 2026-09-15
+
+### Changed
+
+- Repackaged the emoji-free CLI and Extension artifacts from the final emoji-removal sources.
+- Bumped the npm CLI to 1.4.2 and the VS Code Extension to 0.3.2 so the corrected artifacts can be published without reusing already-published versions.
+
 ## 1.4.1 - 2026-09-15
 
 ### Changed

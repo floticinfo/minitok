@@ -16,9 +16,9 @@ minitok gives AI coding tasks a workflow: research, plan, implement, verify, rev
 
 **Title:** minitok — verified repository-aware coding workflow for AI agents
 
-**Description:** minitok is a Node.js CLI that turns repository context into inspectable code changes through explicit research, planning, implementation, deterministic verification, review, repair, and evidence recording. The local canonical CLI is `@flotic/minitok@1.4.1`. Treat publication as unverified until the approved release manifest and registry evidence are available. It supports Anthropic, OpenAI, and Google, plus OpenAI-compatible endpoints as custom providers, with local-first execution and opt-in telemetry.
+**Description:** minitok is a Node.js CLI that turns repository context into inspectable code changes through explicit research, planning, implementation, deterministic verification, review, repair, and evidence recording. The local canonical CLI is `@flotic/minitok@1.4.2`. Treat publication as unverified until the approved release manifest and registry evidence are available. It supports Anthropic, OpenAI, and Google, plus OpenAI-compatible endpoints as custom providers, with local-first execution and opt-in telemetry.
 
-**Call to action:** Install with `npm install -g @flotic/minitok@1.4.1`, run `minitok doctor`, then initialize a repository with `minitok migrate`.
+**Call to action:** Install with `npm install -g @flotic/minitok@1.4.2`, run `minitok doctor`, then initialize a repository with `minitok migrate`.
 
 ## VS Code Marketplace submission
 

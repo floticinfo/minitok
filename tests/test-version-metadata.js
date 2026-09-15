@@ -24,7 +24,9 @@ test("version metadata is synchronized with the canonical CLI version", () => {
 
 test("version check is clean and extension marketplace version remains independent", () => {
   const result = JSON.parse(run(["--check"]));
+  const cli = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
   const extension = JSON.parse(fs.readFileSync(path.join(root, "extension", "package.json"), "utf8"));
   assert.equal(result.status, "in_sync");
-  assert.equal(extension.version, "0.3.1");
+  assert.match(extension.version, /^\d+\.\d+\.\d+$/);
+  assert.notEqual(extension.version, cli.version);
 });
