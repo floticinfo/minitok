@@ -3,15 +3,15 @@
   "release": {
     "package": "@flotic/minitok",
     "version": "1.4.1",
-    "commit": "7f7a292c44936d77e851cdd0571827abd8ca81ae",
-    "tree": "e8342c7f274ec6a697e4a9fc7d60f58232de2345",
+    "commit": "e30b309be1f114e2002bc2176ff53d70311303e2",
+    "tree": "2e665268afa6966f339d50720dc17707f355eccc",
     "tag": "v1.4.1",
     "changelog": "## 1.4.1",
     "artifact": {
       "filename": "flotic-minitok-1.4.1.tgz",
-      "size": 236050,
-      "sha256": "2548a2e4debecb34bd98bea5d1c0562a886ca3037d75e0e53c2789a91b5f54ad",
-      "integrity": "sha512-5pnnvZ3BTk/C9zjBm9W6RfFffS3YE9gjd/h/LbNAynPPOQ9kq4NRGDI+aYxvd0f2jNBDUZeAhekN2n/X2m7sAw==",
+      "size": 236056,
+      "sha256": "384a557083d1dc2f3d1ef751ee3839fac39912ec042c90f017ca2ac28d76989e",
+      "integrity": "sha512-wvTcWH7478ur2Mzc72SqSTnx4IlKw8Te93VleDYkAsPNOLr+I3FyycusXeBJJaC4CZxxL1Kc4m75GhwjZwE13g==",
       "files": [
         {
           "path": "BENCHMARK_EVIDENCE.json",
@@ -210,8 +210,8 @@
         },
         {
           "path": "src/cli/commands/run.js",
-          "size": 10161,
-          "sha256": "06ce1fe51315170992202e4627bb9605b3be460ce88d28175d2a4c97dfa1cf8c"
+          "size": 10187,
+          "sha256": "e4f0894cd965b91167138fac88bfe4454928ae726861995c896d924867ff11f0"
         },
         {
           "path": "src/cli/commands/runs.js",
