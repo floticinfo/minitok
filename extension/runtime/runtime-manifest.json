@@ -77,8 +77,8 @@
       "embedded": "215fa2b4f247ad30ea593128d361003f2a4158596ed84096141a5b2ccca65540"
     },
     "auth/oauth.js": {
-      "source": "1f6e9d5a4f52ec53a3c9a09a7883f6aeb6c15de8ad6961dc27e6f7f96bca81e1",
-      "embedded": "1f6e9d5a4f52ec53a3c9a09a7883f6aeb6c15de8ad6961dc27e6f7f96bca81e1"
+      "source": "f86c2936afdd19bffea57c2ced6811fa6f210d8e2c719bdcd5d6bc81a318f7ca",
+      "embedded": "f86c2936afdd19bffea57c2ced6811fa6f210d8e2c719bdcd5d6bc81a318f7ca"
     },
     "auth/service-account.js": {
       "source": "8c56368bc6d689f5d6a9981da7a280d92dfb518597cf67a9e6c72023f39b925c",
@@ -109,8 +109,8 @@
       "embedded": "a7625b151d79991794a0c034a239a0ff40d44b764d8078788bee83665ad704b1"
     },
     "core/http.js": {
-      "source": "c81f4be79b72beb37e74b028bb91a5b1e1f1acfc5258dde02765db368d893a92",
-      "embedded": "c81f4be79b72beb37e74b028bb91a5b1e1f1acfc5258dde02765db368d893a92"
+      "source": "59425e2e46a032b56b4ce669d1455340d320843480c476814f496faf587dcce2",
+      "embedded": "59425e2e46a032b56b4ce669d1455340d320843480c476814f496faf587dcce2"
     },
     "core/package-manager.js": {
       "source": "bf82b14f7a71da10ef78353e819510589de800057989aecbbcd1c9c80ad8a9ef",
@@ -125,8 +125,8 @@
       "embedded": "8e29a43e04b30e5e05f141ea7b8349c421d652c00414299f9c65dd58e8ba4c92"
     },
     "entitlement/online.js": {
-      "source": "106bfbe17fa8e237dc9336483cb72c82178331b9182a65888482aa4cb40663aa",
-      "embedded": "106bfbe17fa8e237dc9336483cb72c82178331b9182a65888482aa4cb40663aa"
+      "source": "823ac7a885f655096022a698492d6888fc5d2667b29a3a00a5769dbab72bcb04",
+      "embedded": "823ac7a885f655096022a698492d6888fc5d2667b29a3a00a5769dbab72bcb04"
     },
     "entitlement/policy.js": {
       "source": "f9c4b4b23846f099ffa8ba5bbe043d00bf7e1b9bf3997130ddff7a5eac7e6917",
@@ -181,16 +181,16 @@
       "embedded": "26d689131d68eaf4b0d247af5cbd0d3a6d6ca7dcfc1216392769bca7ba0ec72c"
     },
     "llm/models.js": {
-      "source": "e070291222d8c2801d8a87b7aef0bc9c8bff45dec5e6aef2a3f8b8d4a0ad0d84",
-      "embedded": "e070291222d8c2801d8a87b7aef0bc9c8bff45dec5e6aef2a3f8b8d4a0ad0d84"
+      "source": "ed51e13d2df28376c4257a5203db3f915039d79dc908d7c00d0936b141c3cbd0",
+      "embedded": "ed51e13d2df28376c4257a5203db3f915039d79dc908d7c00d0936b141c3cbd0"
     },
     "llm/provider.js": {
       "source": "57c2d171d131f56b7227fae0417a0412ce713d5280bcd6da5298c289ca3c013e",
       "embedded": "57c2d171d131f56b7227fae0417a0412ce713d5280bcd6da5298c289ca3c013e"
     },
     "mcp/runtime-token.js": {
-      "source": "8c29f37dba94cf2fc661066acbc62c4c30738e8efa9efb38d0367404c1e16d8b",
-      "embedded": "8c29f37dba94cf2fc661066acbc62c4c30738e8efa9efb38d0367404c1e16d8b"
+      "source": "d07663e879ad91f12b327101f7b747e8bfc527bed6abc8aa2018ee393f4382d4",
+      "embedded": "d07663e879ad91f12b327101f7b747e8bfc527bed6abc8aa2018ee393f4382d4"
     },
     "mcp/tools.js": {
       "source": "8304d41d78839f75acb5fd14a89c6a5222d29e2d53de7b90e54de0edec4fa9b7",
@@ -205,8 +205,8 @@
       "embedded": "f89d579eb1ae31b38a74fd336abeed1cd7e815f9cbd4a48c9f843faf19dc3c04"
     },
     "pipeline/implementer.js": {
-      "source": "0722cb306e69f963bfa4d579a68d63d2a66fe6868732a9cca9a968afc00d9b42",
-      "embedded": "0722cb306e69f963bfa4d579a68d63d2a66fe6868732a9cca9a968afc00d9b42"
+      "source": "a0aa55503a17fa44bc09ec5f509fba0e06bb94e348d4debc6c2460914fc973a6",
+      "embedded": "a0aa55503a17fa44bc09ec5f509fba0e06bb94e348d4debc6c2460914fc973a6"
     },
     "pipeline/intel.js": {
       "source": "156f608704bbfde60702b53b83647612b49f28f98d7b2fc010986c27d517a442",
@@ -297,8 +297,8 @@
       "embedded": "41f6db3f10b3a5e10b9d30586e4e9413ba71fcf22c94256aa6db3fe72b64b91e"
     },
     "state/run-lock.js": {
-      "source": "f544bc8d65acb2ac49e53ad313bc94bc6e11a14fbd57bf9d83db34f8a3809f9d",
-      "embedded": "f544bc8d65acb2ac49e53ad313bc94bc6e11a14fbd57bf9d83db34f8a3809f9d"
+      "source": "7a2bf5656dad325561b60a91a9421aea83fdcf6bec752fe8348c9b575bc71a17",
+      "embedded": "7a2bf5656dad325561b60a91a9421aea83fdcf6bec752fe8348c9b575bc71a17"
     },
     "utils/file-permissions.js": {
       "source": "857fdde926aae950cbfab73dd25adb0a415f958eb10d2cc44dd36c1d0a5eda57",
