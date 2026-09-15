@@ -2,16 +2,16 @@
   "schemaVersion": 1,
   "release": {
     "package": "@flotic/minitok",
-    "version": "1.4.1",
-    "commit": "e30b309be1f114e2002bc2176ff53d70311303e2",
-    "tree": "2e665268afa6966f339d50720dc17707f355eccc",
-    "tag": "v1.4.1",
-    "changelog": "## 1.4.1",
+    "version": "1.4.2",
+    "commit": "03481016e329884b30b7a5370739a577b8d02606",
+    "tree": "a625e258917d03cb43fba4a1ad87bb1f9819e27f",
+    "tag": "v1.4.2",
+    "changelog": "## 1.4.2",
     "artifact": {
-      "filename": "flotic-minitok-1.4.1.tgz",
-      "size": 236056,
-      "sha256": "384a557083d1dc2f3d1ef751ee3839fac39912ec042c90f017ca2ac28d76989e",
-      "integrity": "sha512-wvTcWH7478ur2Mzc72SqSTnx4IlKw8Te93VleDYkAsPNOLr+I3FyycusXeBJJaC4CZxxL1Kc4m75GhwjZwE13g==",
+      "filename": "flotic-minitok-1.4.2.tgz",
+      "size": 236121,
+      "sha256": "6aceb92213af876d1ec296bd3362d32e720f7c939c43822d6f5abf574e899ef0",
+      "integrity": "sha512-I6+8sqrrqa/wwLUtGrQvfibCi8BXy+mkyYC+ejhkG0n6o/zVnQdBbHcg5T5sFB0fL6Lqa/yhg4xXQdgjLG2QrA==",
       "files": [
         {
           "path": "BENCHMARK_EVIDENCE.json",
@@ -20,8 +20,8 @@
         },
         {
           "path": "CHANGELOG.md",
-          "size": 46788,
-          "sha256": "e6d45378bde67d6b11682b7f41b00f57d0204ae8688f79e79af62a4be56556d5"
+          "size": 47079,
+          "sha256": "e3f6ae8eb3b5e300f92cfaf0b954f3f777f711c9c56118c8ea81bde452572056"
         },
         {
           "path": "DATA_CLASSIFICATION.md",
@@ -41,7 +41,7 @@
         {
           "path": "LAUNCH_CHECKLIST.md",
           "size": 3328,
-          "sha256": "beeef9e74a0468281c2b950b60c6369c1040b125d28de4166575e2c2d7216111"
+          "sha256": "d9a6da54168d2af566820d83f2dd51c51ecaf9cf12fd1b9a9e1cb8b8f6e95c34"
         },
         {
           "path": "LICENSE",
@@ -56,7 +56,7 @@
         {
           "path": "PROMOTION_KIT.md",
           "size": 6150,
-          "sha256": "4c289e2b0f26b8976b33d253dab40355fad30c9915f927b7985ffd84de44eb66"
+          "sha256": "0e45492a7f9eb079ba3bb31cbb5021dad25b00b3b78751658aee1a6ce606b123"
         },
         {
           "path": "README.md",
@@ -81,7 +81,7 @@
         {
           "path": "package.json",
           "size": 5463,
-          "sha256": "a764c4919f5aa598fe8d861c512ba3fd089c77178420517c8b11c53d6a7f646e"
+          "sha256": "58fb55862fed132624ac2fd0e2f7bfef9bb9cf5a87e011e8144306c7c925485c"
         },
         {
           "path": "promotion-posts/linkedin.md",
@@ -310,8 +310,8 @@
         },
         {
           "path": "src/core/update-check.js",
-          "size": 8325,
-          "sha256": "df1ec1add9b0e5de45ea91846912e050d8ad245ce51ac2aca07f1926484d0c6b"
+          "size": 8322,
+          "sha256": "9e902d449fbe6f86c8441b991273a739ad457749ecc8e591f29a7434acdf5ba9"
         },
         {
           "path": "src/core/version.js",
