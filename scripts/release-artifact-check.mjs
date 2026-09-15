@@ -49,7 +49,9 @@ export async function inspectArtifacts() {
   if (!existsSync(path.join(extensionRoot, "LICENSE"))) errors.push("extension LICENSE is missing");
   if (authoritative.status !== "missing") {
     try {
+      const archive = await JSZip.loadAsync(readFileSync(authoritativePath));
       const vsixManifest = await readVsixManifest(authoritativePath);
+      if (!archive.file("extension/runtime/node_modules/undici/lib/mock/mock-client.js")) errors.push("packaged VSIX omits undici mock runtime modules");
       if (vsixManifest.extension.name !== extensionJson.name || vsixManifest.extension.version !== extensionJson.version || vsixManifest.extension.publisher !== extensionJson.publisher || vsixManifest.extension.minitok?.cliPackage !== packageJson.name || vsixManifest.extension.minitok?.cliVersion !== packageJson.version || vsixManifest.runtime.name !== runtimeJson.name || vsixManifest.runtime.version !== runtimeJson.version) errors.push("packaged VSIX manifest does not match canonical release versions");
     } catch (error) { errors.push(error.message); }
   }

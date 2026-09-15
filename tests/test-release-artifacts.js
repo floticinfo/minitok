@@ -82,6 +82,7 @@ test("release safeguards are fail-closed and integrity based", () => {
 test("artifact checks keep the canonical VSIX and remove stale candidates", () => {
   assert.doesNotMatch(script, /rmSync/);
   assert.match(packer, /rmSync/);
+  assert.doesNotMatch(packer, /undici\/lib\/mock/);
 });
 
 test("artifact reports verify embedded runtime and CLI compatibility metadata", () => {

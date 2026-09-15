@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.7-rc.1 - 2026-09-16
+
+### Fixed
+
+- Fixed the Extension VSIX runtime packaging so all `undici` mock modules required by the embedded MCP runtime are included.
+- Republished the CLI candidate as `1.4.7-rc.1` with the Agent Host and MCP setup server URL options included.
+- Bumped the VS Code Extension candidate to `0.3.4`.
+
 ## 1.4.7-rc.0 - 2026-09-15
 
 ### Added

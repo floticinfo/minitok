@@ -22,7 +22,7 @@ for (const directory of [extensionRoot, outputRoot]) {
 rmSync(output, { force: true });
 const outputArgument = path.relative(extensionRoot, output);
 const runtimeNodeModules = path.join(extensionRoot, "runtime", "node_modules");
-const packageExclusions = ["undici/lib/mock", "undici/docs"];
+const packageExclusions = ["undici/docs"];
 const stagingRoot = mkdtempSync(path.join(os.tmpdir(), "minitok-vsix-exclusions-"));
 const moved = [];
 try {
