@@ -84,6 +84,7 @@ test("MCP host configs launch the authenticated stdio entrypoint without a raw t
     assert.equal(server.command, process.execPath);
     assert.deepEqual(server.args, [path.resolve(__dirname, "../src/runtime/stdio-entry.js")]);
     assert.equal(server.env.MINITOK_MCP_AUTH_TOKEN_FILE, path.join(os.homedir(), ".minitok", "mcp", "runtime-token.json"));
+    assert.deepEqual(server.autoApprove, [], "generated MCP entries must not auto-approve tools by default");
     assert.equal(Object.values(server.env).some(value => value.includes("compat-test-token")), false);
     assert.equal(JSON.stringify(server).includes("token"), true);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }

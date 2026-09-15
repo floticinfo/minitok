@@ -34,7 +34,12 @@ function hostRoots() {
 function hostCandidates() {
   const roots = hostRoots();
   return {
-    cline: [path.join(roots.vscodeUser, "globalStorage", "saoudrizwan.claude-dev", "settings", "cline_mcp_settings.json")],
+    // Current Cline IDE and CLI locations, followed by the legacy VS Code path.
+    cline: [
+      path.join(roots.home, ".cline", "data", "settings", "cline_mcp_settings.json"),
+      path.join(roots.home, ".cline", "mcp.json"),
+      path.join(roots.vscodeUser, "globalStorage", "saoudrizwan.claude-dev", "settings", "cline_mcp_settings.json"),
+    ],
     claude: [path.join(roots.claude, "claude_desktop_config.json")],
     cursor: [path.join(roots.home, ".cursor", "mcp.json"), path.join(roots.vscodeUser, "globalStorage", "mcp.json")],
   };
@@ -296,6 +301,7 @@ function planChange(file, action, options = {}) {
       args: [path.resolve(__dirname, "../../runtime/stdio-entry.js")],
       env,
       disabled: false,
+      autoApprove: [],
     };
   } else {
     delete servers.minitok;

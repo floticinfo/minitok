@@ -20,7 +20,9 @@ function parseLocalMcpScopes(value = "read") {
   return normalized;
 }
 
-const SUPPORTED_PROTOCOLS = ["2024-11-05"];
+// Negotiate the first protocol revision offered by the client that this runtime
+// supports. Optional capabilities are still advertised only when implemented.
+const SUPPORTED_PROTOCOLS = ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05", "2024-10-07"];
 const RUN_STATE_VERSION = 2;
 const RUN_STATES = new Set(["running", "completed", "failed", "cancelled", "unknown"]);
 // The persisted record list is capped at the same size, but the in-memory map used
@@ -122,6 +124,55 @@ function drainStdioLines(buffer, chunk, maxBytes = MAX_REQUEST_BYTES, dropping =
   return { lines, rest: remaining, oversized, dropping: false };
 }
 
+/** Parse standard Content-Length MCP frames and legacy newline JSON frames. */
+function drainStdioMessages(buffer, chunk, mode = "auto", maxBytes = MAX_REQUEST_BYTES) {
+  let remaining = Buffer.concat([Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer || ""), Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk || "")]);
+  let selected = mode;
+  const messages = [];
+  let oversized = false;
+  let invalid = false;
+  while (remaining.length) {
+    if (selected === "auto") {
+      const prefix = remaining.toString("ascii", 0, Math.min(remaining.length, 64));
+      if (/^Content-Length\s*:/i.test(prefix)) selected = "framed";
+      else if (remaining.includes(10)) selected = "newline";
+      else if (/^\s/.test(prefix) || prefix.startsWith("{") || prefix.startsWith("[")) selected = "newline";
+      else if (remaining.length > maxBytes) { oversized = true; remaining = Buffer.alloc(0); break; }
+      else break;
+    }
+    if (selected === "framed") {
+      const separator = Buffer.from("\r\n\r\n");
+      const headerEnd = remaining.indexOf(separator);
+      if (headerEnd < 0) {
+        if (remaining.length > maxBytes) { oversized = true; remaining = Buffer.alloc(0); }
+        break;
+      }
+      const header = remaining.toString("ascii", 0, headerEnd);
+      const match = header.match(/(?:^|\r\n)Content-Length\s*:\s*(\d+)/i);
+      if (!match) { invalid = true; remaining = remaining.subarray(headerEnd + separator.length); continue; }
+      const length = Number(match[1]);
+      if (!Number.isSafeInteger(length) || length < 0) { invalid = true; remaining = remaining.subarray(headerEnd + separator.length); continue; }
+      if (length > maxBytes) { oversized = true; remaining = Buffer.alloc(0); break; }
+      const bodyStart = headerEnd + separator.length;
+      if (remaining.length < bodyStart + length) break;
+      messages.push(remaining.subarray(bodyStart, bodyStart + length).toString("utf8"));
+      remaining = remaining.subarray(bodyStart + length);
+      continue;
+    }
+    const newline = remaining.indexOf(10);
+    if (newline < 0) {
+      if (remaining.length > maxBytes) { oversized = true; remaining = Buffer.alloc(0); }
+      break;
+    }
+    const line = remaining.subarray(0, newline);
+    remaining = remaining.subarray(newline + 1);
+    if (line.length > maxBytes) { oversized = true; continue; }
+    const text = line.toString("utf8").trim();
+    if (text) messages.push(text);
+  }
+  return { messages, rest: remaining, mode: selected, oversized, invalid };
+}
+
 class RuntimeStdio {
   constructor(options = {}) {
     this._services = options.services || createRuntimeServices(options);
@@ -155,6 +206,8 @@ class RuntimeStdio {
     // 0 is a valid, explicit setting: check the file on every authentication.
     const refreshMs = options.authTokenFileRefreshMs ?? (process.env.MINITOK_MCP_AUTH_TOKEN_FILE_REFRESH_MS ? Number(process.env.MINITOK_MCP_AUTH_TOKEN_FILE_REFRESH_MS) : undefined);
     this._runtimeAuthRefreshMs = Number.isFinite(refreshMs) && refreshMs >= 0 ? refreshMs : 5000;
+    this._stdioMode = "newline";
+    this._stdioBuffer = Buffer.alloc(0);
     this._authToken = explicitAuthToken || loadAuthTokenFile(authTokenFile, this._fs);
     this._bindingId = runtimeBinding(options, this._authToken);
     this._nextAuthToken = options.nextAuthToken || process.env.MINITOK_MCP_AUTH_TOKEN_NEXT || null;
@@ -346,23 +399,23 @@ class RuntimeStdio {
     });
   }
   start() {
-    process.stdin.setEncoding("utf-8");
-    let buffer = "";
-    let dropping = false;
+    // MCP stdio clients use Content-Length framing. Keep accepting the historical
+    // newline JSON framing as a compatibility mode.
+    this._stdioMode = "auto";
     process.stdin.on("data", chunk => {
-      const result = drainStdioLines(buffer, String(chunk), MAX_REQUEST_BYTES, dropping);
-      buffer = result.rest;
-      dropping = result.dropping;
-      for (const line of result.lines) this._handleLine(line.trim());
-      if (result.oversized) {
-        // A line longer than any legitimate request: report it once and discard
-        // the rest of it (drainStdioLines keeps `dropping` set) instead of growing
-        // the buffer until the process runs out of memory. The HTTP transport
-        // already caps a request body at 1 MB.
-        this._respond({ jsonrpc: "2.0", id: null, error: { code: -32600, message: `Request exceeds the maximum line length (${MAX_REQUEST_BYTES} bytes)`, data: { type: "INVALID_REQUEST" } } });
+      const parsed = drainStdioMessages(this._stdioBuffer, chunk, this._stdioMode, MAX_REQUEST_BYTES);
+      this._stdioBuffer = parsed.rest;
+      this._stdioMode = parsed.mode;
+      if (parsed.invalid) this._respond({ jsonrpc: "2.0", id: null, error: { code: -32700, message: "Invalid MCP framing", data: { type: "PARSE_ERROR" } } });
+      if (parsed.oversized) this._respond({ jsonrpc: "2.0", id: null, error: { code: -32600, message: `Request exceeds the maximum MCP frame size (${MAX_REQUEST_BYTES} bytes)`, data: { type: "INVALID_REQUEST" } } });
+      for (const message of parsed.messages) this._handleLine(message);
+    });
+    process.stdin.on("end", () => {
+      if (this._stdioMode === "newline" && this._stdioBuffer.length) {
+        const tail = this._stdioBuffer.toString("utf8").trim();
+        if (tail) this._handleLine(tail);
       }
     });
-    process.stdin.on("end", () => { if (!dropping && buffer.trim()) this._handleLine(buffer.trim()); });
   }
   async _handleLine(line, respond = this._respond.bind(this)) {
      if (!line) return;
@@ -473,6 +526,13 @@ class RuntimeStdio {
   }
   _error(id, code, message, type, correlationId, extra = {}, respond = this._respond.bind(this)) { respond({ jsonrpc: "2.0", id, error: { code, message, data: { type, correlation_id: correlationId, ...extra } } }); }
   _errorCode(code) { return code === "INVALID_PARAMS" || code === "INVALID_PATH" || code === "PATH_OUTSIDE_WORKSPACE" ? -32602 : code === "RUN_NOT_FOUND" || code === "TOOL_NOT_FOUND" ? MCP_ERROR_CODES.NOT_FOUND : MCP_ERROR_CODES.TOOL_ERROR; }
-  _respond(msg) { process.stdout.write(`${JSON.stringify(msg)}\n`); }
+  _respond(msg, mode = this._stdioMode === "framed" ? "framed" : "newline") {
+    const body = Buffer.from(JSON.stringify(msg), "utf8");
+    if (mode === "framed") {
+      process.stdout.write(Buffer.concat([Buffer.from(`Content-Length: ${body.length}\r\n\r\n`, "ascii"), body]));
+      return;
+    }
+    process.stdout.write(Buffer.concat([body, Buffer.from("\n", "ascii")]));
+  }
 }
-module.exports = { RuntimeStdio, SUPPORTED_PROTOCOLS, isValidJsonRpcRequest, loadAuthTokenFile, parseLocalMcpScopes, LOCAL_MCP_SCOPES, drainStdioLines, MAX_REQUEST_BYTES, MAX_TRACKED_RUNS };
+module.exports = { RuntimeStdio, SUPPORTED_PROTOCOLS, isValidJsonRpcRequest, loadAuthTokenFile, parseLocalMcpScopes, LOCAL_MCP_SCOPES, drainStdioLines, drainStdioMessages, MAX_REQUEST_BYTES, MAX_TRACKED_RUNS };

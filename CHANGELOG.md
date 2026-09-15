@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.4.3 - 2026-09-15
+
+### Added
+
+- Added MCP compatibility for current commercial hosts: protocol negotiation for `2025-11-25`, `2025-06-18`, `2025-03-26`, `2024-11-05`, and `2024-10-07`, standard `Content-Length` stdio framing with legacy newline compatibility, response framing preservation, bounded frame parsing, current Cline configuration paths, and an explicit empty `autoApprove` default. The release is based on the complete 1.4.2 codebase; non-MCP features from 1.4.2 are retained.
+
 ## 1.4.2 - 2026-09-15
 
 ### Changed

@@ -42,7 +42,8 @@ test("host paths follow the platform instead of assuming %APPDATA%", () => {
   assert.doesNotMatch(darwin.cline[0], /AppData/);
 
   const linux = withPlatform("linux", () => mcp.hostCandidates());
-  assert.match(linux.cline[0], /[\\/]\.config[\\/]Code[\\/]User[\\/]globalStorage[\\/]saoudrizwan\.claude-dev[\\/]settings[\\/]cline_mcp_settings\.json$/);
+  assert.match(linux.cline[0], /[\\/]\.cline[\\/]data[\\/]settings[\\/]cline_mcp_settings\.json$/);
+  assert.equal(linux.cline.length, 3, "Cline CLI and legacy VS Code paths remain fallbacks");
   assert.equal(linux.cursor[0].endsWith(path.join(".cursor", "mcp.json")), true);
   assert.equal(linux.cursor.length, 2, "the previous globalStorage location stays as a fallback");
 });
@@ -52,7 +53,7 @@ test("XDG_CONFIG_HOME is honoured on Linux", () => {
   process.env.XDG_CONFIG_HOME = path.join(os.tmpdir(), "xdg-home");
   try {
     const candidates = withPlatform("linux", () => mcp.hostCandidates());
-    assert.match(candidates.cline[0], /xdg-home[\\/]Code[\\/]User/);
+    assert.match(candidates.cline[2], /xdg-home[\\/]Code[\\/]User/);
   } finally {
     if (previous === undefined) delete process.env.XDG_CONFIG_HOME;
     else process.env.XDG_CONFIG_HOME = previous;

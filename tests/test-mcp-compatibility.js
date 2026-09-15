@@ -25,8 +25,10 @@ function runtime() {
 test("MCP compatibility contract", async () => {
   const service = runtime();
   const params = () => ({ authToken });
-  const init = await request(service, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "compat" }, ...params() } });
-  assert.equal(init.result.protocolVersion, "2024-11-05");
+  const init = await request(service, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2025-11-25", capabilities: {}, clientInfo: { name: "compat" }, ...params() } });
+  assert.equal(init.result.protocolVersion, "2025-11-25");
+  const negotiated = await request(service, { jsonrpc: "2.0", id: 6, method: "initialize", params: { protocolVersions: ["unsupported", "2024-11-05"], capabilities: {}, clientInfo: { name: "compat-list" }, ...params() } });
+  assert.equal(negotiated.result.protocolVersion, "2024-11-05");
   const tools = await request(service, { jsonrpc: "2.0", id: 2, method: "tools/list", params: params() });
   assert.ok(tools.result.tools.length >= READ_ONLY_TOOL_COUNT);
   assert.equal(tools.result.tools.some(tool => requiredScopeFor(tool.name) === "write"), false, "a read-only grant must not advertise a writing tool");
