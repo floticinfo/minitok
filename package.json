@@ -1,6 +1,6 @@
 {
   "name": "@flotic/minitok",
-  "version": "1.4.2",
+  "version": "1.4.7-rc.0",
   "description": "Verified repository-aware coding workflow CLI for AI agents",
   "main": "src/index.js",
   "bin": {
@@ -85,10 +85,19 @@
   "engines": {
     "node": ">=22.19.0"
   },
+  "overrides": {
+    "dify-ai-provider": {
+      "@ai-sdk/provider-utils": {
+        "undici": "^8.10.1"
+      }
+    }
+  },
   "dependencies": {
     "commander": "^12.0.0",
     "js-yaml": "^4.3.2",
-    "undici": "^8.10.1"
+    "undici": "^8.10.1",
+    "@cline/sdk": "^0.0.83",
+    "zod": "^3.25.76"
   },
   "files": [
     "bin/",

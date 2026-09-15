@@ -34,9 +34,14 @@ function hostRoots() {
 function hostCandidates() {
   const roots = hostRoots();
   return {
-    cline: [path.join(roots.vscodeUser, "globalStorage", "saoudrizwan.claude-dev", "settings", "cline_mcp_settings.json")],
+    cline: [
+      path.join(roots.home, ".cline", "data", "settings", "cline_mcp_settings.json"),
+      path.join(roots.home, ".cline", "mcp.json"),
+      path.join(roots.vscodeUser, "globalStorage", "saoudrizwan.claude-dev", "settings", "cline_mcp_settings.json"),
+    ],
     claude: [path.join(roots.claude, "claude_desktop_config.json")],
     cursor: [path.join(roots.home, ".cursor", "mcp.json"), path.join(roots.vscodeUser, "globalStorage", "mcp.json")],
+    windsurf: [path.join(roots.home, ".codeium", "windsurf", "mcp_config.json"), path.join(roots.home, ".windsurf", "mcp_config.json")],
   };
 }
 
@@ -296,6 +301,7 @@ function planChange(file, action, options = {}) {
       args: [path.resolve(__dirname, "../../runtime/stdio-entry.js")],
       env,
       disabled: false,
+      autoApprove: [],
     };
   } else {
     delete servers.minitok;
@@ -433,6 +439,37 @@ function register(program) {
         else console.log(`Backup: none (${hadPreviousConfig ? "disabled by --no-backup" : "new configuration"}).`);
       });
   }
+
+  mcp.command("setup <host>")
+    .description("Configure minitok for an installed MCP host (cline, cursor, claude, or windsurf)")
+    .option("--dry-run", "preview without writing")
+    .option("--force", "write despite an unchanged configuration")
+    .option("--no-backup", "skip the crash-recovery copy taken during the write")
+    .option("--keep-backup", "keep <config>.bak after a successful write")
+    .option("--host-file <path>", "write this host configuration file instead of the detected one")
+    .option("--rollback", "restore the previous configuration on failure")
+    .option("--scopes <scopes>", "local MCP scopes to grant (read,write,auto_accept,verify_exec)", "read,write,verify_exec")
+    .option("--server <url>", "minitok server URL")
+    .action(async (host, opts) => {
+      const targets = host === "all" ? detect().filter(row => row.name !== "token" && row.name !== "server" && row.detected).map(row => row.name) : [host];
+      if (!targets.length) throw new Error("No supported MCP host was detected.");
+      const scopes = require("../../runtime/stdio").parseLocalMcpScopes(opts.scopes).join(",");
+      let tokenFile;
+      if (!(opts.dryRun || opts.preview)) {
+        const { authorizeEntitlement } = require("../../entitlement/policy");
+        const entitlement = await authorizeEntitlement({ serverUrl: resolveServerUrl({ cliServer: opts.server }) });
+        if (!entitlement.allowed) throw new Error(entitlement.message || "An active paid entitlement is required");
+        tokenFile = ensureRuntimeToken({});
+      }
+      for (const targetHost of targets) {
+        const target = resolveHost(targetHost, targets.length === 1 ? opts.hostFile : undefined);
+        const plan = planChange(target.file, "connect", { tokenFile: tokenFile?.path || runtimeTokenPath(), scopes, serverUrl: opts.server ? resolveServerUrl({ cliServer: opts.server }) : undefined });
+        if (opts.dryRun || opts.preview) { console.log(JSON.stringify({ action: "setup", host: targetHost, file: target.file, schema: plan.schema, changed: plan.changed, scopes })); continue; }
+        if (!plan.changed && !opts.force) { console.log(`Already configured minitok for ${targetHost} (${target.file})`); continue; }
+        writeConfig(target.file, plan.data, { backup: opts.backup !== false, keepBackup: opts.keepBackup === true, rollback: opts.rollback === true });
+        console.log(`Configured minitok for ${targetHost} (${target.file})`);
+      }
+    });
 
   // The runtime token is short lived (15 minutes) and used to be rotated only by
   // `mcp connect`, so a configured MCP client lost access 15 minutes after setup

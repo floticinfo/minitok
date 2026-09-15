@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.7-rc.0 - 2026-09-15
+
+### Added
+
+- Added the enforced `minitok agent --mode on|off` host, which exposes only `minitok_*` tools through the Cline SDK and refuses execution before MCP/provider startup when disabled.
+- Added `minitok mcp setup <host>` for Cline, Cursor, Claude Desktop, and Windsurf with platform-aware paths, task-capable scopes by default, and empty `autoApprove` settings.
+- Bumped the npm CLI candidate to `1.4.7-rc.0` and the VS Code Extension candidate to `0.3.3`.
+
 ## 1.4.2 - 2026-09-15
 
 ### Changed

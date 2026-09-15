@@ -7,7 +7,7 @@ const checkOnly = process.argv.includes("--check");
 const packagePath = path.join(root, "package.json");
 const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
 const version = packageJson.version;
-const versionPattern = "\\d+\\.\\d+\\.\\d+";
+const versionPattern = "\\d+\\.\\d+\\.\\d+(?:-[0-9A-Za-z.-]+)?";
 const textFiles = [
   "MINITOK_ARTIFACT_ROLE.txt",
   "PROMOTION_KIT.md",

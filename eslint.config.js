@@ -56,7 +56,7 @@ module.exports = [
   },
   {
     // Integration test helpers written as ESM
-    files: ["tests/test-m3-runtime.js", "tests/test-m4-launch.js"],
+    files: ["tests/test-m3-runtime.js", "tests/test-m4-launch.js", "src/agent/**/*.mjs"],
     languageOptions: { sourceType: "module", globals: commonGlobals },
   },
 ];

@@ -1,7 +1,7 @@
 {
   "source": "canonical-root-src",
   "cliPackage": "@flotic/minitok",
-  "cliVersion": "1.4.2",
+  "cliVersion": "1.4.7-rc.0",
   "entry": "src/runtime/stdio-entry.js",
   "files": [
     "auth/aliases.js",

@@ -35,8 +35,8 @@ export async function inspectArtifacts() {
   const authoritative = existsSync(authoritativePath) ? { file: relative(authoritativePath), status: "generated", size: statSync(authoritativePath).size, sha256: sha256(authoritativePath) } : { file: relative(authoritativePath), status: "missing" };
   if (stale.length) console.error(`stale VSIX artifacts (candidates): ${stale.map(item => item.file).join(", ")}`);
   if (authoritative.status === "missing") errors.push(`authoritative VSIX is missing: ${authoritative.file}`);
-  if (!/^\d+\.\d+\.\d+$/.test(packageJson.version)) errors.push(`canonical CLI version is not normalized: ${packageJson.version}`);
-  if (!/^\d+\.\d+\.\d+$/.test(extensionJson.version)) errors.push(`extension version is not normalized: ${extensionJson.version}`);
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(packageJson.version)) errors.push(`canonical CLI version is not normalized: ${packageJson.version}`);
+  if (!/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/.test(extensionJson.version)) errors.push(`extension version is not normalized: ${extensionJson.version}`);
   if (extensionJson.version !== extensionJson.version.trim()) errors.push("extension version has surrounding whitespace");
   if (runtimeJson.name !== packageJson.name) errors.push("runtime package name does not match canonical package");
   if (runtimeJson.version !== packageJson.version) errors.push("runtime package version does not match canonical package version");
