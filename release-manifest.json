@@ -2,16 +2,16 @@
   "schemaVersion": 1,
   "release": {
     "package": "@flotic/minitok",
-    "version": "1.4.7-rc.1",
-    "commit": "1ef29cbc65ff12bead84716d3f90c002a04df581",
-    "tree": "b35cc884c400559466065879394c928464062437",
-    "tag": "v1.4.7-rc.1",
-    "changelog": "## 1.4.7-rc.1",
+    "version": "1.4.7-rc.2",
+    "commit": "95b29364f9ffdb47d12ab383d11a1fde92659720",
+    "tree": "43928a3c20e35a79db74564f0362ae51e1f00973",
+    "tag": "v1.4.7-rc.2",
+    "changelog": "## 1.4.7-rc.2",
     "artifact": {
-      "filename": "flotic-minitok-1.4.7-rc.1.tgz",
-      "size": 242022,
-      "sha256": "5e72b291b9b2ad22e3583b5997677e46924b489a920c6baf89c892fa143236bc",
-      "integrity": "sha512-89XwRCwbVK51RvQ0VuuWXqi8mez1tXSqAy3p0GZyYxDS/4xTW30WVDwHdIVfdJpkqSKReBZGJrPSLsNSMalzXw==",
+      "filename": "flotic-minitok-1.4.7-rc.2.tgz",
+      "size": 243407,
+      "sha256": "f8268a8d9946abc9b88d9df19b77390b6eb7773164354dc7d113cc3160ef62c7",
+      "integrity": "sha512-uHpEqWH4Z3FjJWTQ/YoNlvUs29RASEXfy8D9K5JtMzQB5/FoKSA/yxU15Er3U2ZkBnTAAV1gTyz97OxxycubIw==",
       "files": [
         {
           "path": "BENCHMARK_EVIDENCE.json",
@@ -20,8 +20,8 @@
         },
         {
           "path": "CHANGELOG.md",
-          "size": 47916,
-          "sha256": "b9ee29b8ae65ec674ba4e0fc541041f92773ee3392f561e7f859b7c40d231bb5"
+          "size": 48338,
+          "sha256": "aedbc470e93bf724413c332f4c204b5bb65df00cf6101847f0bc6651064d6261"
         },
         {
           "path": "DATA_CLASSIFICATION.md",
@@ -41,7 +41,7 @@
         {
           "path": "LAUNCH_CHECKLIST.md",
           "size": 3338,
-          "sha256": "54350d9840200f271daec0c359ca939122fcacf3a99a905eb2ec828755866571"
+          "sha256": "2f3bb56cbc60ee84ecc5b140112d44b84b1bf41671ee42f8159786d5e6aa489c"
         },
         {
           "path": "LICENSE",
@@ -56,12 +56,12 @@
         {
           "path": "PROMOTION_KIT.md",
           "size": 6160,
-          "sha256": "3208168e5d64654a9d2b2e13f75c01ec81ab03092b9403527977cffabb03951e"
+          "sha256": "75a8b205f427ec9d2d24ece665b0062f394784a56777b01c1c2127cba2bc6ff4"
         },
         {
           "path": "README.md",
-          "size": 36594,
-          "sha256": "ae50d937c877915465b88c72208cf04e998d80dd80094c925dc97dafc407f1c5"
+          "size": 37306,
+          "sha256": "79675c64cf8c36d9af1bb1f8820eca98c43dacd6a8cc553debaf335f6fd344ca"
         },
         {
           "path": "assets/minitok-harlekin-mark.png",
@@ -75,13 +75,13 @@
         },
         {
           "path": "bin/minitok.js",
-          "size": 10627,
-          "sha256": "7f028a9fcc6811eb926ebce09782f80a1d305d8c960fbc0e4808372372dc76cb"
+          "size": 10782,
+          "sha256": "9c6267a2f5dbff5fc4c6d725678ae4085adb31438afb0e7e351adad51ff90f70"
         },
         {
           "path": "package.json",
           "size": 5653,
-          "sha256": "d11e3431e8870af53ae21d18a32023e45f9c4447b9d13baa13639abb3bc841ff"
+          "sha256": "af282285c7378ff57fc3001c88f6b8e7a7787c4019e15d1a69f04382c007284b"
         },
         {
           "path": "promotion-posts/linkedin.md",
@@ -215,8 +215,8 @@
         },
         {
           "path": "src/cli/commands/mcp.js",
-          "size": 26641,
-          "sha256": "37e5fa249c420b6c28ec5b6136b7123eb946d2c4fd2160762be0e95422a3b0d4"
+          "size": 30541,
+          "sha256": "d606a33cc5aeccdfd2bc2c2ce23c702d2d63eae39cf64196aeedf9f7a083b332"
         },
         {
           "path": "src/cli/commands/migrate.js",
