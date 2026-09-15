@@ -100,7 +100,7 @@ function installMock(result, shouldThrow) {
   const runPath = require.resolve("../src/cli/commands/run");
   delete require.cache[runPath];
 }
-describe("PD-1: Exit code reflects actual pipeline outcome", () => {
+describe("PD-1: Exit code reflects actual pipeline outcome", { concurrency: false }, () => {
   let repoDir;
   before(() => { repoDir = tmpDir(); initGitRepo(repoDir); });
   after(() => { clean(repoDir); restoreMocks(); });
