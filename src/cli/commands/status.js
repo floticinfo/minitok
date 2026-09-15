@@ -15,7 +15,7 @@ async function cmdStatusHuman(options = {}) {
 
   // --- Entitlement section ---
   try {
-    const gate = await authorizeEntitlement();
+    const gate = await authorizeEntitlement({ serverUrl: resolveServerUrl({ cliServer: options.server }) });
     console.log(`Entitlement: ${gate.state}`);
     // checkEntitlement returns the verified payload directly on gate.entitlement.
     const payload = gate.entitlement && gate.entitlement.payload ? gate.entitlement.payload : gate.entitlement;
@@ -27,7 +27,7 @@ async function cmdStatusHuman(options = {}) {
     if (gate.graceDaysRemaining) {
       console.log(`  Grace:      ${gate.graceDaysRemaining} day(s) remaining`);
     }
-    console.log(`  Server:     ${resolveServerUrl()}`);
+    console.log(`  Server:     ${resolveServerUrl({ cliServer: options.server })}`);
     // M11: Evolution upload status
     try {
       const evoOptIn = new EvolutionOptIn();
@@ -111,17 +111,19 @@ async function cmdStatus(options = {}) {
     }
     let gate;
     try {
-      gate = await authorizeEntitlement();
+      gate = await authorizeEntitlement({ serverUrl: resolveServerUrl({ cliServer: options.server }) });
     } catch (error) {
       gate = { state: "UNKNOWN", allowed: false, entitlement: null, error: error.message };
     }
     let config = null;
+    let configError = null;
+    const configPath = workspace ? path.join(workspace.repository_root, "minitok.yml") : null;
     if (workspace) {
-      try { config = loadConfig(path.join(workspace.repository_root, "minitok.yml")); } catch { config = null; }
+      try { config = loadConfig(configPath); } catch (error) { configError = error.message; }
     }
     const providers = config ? await detectAvailableProviders(config) : [];
     const payload = gate.entitlement?.payload || gate.entitlement;
-    return { version: minitokVersion, entitlement: { state: gate.state, allowed: gate.allowed === true, plan: payload?.plan_id || null, expires_at: payload?.expires_at || null, ...(gate.error ? { error: gate.error } : {}) }, workspace, ...(workspaceError ? { workspace_error: workspaceError } : {}), providers, roles: config ? Object.fromEntries(Object.keys(config.roles).map(role => [role, resolveProviderName(config, role) || null])) : {} };
+    return { version: minitokVersion, server: resolveServerUrl({ cliServer: options.server }), entitlement: { state: gate.state, allowed: gate.allowed === true, plan: payload?.plan_id || null, expires_at: payload?.expires_at || null, ...(gate.error ? { error: gate.error } : {}) }, workspace, ...(workspaceError ? { workspace_error: workspaceError } : {}), ...(configError ? { config_error: { path: configPath, message: configError } } : {}), providers, roles: config ? Object.fromEntries(Object.keys(config.roles).map(role => [role, resolveProviderName(config, role) || null])) : {} };
   }
   return cmdStatusHuman(options);
 }

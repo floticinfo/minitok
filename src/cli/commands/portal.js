@@ -5,8 +5,9 @@ const { ensureAccountSession } = require("./account");
 
 async function cmdPortal(opts) {
   const serverUrl = resolveServerUrl({ cliServer: opts?.server });
-  const account = opts?.token ? null : await ensureAccountSession({ server: opts?.server });
-  const token = opts?.token || account?.access_token || loadCustomerToken();
+  const envToken = opts?.tokenEnv && /^[A-Z_][A-Z0-9_]*$/i.test(opts.tokenEnv) ? process.env[opts.tokenEnv] : undefined;
+  const account = opts?.token || envToken ? null : await ensureAccountSession({ server: opts?.server });
+  const token = opts?.token || envToken || account?.access_token || loadCustomerToken();
   if (!token) {
     console.error("Error: Authentication token required.");
     console.error("Usage: minitok portal --token <JWT>");
@@ -14,7 +15,7 @@ async function cmdPortal(opts) {
   }
 
   const endpoint = "/v1/portal/dodo";
-  console.log("Opening Dodo billing portal...");
+  if (!opts?.json) console.log("Opening Dodo billing portal...");
 
   let result;
   try {
@@ -38,10 +39,13 @@ async function cmdPortal(opts) {
     return 1;
   }
 
-  console.log("");
-  console.log("Billing Portal:");
-  console.log(portal_url);
-  console.log("");
+  if (opts?.json) console.log(JSON.stringify({ portal_url }));
+  else {
+    console.log("");
+    console.log("Billing Portal:");
+    console.log(portal_url);
+    console.log("");
+  }
   return 0;
 }
 

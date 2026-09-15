@@ -22,8 +22,11 @@ function get(pathname) {
 const results = [];
 for (const pathname of ['/health', '/readyz']) {
   const result = await get(pathname);
-  const status = result.status === 200 ? 'PASS' : 'BLOCKED';
-  results.push({ endpoint: pathname, status, ...result });
+  const checkStatus = result.status === 200 ? 'PASS' : 'BLOCKED';
+  // Keep the human-readable check status separate from the HTTP status. The
+  // previous spread order overwrote `status: PASS` with numeric 200, making a
+  // healthy server report productionReady=false.
+  results.push({ endpoint: pathname, status: checkStatus, httpStatus: result.status, body: result.body, contentType: result.contentType, ...(result.error ? { error: result.error } : {}) });
 }
 const report = { target: origin.origin, safeReadOnly: true, results, productionReady: results.every(result => result.status === 'PASS'), limitations: ['This probe does not authenticate or exercise MCP /mcp.', 'A public /health success proves liveness only; /readyz must return 200 to prove database readiness.'] };
 console.log(JSON.stringify(report, null, 2));

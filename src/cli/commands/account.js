@@ -8,6 +8,7 @@ const { setOwnerOnlyPermissions } = require("../../utils/file-permissions");
 const { postJson } = require("../../core/http");
 const { resolveServerUrl } = require("./server-config");
 const { normalizeCustomerSession } = require("../../auth/customer-session");
+const { loadCustomerSession, removeCustomerToken, revokeCustomerSession } = require("../../auth/customer-token");
 
 const ACCOUNT_FILE = path.join(os.homedir(), ".minitok", "account", "session.json");
 
@@ -81,10 +82,21 @@ async function accountLogin(options = {}) {
   return 1;
 }
 async function accountLogout(options = {}) {
-  const session = loadAccountSession(options.file);
-  if (session?.refresh_token) { try { await postJson(`${resolveServerUrl({ cliServer: options.server })}/v1/auth/logout`, { refresh_token: session.refresh_token }, 10000); } catch {} }
-  removeAccountSession(options.file);
-  console.log("Logged out of the minitok account.");
+  const session = loadCustomerSession();
+  let remoteRevoked = false;
+  if (session?.refresh_token) {
+    try {
+      const result = await postJson(`${resolveServerUrl({ cliServer: options.server })}/v1/auth/logout`, { refresh_token: session.refresh_token }, 10000);
+      remoteRevoked = result.status === 204 || result.ok === true;
+    } catch {}
+  }
+  // Keep account logout identical to auth customer-logout: remove both legacy
+  // and refreshable credentials, then leave a tombstone so an Extension fallback
+  // cannot resurrect the previous session.
+  removeCustomerToken();
+  revokeCustomerSession();
+  if (remoteRevoked) console.log("Remote customer session revoked; local credentials removed.");
+  else console.log("Remote logout unavailable; local credentials removed. Sign in again to revoke the server session.");
   return 0;
 }
 async function accountSwitch(options = {}) { return accountLogin(options); }

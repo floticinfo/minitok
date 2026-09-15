@@ -3,10 +3,10 @@
   "displayName": "minitok",
   "description": "Run AI coding tasks through planning, verification, review, repair, and evidence",
   "publisher": "Flotic",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "minitok": {
     "cliPackage": "@flotic/minitok",
-    "cliVersion": "1.4.0"
+    "cliVersion": "1.4.1"
   },
   "author": "Flotic",
   "license": "SEE LICENSE IN LICENSE",
@@ -125,6 +125,11 @@
           "default": "",
           "description": "Command used to connect the minitok MCP runtime. Use an argument array or quote paths containing spaces."
         },
+        "minitok.mcpScopes": {
+          "type": "string",
+          "default": "read",
+          "description": "MCP permissions for Extension-launched servers: read, write, auto_accept, verify_exec. Keep read-only unless broader access is explicitly required."
+        },
         "minitok.showCost": {
           "type": "boolean",
           "default": true,
@@ -139,6 +144,11 @@
           "type": "boolean",
           "default": false,
           "description": "Automatically approve minitok changes. Disabled by default for safety."
+        },
+        "minitok.storeTaskText": {
+          "type": "boolean",
+          "default": false,
+          "description": "Store full task text in local history and checkpoints. Disabled by default; previews and hashes are stored instead."
         },
         "minitok.approvalTimeoutMs": {
           "type": "number",
@@ -158,8 +168,8 @@
     "compile": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json",
     "test:host": "npm run compile && node dist/test/run-host.js",
-    "test:unit": "npm run compile && node --test test/process-contract.test.js test/mcp-config.test.js test/version.test.js test/spawn.test.js",
-    "test": "npm run compile && node --test test/process-contract.test.js test/mcp-config.test.js test/version.test.js test/spawn.test.js && node dist/test/run-host.js"
+    "test:unit": "npm run compile && node --test test/process-contract.test.js test/mcp-config.test.js test/version.test.js test/spawn.test.js test/auth-ui.test.js",
+    "test": "npm run compile && node --test test/process-contract.test.js test/mcp-config.test.js test/version.test.js test/spawn.test.js test/auth-ui.test.js && node dist/test/run-host.js"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",

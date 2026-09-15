@@ -80,7 +80,7 @@ class OAuthFlow {
     if (this._openBrowser) this._openBrowserUrl(authUrl);
     else console.log("\nNo interactive terminal detected; open the authorization URL below on any device.\n");
 
-    console.log("\n\ud83d\udd10 Opening browser for " + config.name + " authorization...");
+    console.log("\nOpening browser for " + config.name + " authorization...");
     console.log("   If the browser didn't open, visit:\n   " + authUrl + "\n");
 
     const { code, returnedState } = await this._startCallbackServer(

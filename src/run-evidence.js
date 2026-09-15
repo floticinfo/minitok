@@ -7,6 +7,15 @@ const crypto = require('node:crypto');
 const SCHEMA_VERSION = 1;
 const EVIDENCE_DIRECTORY = path.join('.minitok', 'evidence', 'runs');
 
+function evidencePaths(workspaceRoot, configuredPath) {
+  const defaultLatest = path.resolve(workspaceRoot, EVIDENCE_DIRECTORY, 'latest.json');
+  if (!configuredPath) return { directory: path.dirname(defaultLatest), latest: defaultLatest };
+  const latest = path.resolve(workspaceRoot, configuredPath);
+  const root = path.resolve(workspaceRoot) + path.sep;
+  if (!latest.startsWith(root)) throw new Error('evidencePath must stay inside the workspace');
+  return { directory: path.dirname(latest), latest };
+}
+
 function createRunId(now = new Date()) {
   const timestamp = now.toISOString().replace(/[:.]/g, '-');
   return `${timestamp}-${crypto.randomBytes(6).toString('hex')}`;
@@ -85,9 +94,10 @@ async function recordRunEvidence({ workspaceRoot, ...input }, options = {}) {
 
   const fsImpl = options.fs || fs;
   const evidence = normalizeEvidence(input);
-  const directory = path.resolve(workspaceRoot, EVIDENCE_DIRECTORY);
+  const paths = evidencePaths(workspaceRoot, options.evidencePath);
+  const directory = paths.directory;
   const artifact = path.join(directory, `${evidence.run_id}.json`);
-  const latest = path.join(directory, 'latest.json');
+  const latest = paths.latest;
 
   try {
     await fsImpl.mkdir(directory, { recursive: true });
@@ -107,7 +117,7 @@ async function recordRunEvidence({ workspaceRoot, ...input }, options = {}) {
 
 async function readRunEvidence(workspaceRoot, options = {}) {
   const fsImpl = options.fs || fs;
-  const file = path.resolve(workspaceRoot, EVIDENCE_DIRECTORY, 'latest.json');
+  const file = evidencePaths(workspaceRoot, options.evidencePath).latest;
   let parsed;
 
   try {

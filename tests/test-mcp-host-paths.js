@@ -97,6 +97,24 @@ test("an explicit --host-file overrides detection and keeps the backup opt-in", 
   assert.deepEqual(target.candidates, [path.resolve(override)]);
 });
 
+test("MCP reconnect preserves scopes and the configured server unless explicitly changed", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-mcp-reconnect-"));
+  const file = path.join(root, "mcp.json");
+  try {
+    fs.writeFileSync(file, `${JSON.stringify({ mcpServers: { minitok: { env: { MINITOK_MCP_SCOPES: "read,write,verify_exec", minitok_server_url: "https://staging.example.test" } } } })}\n`);
+    assert.equal(mcp.configuredServerUrl(file), "https://staging.example.test");
+    const preserved = mcp.planChange(file, "connect", { tokenFile: path.join(root, "token.json") });
+    assert.equal(preserved.data.mcpServers.minitok.env.MINITOK_MCP_SCOPES, "read,write,verify_exec");
+    assert.equal(preserved.data.mcpServers.minitok.env.minitok_server_url, "https://staging.example.test");
+
+    const changed = mcp.planChange(file, "connect", { tokenFile: path.join(root, "token.json"), scopes: "read", serverUrl: "https://production.example.test" });
+    assert.equal(changed.data.mcpServers.minitok.env.MINITOK_MCP_SCOPES, "read");
+    assert.equal(changed.data.mcpServers.minitok.env.minitok_server_url, "https://production.example.test");
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("--keep-backup retains the restore point only when asked", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-mcp-backup-"));
   const file = path.join(root, "mcp.json");

@@ -48,19 +48,18 @@ describe("Models", () => {
     assert.ok(ggReasoning.every(m => m.reasoning.param === "thinkingConfig"));
   });
 
-  it("formatModel includes reasoning icon", () => {
+  it("formatModel includes the reasoning parameter in plain text", () => {
     const { findModel, formatModel } = require("../src/llm/models");
     const o3 = findModel("o3");
     const formatted = formatModel(o3);
-    assert.ok(formatted.includes("🧠"), "Should include reasoning icon");
-    assert.ok(formatted.includes("reasoning_effort"), "Should show param name");
+    assert.ok(formatted.includes("reasoning=reasoning_effort"), "Should show the reasoning parameter in plain text");
   });
 
-  it("formatModel omits icon for non-reasoning", () => {
+  it("formatModel omits reasoning metadata for non-reasoning models", () => {
     const { findModel, formatModel } = require("../src/llm/models");
     const haiku = findModel("claude-3-5-haiku-20241022");
     const formatted = formatModel(haiku);
-    assert.ok(!formatted.includes("🧠"), "Should not include reasoning icon");
+    assert.ok(!formatted.includes("reasoning="), "Should not include reasoning metadata");
   });
 
   it("fetchOpenAIModels returns array", async () => {

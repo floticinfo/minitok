@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.1 - 2026-09-15
+
+### Changed
+
+- Removed emoji and pictographic symbols from CLI, pipeline, model listings, OAuth messages, Extension UI, and packaged runtime output.
+- Kept the Extension runtime and VSIX metadata synchronized with CLI 1.4.1.
+- Excluded development-only undici mock and documentation files from the VSIX package.
+
 ## 1.4.0 - 2026-09-14
 
 ### Added

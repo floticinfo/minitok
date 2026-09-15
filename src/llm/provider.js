@@ -7,6 +7,7 @@ const dns = require("dns").promises;
 const net = require("net");
 const crypto = require("crypto");
 const { authManager } = require("../auth");
+const { normalizeProvider } = require("../auth/aliases");
 const { Agent } = require("undici");
 const { getProxyDispatcher, shouldBypassProxy } = require("../core/http");
 
@@ -380,7 +381,7 @@ class AnthropicProvider extends LLMProvider {
     };
     if (systemMsg) body.system = systemMsg.content;
 
-    // 🧠 Thinking support
+    // Thinking support
     const thinking = options.thinking || this.config.thinking;
     const effort = options.effort || this.config.effort;
     if (thinking === "adaptive" || thinking === "enabled") {
@@ -441,7 +442,7 @@ class OpenAIProvider extends LLMProvider {
     if (!reasoningModel) body.temperature = options.temperature ?? 0.7;
     else if (options.temperature !== undefined) body.temperature = options.temperature;
 
-    // 🧠 Reasoning effort support (o1, o3, o4-mini)
+    // Reasoning effort support (o1, o3, o4-mini)
     const reasoningEffort = options.reasoning_effort || this.config.reasoning_effort;
     if (reasoningEffort && reasoningModel) body.reasoning_effort = reasoningEffort;
 
@@ -487,7 +488,7 @@ class GoogleProvider extends LLMProvider {
     const body = { contents };
     if (systemMsg) body.systemInstruction = { parts: [{ text: systemMsg.content }] };
 
-    // 🧠 Thinking support (Gemini 2.5 Pro / Flash)
+    // Thinking support (Gemini 2.5 Pro / Flash)
     const thinking = options.thinking || this.config.thinking;
     if (thinking && thinking !== "none") {
       body.generationConfig = body.generationConfig || {};
@@ -640,12 +641,15 @@ function createProvider(name, config = {}) {
  * @returns {Promise<string[]>} provider names that can be used
  */
 async function detectAvailableProviders(config) {
+  const providers = config?.providers || {};
+  const providerConfig = canonical => providers[canonical] || Object.entries(providers).find(([name]) => normalizeProvider(name) === canonical)?.[1] || {};
   const checks = new Map([
-    ["anthropic", new AnthropicProvider(config.providers?.anthropic || {})],
-    ["openai", new OpenAIProvider(config.providers?.openai || {})],
-    ["google", new GoogleProvider(config.providers?.google || config.providers?.gemini || {})],
+    ["anthropic", new AnthropicProvider(providerConfig("anthropic"))],
+    ["openai", new OpenAIProvider(providerConfig("openai"))],
+    ["google", new GoogleProvider(providerConfig("google"))],
   ]);
-  for (const [name, cfg] of Object.entries(config.providers || {})) {
+  for (const [rawName, cfg] of Object.entries(providers)) {
+    const name = normalizeProvider(rawName);
     if (!cfg.base_url || checks.has(name)) continue;
     try { checks.set(name, new CustomProvider({ ...cfg, _name: name })); } catch {}
   }

@@ -57,8 +57,8 @@ const CATALOG = [
   { id: "gemini-2.5-pro", display: "Gemini 2.5 Pro (prev)", provider: "google", tier: "flagship", context_window: 1048576, max_output: 65536, release_date: "2025-03-25", reasoning: { supported: true, param: "thinkingConfig", values: ["none", "dynamic", "budget"] } },
   { id: "gemini-2.5-flash", display: "Gemini 2.5 Flash (prev)", provider: "google", tier: "balanced", context_window: 1048576, max_output: 65536, release_date: "2025-04-09", reasoning: { supported: true, param: "thinkingConfig", values: ["none", "dynamic", "budget"] } },
   // Deprecated (shut down)
-  { id: "gemini-2.0-flash", display: "⚠️ 2.0 Flash (SHUT DOWN)", provider: "google", tier: "deprecated", context_window: 1048576, max_output: 8192, release_date: "2025-02-05", reasoning: { supported: false } },
-  { id: "gemini-2.0-flash-lite", display: "⚠️ 2.0 Flash-Lite (SHUT DOWN)", provider: "google", tier: "deprecated", context_window: 1048576, max_output: 8192, release_date: "2025-02-05", reasoning: { supported: false } },
+  { id: "gemini-2.0-flash", display: "2.0 Flash (SHUT DOWN)", provider: "google", tier: "deprecated", context_window: 1048576, max_output: 8192, release_date: "2025-02-05", reasoning: { supported: false } },
+  { id: "gemini-2.0-flash-lite", display: "2.0 Flash-Lite (SHUT DOWN)", provider: "google", tier: "deprecated", context_window: 1048576, max_output: 8192, release_date: "2025-02-05", reasoning: { supported: false } },
 ];
 
 function listModels(providerFilter) {
@@ -182,13 +182,13 @@ function formatModel(m) {
   if (m.reasoning?.supported) {
     const param = m.reasoning.param;
     if (m.reasoning.effort_param) {
-      reasoning = ` 🧠 ${m.reasoning.effort_param}(${m.reasoning.effort_values.join("|")})`;
+      reasoning = ` reasoning=${m.reasoning.effort_param}(${m.reasoning.effort_values.join("|")})`;
     } else if (param === "reasoning_effort") {
-      reasoning = ` 🧠 ${param}(${m.reasoning.values.join("|")})`;
+      reasoning = ` reasoning=${param}(${m.reasoning.values.join("|")})`;
     } else if (param === "thinkingConfig") {
-      reasoning = ` 🧠 ${param}(${m.reasoning.values.join("|")})`;
+      reasoning = ` reasoning=${param}(${m.reasoning.values.join("|")})`;
     } else {
-      reasoning = ` 🧠 ${param}`;
+      reasoning = ` reasoning=${param}`;
     }
   }
   const ctx = m.context_window >= 1000000 ? `${(m.context_window / 1048576).toFixed(1)}M` : `${(m.context_window / 1000).toFixed(0)}K`;

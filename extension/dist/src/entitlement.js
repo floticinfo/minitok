@@ -28,16 +28,18 @@ function checkEntitlement() {
         return Promise.resolve({ ...cachedDecision.state, cached: true });
     }
     return new Promise(resolve => {
-        const settle = (state) => { cachedDecision = { at: Date.now(), state }; resolve(state); };
+        let settled = false;
+        const settle = (state) => { if (settled)
+            return; settled = true; cachedDecision = { at: Date.now(), state }; resolve(state); };
+        const spec = (0, workspace_1.spawnSpec)((0, workspace_1.cliPath)(), ["status", "--json"]);
+        let child;
         try {
-            (0, workspace_1.requireTrustedWorkspace)((0, workspace_1.workspacePath)());
+            child = (0, node_child_process_1.spawn)(spec.command, spec.args, (0, workspace_1.spawnOptionsFor)(spec, { cwd: (0, workspace_1.workspacePath)() }));
         }
         catch (error) {
             settle({ checked: true, allowed: false, message: error instanceof Error ? error.message : String(error) });
             return;
         }
-        const spec = (0, workspace_1.spawnSpec)((0, workspace_1.cliPath)(), ["status", "--json"]);
-        const child = (0, node_child_process_1.spawn)(spec.command, spec.args, (0, workspace_1.spawnOptionsFor)(spec, { cwd: (0, workspace_1.workspacePath)() }));
         let stdout = "";
         let stderr = "";
         const timer = setTimeout(() => { child.kill(); settle({ checked: true, allowed: false, message: "Entitlement check timed out" }); }, 30000);

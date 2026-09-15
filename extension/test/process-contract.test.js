@@ -24,9 +24,9 @@ test("panel process lifecycle contract", () => {
   assert.match(workspace, /ComSpec/);
   assert.match(panel, /taskkill/);
   assert.match(panel, /A minitok run is already active/);
-  assert.match(panel, /\["status", "--repo", cwd!\]/);
-  assert.match(panel, /\["run", message\.task, "--repo", cwd!\]/);
-  assert.match(sidebar, /\["run", message\.task, "--repo", cwd!\]/);
+  assert.match(panel, /statusArgs = cwd \? \["status", "--repo", cwd\] : \["status"\]/);
+  assert.match(panel, /\["run", message\.task, "--repo", cwd!, "--evidence-path", evidencePath\]/);
+  assert.match(sidebar, /\["run", message\.task, "--repo", cwd!, "--evidence-path", evidencePath\]/);
 });
 
 test("extension entitlement contract", () => {
@@ -65,12 +65,18 @@ test("shared entitlement preflight contract", () => {
   assert.match(panel, /await requireEntitlement\(\)/);
   assert.match(sidebar, /await requireEntitlement\(\)/);
   assert.match(sidebar, /entitlementCommands/);
+  assert.match(sidebar, /Dry run still performs provider planning/);
+  assert.match(panel, /await requireEntitlement\(\)/);
 });
 
 test("MCP stdio transport contract", () => {
   assert.match(workspace, /packagedMcpCommand/);
   assert.doesNotMatch(workspace, /runtime start/);
   assert.match(workspace, /MINITOK_MCP_AUTH_TOKEN_FILE/);
+  assert.match(workspace, /MCP_SCOPES = \["read", "write", "auto_accept", "verify_exec"\]/);
+  assert.match(workspace, /Unsupported MCP scope/);
+  assert.match(sidebar, /configuredMcpScopes\(\)/);
+  assert.match(extension, /configuredMcpScopes\(\)/);
   assert.match(extension, /ensureMcpAuthToken\(\)/);
   assert.match(extension, /method: "initialize"/);
   assert.match(extension, /method: "tools\/list"/);
@@ -88,18 +94,30 @@ test("MCP stdio transport contract", () => {
   // to echo a token in `params`, and the probe used to work only because it
   // injected one - reporting "online" for a configuration every real host failed.
   assert.match(sidebar, /const send = \(method: string, params: Record<string, unknown> = \{\}\) => mcp\.stdin\.write/);
+  assert.match(sidebar, /const sendNotification = \(method: string, params: Record<string, unknown> = \{\}\) => mcp\.stdin\.write/);
+  assert.match(sidebar, /sendNotification\("notifications\/initialized"\)/);
   assert.match(sidebar, /env: mcpEnvironment\(\)/);
   assert.equal(/authToken/.test(sidebar), false, "the probe must not echo a token in request params");
   assert.match(extension, /method: "tools\/list", params: \{\} \}/);
   assert.equal(/authToken:/.test(extension), false, "the probe must not echo a token in request params");
 });
 
-test("all extension process paths require trusted workspaces", () => {
-  for (const source of [extension, panel, sidebar, entitlement]) assert.match(source, /requireTrustedWorkspace/);
+test("customer logout revokes remotely when possible and always clears local state", () => {
+  const auth = fs.readFileSync(path.join(root, "..", "src", "cli", "commands", "auth.js"), "utf8");
+  assert.match(auth, /\/v1\/auth\/logout/);
+  assert.match(auth, /removeCustomerToken\(\)/);
+  assert.match(auth, /revokeCustomerSession\(\)/);
+  assert.match(auth, /Remote customer session revoked/);
+  assert.match(auth, /Remote logout unavailable/);
+});
+
+test("execution and local configuration paths require trusted workspaces", () => {
+  for (const source of [extension, panel, sidebar]) assert.match(source, /requireTrustedWorkspace/);
   assert.match(extension, /requireTrustedWorkspace\(workspacePath\(\)\)/);
   assert.match(panel, /requireTrustedWorkspace\(cwd\)/);
   assert.match(sidebar, /private async execute[\s\S]*?requireTrustedWorkspace\(cwd\)/);
   assert.match(sidebar, /private async checkMcpHealth[\s\S]*?requireTrustedWorkspace\(workspacePath\(\)\)/);
+  assert.doesNotMatch(entitlement, /requireTrustedWorkspace/);
 });
 
 test("interactive consent is forwarded to the spawned CLI", () => {
@@ -130,13 +148,15 @@ test("a run can be cancelled or timed out instead of hanging the extension host"
 test("status and version answers are bounded", () => {
   assert.match(extension, /const CLI_STATUS_TIMEOUT_MS = 60000;/);
   assert.match(extension, /await runCli\(cliPath\(\), \["--version"\], \{ timeoutMs: CLI_STATUS_TIMEOUT_MS \}\)/);
-  assert.match(extension, /await runCli\(cliPath\(\), statusCwd \? \["status", "--repo", statusCwd\] : \["status"\], \{ timeoutMs: CLI_STATUS_TIMEOUT_MS \}\)/);
+  assert.match(extension, /await runCli\(cliPath\(\), statusCwd \? \["status", "--repo", statusCwd\] : \["status"\], \{ timeoutMs: CLI_STATUS_TIMEOUT_MS, requireWorkspace: false \}\)/);
 });
 
 test("every MCP probe call is bounded", () => {
   // The probe preflight spawned processes without a timeout, so a provider outage
   // left the sidebar reporting "checking" forever.
-  assert.match(sidebar, /const timeout = setTimeout\(\(\) => \{ mcp\.kill\(\);[\s\S]{0,200}handshake timed out/);
+  assert.match(sidebar, /timeout = setTimeout\(\(\) => finish\(false, "MCP offline: handshake timed out"\), 5000\);/);
+  assert.match(sidebar, /let finished = false/);
+  assert.match(sidebar, /if \(finished\) return/);
   assert.match(sidebar, /execFile\(spec\.command, spec\.args, \{ \.\.\.spawnOptionsFor\(spec, \{ cwd, env \}\), timeout: 30000 \}/);
   assert.match(sidebar, /execFile\("git", args, \{ cwd, timeout: 30000, windowsHide: true \}/);
 });
@@ -164,7 +184,51 @@ test("sidebar process lifecycle contract", () => {
   assert.match(sidebar, /approval-timeout-ms/);
   assert.match(sidebar, /taskkill/);
   assert.match(sidebar, /this\.mcpProcess/);
+  assert.match(sidebar, /finish\(false, "MCP offline: handshake timed out"\)/);
+  assert.match(sidebar, /sendNotification\("notifications\/initialized"\)/);
+  assert.match(sidebar, /acquireMcpConfigLock\(configPath\)/);
+  assert.match(sidebar, /configLock\.release\(\)/);
+  assert.match(sidebar, /redactOutputText/);
+  assert.match(panel, /redactPanelOutput/);
+  assert.match(sidebar, /this\.handle\(message\)\.catch/);
+  assert.match(panel, /this\.handle\(message\)\.catch/);
+  assert.match(sidebar, /evidencePath/);
+  assert.match(sidebar, /MCP authentication token could not be prepared/);
+  assert.match(extension, /minitok MCP authentication token could not be prepared/);
+  assert.match(extension, /redactExtensionOutput/);
+  assert.match(sidebar, /Signed out locally and from the server/);
+  assert.match(panel, /server session could not be revoked/);
+  assert.match(sidebar, /latestCliVersion/);
+  assert.match(sidebar, /storeTaskText/);
+  assert.match(sidebar, /taskPreview/);
+  assert.match(sidebar, /taskHash/);
+  assert.match(sidebar, /const preview = redactTaskText\(task\.trim\(\)\.slice\(0, 300\)\)/);
+  assert.match(sidebar, /redactSensitiveText/);
+  assert.match(sidebar, /redactOutputText/);
+  assert.match(workspace, /MINITOK_MCP_SCOPES/);
+  assert.match(workspace, /MINITOK_UPDATE_CHECK: "0"/);
+  assert.match(workspace, /minitok_server_url = configuredServerUrl\(\)/);
+  assert.match(extension, /let finished = false/);
+  assert.match(sidebar, /let finished = false/);
+  assert.match(sidebar, /Read and validate only after the lock is held/);
+  assert.match(sidebar, /task redacted/);
+  assert.match(sidebar, /if \(!task\) return args/);
+  assert.match(sidebar, /replaceAll\(task, "\[task redacted\]"\)/);
+  assert.match(sidebarHtml, /item\.taskPreview/);
+  assert.match(sidebar, /clear-history/);
+  assert.match(sidebar, /Local Extension run history cleared/);
+  assert.match(sidebar, /Repository evidence, checkpoints, and patches were preserved/);
+  assert.match(sidebar, /storeTaskText/);
   assert.match(sidebar, /Unsupported command/);
+});
+
+test("Extension subprocesses inherit the configured server URL and disable update checks", () => {
+  assert.match(workspace, /export function extensionCliEnvironment/);
+  assert.match(workspace, /env\.minitok_server_url = configuredServerUrl\(\)/);
+  assert.match(workspace, /MINITOK_UPDATE_CHECK: "0"/);
+  assert.match(entitlement, /spawnOptionsFor\(spec/);
+  assert.match(panel, /spawnOptionsFor\(processSpec/);
+  assert.match(sidebar, /spawnOptionsFor\(processSpec/);
 });
 
 test("extension commands target the folder that is open in the editor", () => {

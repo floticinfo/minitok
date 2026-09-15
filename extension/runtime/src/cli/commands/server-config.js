@@ -53,8 +53,10 @@ function resolveServerUrl(options = {}) {
     return _normalizeUrl(options.cliServer);
   }
 
-  // 2. Environment variable
-  const serverUrl = process.env.minitok_server_url;
+  // 2. Environment variable. Keep the lower-case name as the canonical
+  // subprocess contract, but accept the conventional upper-case spelling for
+  // shells and CI configurations.
+  const serverUrl = process.env.minitok_server_url || process.env.MINITOK_SERVER_URL;
   if (serverUrl) {
     return _normalizeUrl(serverUrl);
   }

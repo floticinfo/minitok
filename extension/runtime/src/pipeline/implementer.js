@@ -332,7 +332,7 @@ function temporaryWritePath(filePath) {
 function applyChanges(repoRoot, changesResult, dryRun = false, options = {}) {
   if (changesResult.error) return { applied: 0, errors: [changesResult.error] };
 
-  // 🔒 Validate LLM output before processing
+  // Validate LLM output before processing
   const { valid, errors: validationErrors, validatedChanges } = validateChanges(changesResult);
   if (!valid) {
     return { applied: 0, errors: validationErrors };
@@ -348,7 +348,7 @@ function applyChanges(repoRoot, changesResult, dryRun = false, options = {}) {
     return result;
   };
   for (const change of validatedChanges) {
-    // 🔒 Validate path stays within repoRoot
+    // Validate path stays within repoRoot
     const { resolved: filePath, safe, reason } = safePath(repoRoot, change.file);
     if (!safe) {
       recordAudit({ action: change.action, file: change.file, result: "rejected", reason });
@@ -356,7 +356,7 @@ function applyChanges(repoRoot, changesResult, dryRun = false, options = {}) {
       continue;
     }
 
-    // 🔒 Check protected paths
+    // Check protected paths
     const { protected: isProtected, reason: protReason } = isProtectedPath(repoRoot, filePath, { protectedExtraPaths: options.protectedExtraPaths });
     const releaseProtected = isCanonicalReleaseRepository(repoRoot);
     if (isProtected && !(releaseProtected && change.action === "create" && path.relative(path.resolve(repoRoot), filePath).replace(/\\/g, "/").startsWith("tests/"))) {
@@ -365,7 +365,7 @@ function applyChanges(repoRoot, changesResult, dryRun = false, options = {}) {
       continue;
     }
 
-    // 🔒 Check blocked extensions
+    // Check blocked extensions
     const blockedExtensions = options.blockedExtensions || DEFAULT_BLOCKED_EXTENSIONS;
     const { blocked, reason: extReason } = isBlockedExtension(filePath, blockedExtensions);
     if (blocked) {

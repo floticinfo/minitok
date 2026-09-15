@@ -20,6 +20,7 @@ const assert = require("node:assert/strict");
 const path = require("path");
 const fs = require("fs");
 const os = require("os");
+const { TEST_AUTHORIZATION } = require("../src/pipeline/test-seam");
 
 function tmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "mt-exit-"));
@@ -60,6 +61,8 @@ function makePipelineResult(statuses) {
 // Mock state
 let _mockResult = null;
 let _mockThrow = null;
+let _providerPath = null;
+let _providerOriginal = null;
 
 function installMock(result, shouldThrow) {
   _mockResult = result;
@@ -84,6 +87,16 @@ function installMock(result, shouldThrow) {
     paths: require.cache[loopPath] ? require.cache[loopPath].paths : [],
   };
 
+  _providerPath = require.resolve("../src/llm/provider");
+  _providerOriginal = require.cache[_providerPath];
+  require.cache[_providerPath] = {
+    id: _providerPath, filename: _providerPath, loaded: true,
+    exports: {
+      detectAvailableProviders: async () => ["anthropic"],
+      verifyCredentials: async () => ({ status: "ok", detail: "test fixture" }),
+    },
+    paths: _providerOriginal?.paths || [],
+  };
   const runPath = require.resolve("../src/cli/commands/run");
   delete require.cache[runPath];
 }
@@ -95,7 +108,7 @@ describe("PD-1: Exit code reflects actual pipeline outcome", () => {
   it("Case A -- genuine success -> exit code 0", async () => {
     installMock(makePipelineResult(["APPROVE"]));
     const { cmdRun } = require("../src/cli/commands/run");
-    const exitCode = await cmdRun("test task", { repo: repoDir, dryRun: true, autoAccept: true });
+    const exitCode = await cmdRun("test task", { repo: repoDir, dryRun: true, autoAccept: true, authorization: TEST_AUTHORIZATION });
     assert.equal(exitCode, 0, "successful pipeline should return 0");
     restoreMocks();
   });
@@ -103,7 +116,7 @@ describe("PD-1: Exit code reflects actual pipeline outcome", () => {
   it("Case B -- all REJECT -> exit code 1", async () => {
     installMock(makePipelineResult(["REJECT", "REJECT", "REJECT"]));
     const { cmdRun } = require("../src/cli/commands/run");
-    const exitCode = await cmdRun("test task", { repo: repoDir, dryRun: true, autoAccept: true });
+    const exitCode = await cmdRun("test task", { repo: repoDir, dryRun: true, autoAccept: true, authorization: TEST_AUTHORIZATION });
     assert.equal(exitCode, 1, "all-rejected pipeline should return 1");
     restoreMocks();
   });
@@ -111,7 +124,7 @@ describe("PD-1: Exit code reflects actual pipeline outcome", () => {
   it("Case C -- all CHANGES_REQUESTED -> exit code 1", async () => {
     installMock(makePipelineResult(["CHANGES_REQUESTED", "CHANGES_REQUESTED", "CHANGES_REQUESTED"]));
     const { cmdRun } = require("../src/cli/commands/run");
-    const exitCode = await cmdRun("test task", { repo: repoDir, dryRun: true, autoAccept: true });
+    const exitCode = await cmdRun("test task", { repo: repoDir, dryRun: true, autoAccept: true, authorization: TEST_AUTHORIZATION });
     assert.equal(exitCode, 1, "all-changes-requested pipeline should return 1");
     restoreMocks();
   });
@@ -119,7 +132,7 @@ describe("PD-1: Exit code reflects actual pipeline outcome", () => {
   it("Case D -- implementation failure -> exit code 1", async () => {
     installMock(makePipelineResult(["impl_failed"]));
     const { cmdRun } = require("../src/cli/commands/run");
-    const exitCode = await cmdRun("test task", { repo: repoDir, dryRun: true, autoAccept: true });
+    const exitCode = await cmdRun("test task", { repo: repoDir, dryRun: true, autoAccept: true, authorization: TEST_AUTHORIZATION });
     assert.equal(exitCode, 1, "implementation failure should return 1");
     restoreMocks();
   });
@@ -127,7 +140,7 @@ describe("PD-1: Exit code reflects actual pipeline outcome", () => {
   it("Case E -- plan failure -> exit code 1", async () => {
     installMock(makePipelineResult(["plan_failed"]));
     const { cmdRun } = require("../src/cli/commands/run");
-    const exitCode = await cmdRun("test task", { repo: repoDir, dryRun: true, autoAccept: true });
+    const exitCode = await cmdRun("test task", { repo: repoDir, dryRun: true, autoAccept: true, authorization: TEST_AUTHORIZATION });
     assert.equal(exitCode, 1, "plan failure should return 1");
     restoreMocks();
   });
@@ -135,7 +148,7 @@ describe("PD-1: Exit code reflects actual pipeline outcome", () => {
   it("Case F -- rejected by user -> exit code 1", async () => {
     installMock(makePipelineResult(["rejected_by_user"]));
     const { cmdRun } = require("../src/cli/commands/run");
-    const exitCode = await cmdRun("test task", { repo: repoDir, dryRun: true, autoAccept: true });
+    const exitCode = await cmdRun("test task", { repo: repoDir, dryRun: true, autoAccept: true, authorization: TEST_AUTHORIZATION });
     assert.equal(exitCode, 1, "user-rejected pipeline should return 1");
     restoreMocks();
   });
@@ -143,7 +156,7 @@ describe("PD-1: Exit code reflects actual pipeline outcome", () => {
   it("Case G -- empty cycles -> exit code 1", async () => {
     installMock(makePipelineResult([]));
     const { cmdRun } = require("../src/cli/commands/run");
-    const exitCode = await cmdRun("test task", { repo: repoDir, dryRun: true, autoAccept: true });
+    const exitCode = await cmdRun("test task", { repo: repoDir, dryRun: true, autoAccept: true, authorization: TEST_AUTHORIZATION });
     assert.equal(exitCode, 1, "empty cycles should return 1");
     restoreMocks();
   });
@@ -151,7 +164,7 @@ describe("PD-1: Exit code reflects actual pipeline outcome", () => {
   it("Case H -- pipeline throws -> exit code 1", async () => {
     installMock(null, "Network failure");
     const { cmdRun } = require("../src/cli/commands/run");
-    const exitCode = await cmdRun("test task", { repo: repoDir, dryRun: true, autoAccept: true });
+    const exitCode = await cmdRun("test task", { repo: repoDir, dryRun: true, autoAccept: true, authorization: TEST_AUTHORIZATION });
     assert.equal(exitCode, 1, "exception should return 1");
     restoreMocks();
   });
@@ -159,7 +172,7 @@ describe("PD-1: Exit code reflects actual pipeline outcome", () => {
   it("Case J -- approved, then the final cycle rejected -> exit code 1", async () => {
     installMock(makePipelineResult(["APPROVE", "REJECT"]));
     const { cmdRun } = require("../src/cli/commands/run");
-    const exitCode = await cmdRun("test task", { repo: repoDir, dryRun: true, autoAccept: true });
+    const exitCode = await cmdRun("test task", { repo: repoDir, dryRun: true, autoAccept: true, authorization: TEST_AUTHORIZATION });
     assert.equal(exitCode, 1, "a run that ends on a rejection must not exit 0 because an earlier cycle was approved");
     restoreMocks();
   });
@@ -178,4 +191,10 @@ function restoreMocks() {
   delete require.cache[loopPath];
   const runPath = require.resolve("../src/cli/commands/run");
   delete require.cache[runPath];
+  if (_providerPath) {
+    if (_providerOriginal) require.cache[_providerPath] = _providerOriginal;
+    else delete require.cache[_providerPath];
+    _providerPath = null;
+    _providerOriginal = null;
+  }
 }

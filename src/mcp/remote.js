@@ -97,7 +97,7 @@ class RemoteMcpClient {
       const errorType = body?.error?.data?.type;
       const challenge = response.headers.get("www-authenticate") || "";
       const metadataMatch = challenge.match(/resource_metadata="([^"]+)"/);
-      if (response.status === 401 && this.allowOAuth && !retried && metadataMatch && (!this.token || this._cachedTokenExpired)) {
+      if (response.status === 401 && this.allowOAuth && !retried && metadataMatch && errorType !== "ENTITLEMENT_REQUIRED") {
         // Discard the unusable credential first: `retried` bounds the loop, and
         // without this the client kept presenting the same expired token.
         try { this.tokenStore.remove(this.resourceKey); } catch {}

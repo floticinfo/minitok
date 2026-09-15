@@ -42,9 +42,11 @@ const workspace_1 = require("./workspace");
 const sidebar_1 = require("./sidebar");
 const workspace_2 = require("./workspace");
 const entitlement_1 = require("./entitlement");
+const redaction_1 = require("./redaction");
 function extensionVersion(context) {
     return String(context.extension.packageJSON.version);
 }
+const redactExtensionOutput = redaction_1.redactSensitiveText;
 /** A pipeline run may legitimately take up to half an hour. */
 const CLI_RUN_TIMEOUT_MS = 1800000;
 /** Status and version answers are expected in seconds; never leave them hanging. */
@@ -77,7 +79,8 @@ function killProcessTree(child) {
  */
 function runCli(cliPath, args, options = {}) {
     const cwd = (0, workspace_2.workspacePath)();
-    (0, workspace_1.requireTrustedWorkspace)(cwd);
+    if (options.requireWorkspace !== false)
+        (0, workspace_1.requireTrustedWorkspace)(cwd);
     const timeoutMs = options.timeoutMs ?? CLI_RUN_TIMEOUT_MS;
     return new Promise((resolve, reject) => {
         const spec = (0, workspace_1.spawnSpec)(cliPath, args);
@@ -117,8 +120,9 @@ function runCli(cliPath, args, options = {}) {
 }
 function activate(context) {
     const output = vscode.window.createOutputChannel("minitok");
-    void (0, entitlement_1.checkEntitlement)().then(result => { if (!result.allowed)
-        vscode.window.showWarningMessage(result.message || "An active paid minitok plan is required."); });
+    // Authentication is the first gate. The sidebar/panel checks entitlement only
+    // after a customer session is known; showing an entitlement warning here made a
+    // brand-new, signed-out install look like a billing failure.
     const requireEntitlement = async () => {
         const entitlement = await (0, entitlement_1.checkEntitlement)();
         if (!entitlement.allowed)
@@ -131,14 +135,20 @@ function activate(context) {
     context.subscriptions.push(vscode.commands.registerCommand("minitok.openSettings", () => vscode.commands.executeCommand("workbench.action.openSettings", "@ext:flotic.minitok-extension")));
     context.subscriptions.push(vscode.commands.registerCommand("minitok.mcpStatus", async () => {
         try {
-            await requireEntitlement();
             (0, workspace_1.requireTrustedWorkspace)((0, workspace_2.workspacePath)());
         }
         catch (error) {
-            vscode.window.showErrorMessage(String(error));
+            vscode.window.showErrorMessage(redactExtensionOutput(String(error)));
             return;
         }
         output.show(true);
+        try {
+            (0, workspace_2.configuredMcpScopes)();
+        }
+        catch (error) {
+            vscode.window.showErrorMessage(redactExtensionOutput(String(error)));
+            return;
+        }
         const command = (0, workspace_2.mcpCommand)();
         if (!command.length || !command[0]) {
             vscode.window.showErrorMessage("minitok MCP command is not configured");
@@ -147,20 +157,36 @@ function activate(context) {
         const processSpec = (0, workspace_1.spawnSpec)(command[0], command.slice(1));
         // Refresh the short lived runtime token before spawning the server, so both
         // sides read the same credential.
-        await (0, workspace_2.ensureMcpAuthToken)();
+        const token = await (0, workspace_2.ensureMcpAuthToken)();
+        if (!token) {
+            vscode.window.showErrorMessage("minitok MCP authentication token could not be prepared");
+            return;
+        }
+        try {
+            (0, workspace_2.mcpEnvironment)();
+            await requireEntitlement();
+        }
+        catch (error) {
+            vscode.window.showErrorMessage(redactExtensionOutput(String(error)));
+            return;
+        }
         output.appendLine(`[spawn] mcp command=${JSON.stringify(processSpec.command)} args=${JSON.stringify(processSpec.args)} cwd=${JSON.stringify((0, workspace_2.workspacePath)())}`);
         let child;
         try {
             child = (0, node_child_process_1.spawn)(processSpec.command, processSpec.args, (0, workspace_2.spawnOptionsFor)(processSpec, { cwd: (0, workspace_2.workspacePath)(), env: (0, workspace_2.mcpEnvironment)() }));
         }
         catch (error) {
-            output.appendLine(`[spawn] synchronous error=${String(error)}`);
-            vscode.window.showErrorMessage(`minitok MCP spawn failed: ${String(error)}`);
+            const safeError = redactExtensionOutput(String(error));
+            output.appendLine(`[spawn] synchronous error=${safeError}`);
+            vscode.window.showErrorMessage(`minitok MCP spawn failed: ${safeError}`);
             return;
         }
         let buffer = "";
-        const finish = (text) => { child.kill(); output.appendLine(text); vscode.window.showInformationMessage(text); };
-        const timer = setTimeout(() => finish("minitok MCP handshake timed out"), 5000);
+        let finished = false;
+        let timer;
+        const finish = (text) => { if (finished)
+            return; finished = true; clearTimeout(timer); const safeText = redactExtensionOutput(text); child.kill(); output.appendLine(safeText); vscode.window.showInformationMessage(safeText); };
+        timer = setTimeout(() => finish("minitok MCP handshake timed out"), 5000);
         // The probe must look like a real host: the credential is carried by the
         // spawned process environment (mcpEnvironment) and never by request params.
         // Sending authToken in params made this command report "online" while a
@@ -172,8 +198,10 @@ function activate(context) {
                     clearTimeout(timer);
                     finish(`minitok MCP error: ${message.error.message}`);
                 }
-                else if (message.id === 1)
+                else if (message.id === 1) {
+                    child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" })}\n`);
                     child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} })}\n`);
+                }
                 else if (message.id === 2) {
                     clearTimeout(timer);
                     finish(`minitok MCP online: ${message.result?.tools?.length || 0} tools`);
@@ -219,32 +247,33 @@ function activate(context) {
         try {
             // Pass --repo explicitly: without it cmdRun targets the globally registered
             // workspace, which may be a different repository than the open folder.
-            const runArgs = ["run", task, "--repo", cwd, ...(approved ? ["--auto-accept"] : [])];
+            const evidencePath = vscode.workspace.getConfiguration("minitok").get("evidencePath", ".minitok/evidence/runs/latest.json").trim() || ".minitok/evidence/runs/latest.json";
+            const runArgs = ["run", task, "--repo", cwd, "--evidence-path", evidencePath, ...(approved ? ["--auto-accept"] : [])];
             // Run inside a cancellable notification. The spawned CLI has no TTY of its
             // own, so this is the only way to stop a long run short of reloading the
             // window (the promise used to have no timeout and no cancel path).
             await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "minitok task", cancellable: true }, async (_progress, token) => {
-                output.appendLine(await runCli((0, workspace_2.cliPath)(), runArgs, { timeoutMs: CLI_RUN_TIMEOUT_MS, token }));
+                output.appendLine(redactExtensionOutput(await runCli((0, workspace_2.cliPath)(), runArgs, { timeoutMs: CLI_RUN_TIMEOUT_MS, token })));
             });
         }
         catch (error) {
-            output.appendLine(String(error));
+            const safeError = redactExtensionOutput(String(error));
+            output.appendLine(safeError);
             vscode.window.showErrorMessage(String(error).includes("cancelled") ? "minitok task cancelled" : "minitok task failed");
         }
     }));
     context.subscriptions.push(vscode.commands.registerCommand("minitok.status", async () => {
         output.show(true);
         try {
-            await requireEntitlement();
             const version = await runCli((0, workspace_2.cliPath)(), ["--version"], { timeoutMs: CLI_STATUS_TIMEOUT_MS });
             if (!(0, workspace_2.isCliCompatible)(version))
                 throw new Error(`Unsupported minitok CLI version: ${version.trim()}`);
             // Inspect the open folder, not the globally registered workspace.
             const statusCwd = (0, workspace_2.workspacePath)();
-            output.appendLine(await runCli((0, workspace_2.cliPath)(), statusCwd ? ["status", "--repo", statusCwd] : ["status"], { timeoutMs: CLI_STATUS_TIMEOUT_MS }));
+            output.appendLine(redactExtensionOutput(await runCli((0, workspace_2.cliPath)(), statusCwd ? ["status", "--repo", statusCwd] : ["status"], { timeoutMs: CLI_STATUS_TIMEOUT_MS, requireWorkspace: false })));
         }
         catch (error) {
-            output.appendLine(String(error));
+            output.appendLine(redactExtensionOutput(String(error)));
         }
     }));
 }

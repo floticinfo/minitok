@@ -8,6 +8,8 @@ package-lock.json
 node_modules/
 runtime/node_modules/**
 !runtime/node_modules/undici/**
+runtime/node_modules/undici/lib/mock/**
+runtime/node_modules/undici/docs/**
 .vscode-test/
 *.vsix
 artifacts/
