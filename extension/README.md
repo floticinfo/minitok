@@ -1,6 +1,6 @@
 # minitok
 
-![minitok Harlekin brand mark](media/minitok.svg)
+![minitok Harlekin brand mark](media/minitok.png)
 
 **Verified coding workflows for the terminal**
 
