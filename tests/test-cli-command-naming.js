@@ -13,7 +13,8 @@ test("top-level help groups current commands with descriptions", () => {
   const result = help();
   assert.equal(result.status, 0);
   for (const command of ["run", "status", "doctor", "models", "workspace", "auth", "migrate", "runtime", "mcp"]) assert.match(result.stdout, new RegExp(`\\b${command}\\b`));
-  assert.match(result.stdout, /Run the autonomous coding workflow/);
+  assert.match(result.stdout, /Run a verified repository-aware coding workflow/);
+  assert.match(result.stdout, /Manage MCP status, connections, tokens, and host\s+setup/);
 });
 
 test("compatibility aliases are visible and provider auth remains separate", () => {

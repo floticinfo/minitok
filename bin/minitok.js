@@ -8,7 +8,7 @@ const helpOrVersionInvocation = cliArgs.some(arg => ["--help", "-h", "--version"
 if (!helpOrVersionInvocation && (!bareInvocation || process.stdin.isTTY && process.stdout.isTTY) && process.env.MINITOK_UPDATE_CHECK !== "0") require("../src/core/update-check").checkForUpdate();
 if (process.env.MINITOK_NO_COLOR === "1" || !process.stdout.isTTY) { process.env.FORCE_COLOR = "0"; }
 const program = new Command();
-program.name("minitok").description("Repository-aware autonomous coding workflow driver").version(`minitok ${pkg.version}`).option("--no-mcp-setup", "skip first-run MCP onboarding");
+program.name("minitok").description("Verified repository-aware coding workflows for the terminal").version(`minitok ${pkg.version}`).option("--no-mcp-setup", "skip first-run MCP onboarding");
 program.action(async () => {
   // commander hands an unrecognized command to this default action instead of
   // reporting it, so reject unknown operands first. Without this a typo such as
@@ -33,7 +33,7 @@ program.action(async () => {
 });
 program.command("status").description("Show entitlement, providers, roles, and recent runs").option("-w, --workspace <name>").option("--repo <path>", "inspect a repository without registering a workspace").option("--server <url>", "minitok server URL").option("--json", "output JSON").action(async (opts) => { const { cmdStatus } = require("../src/cli/commands/status"); const result = await cmdStatus(opts); if (opts.json) { console.log(JSON.stringify(result)); process.exitCode = 0; return; } process.exitCode = typeof result === "number" ? result : 0; });
 program.command("doctor").description("Diagnose the local environment and entitlement").option("--verify", "live-check provider credentials against the API", false).action(async (opts) => { const { cmdDoctor } = require("../src/cli/commands/doctor"); process.exit(await cmdDoctor(opts)); });
-program.command("run").description("Run the autonomous coding workflow").argument("[task]").option("-w, --workspace <name>").option("--server <url>", "minitok server URL").option("-t, --task-flag <task>").option("--dry-run", "dry run", false).option("--auto-accept", "auto accept", false).option("--approval-file <path>").option("--approval-timeout-ms <ms>").option("--evidence-path <path>", "workspace-relative run evidence path").option("--repo <path>").option("--provider-override <provider>").option("--coding-adapter <adapter>").option("--research-adapter <adapter>").option("--review-adapter <adapter>").action(async (task, opts) => {
+program.command("run").description("Run a verified repository-aware coding workflow").argument("[task]").option("-w, --workspace <name>").option("--server <url>", "minitok server URL").option("-t, --task-flag <task>").option("--dry-run", "preview the workflow without applying changes", false).option("--auto-accept", "bypass the normal approval prompt; use only intentionally", false).option("--approval-file <path>").option("--approval-timeout-ms <ms>").option("--evidence-path <path>", "workspace-relative run evidence path").option("--repo <path>").option("--provider-override <provider>").option("--coding-adapter <adapter>").option("--research-adapter <adapter>").option("--review-adapter <adapter>").action(async (task, opts) => {
   const { cmdRun } = require("../src/cli/commands/run");
   // Cancel cooperatively on the first Ctrl-C: the pipeline observes this signal
   // while polling for an approval response and while providers are in flight, so

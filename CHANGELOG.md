@@ -10,7 +10,8 @@
 
 ### Changed
 
-- Bumped the npm CLI candidate to `1.4.7-rc.4` and the VS Code Extension candidate to `0.3.7`.
+- Prepared the canonical VS Code Extension candidate `0.3.8` with the homepage-aligned verified workflow copy and homepage SVG activity-bar asset.
+- Bumped the npm CLI candidate to `1.4.7-rc.4` and the VS Code Extension candidate to `0.3.8`.
 
 ## 1.4.7-rc.3 - 2026-09-16
 

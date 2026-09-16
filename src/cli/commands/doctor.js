@@ -16,6 +16,35 @@ function check(name, ok, detail = "") {
   return ok;
 }
 
+function buildProviderChecks(config = {}) {
+  const providerChecks = [
+    ["Anthropic", "anthropic", "ANTHROPIC_API_KEY"],
+    ["OpenAI", "openai", "OPENAI_API_KEY"],
+    ["Google", "google", "GOOGLE_API_KEY"],
+  ].map(([label, key, envVar]) => ({
+    label,
+    key,
+    providerName: key,
+    envVar,
+    config: config.providers?.[key] || Object.entries(config.providers || {}).find(([name]) => normalizeProvider(name) === key)?.[1] || {},
+    custom: false,
+  }));
+  const firstClass = new Set(providerChecks.map(provider => provider.key));
+  for (const [providerName, providerConfig] of Object.entries(config.providers || {})) {
+    const key = normalizeProvider(providerName);
+    if (firstClass.has(key)) continue;
+    providerChecks.push({
+      label: `Custom provider ${providerName}`,
+      key,
+      providerName,
+      envVar: null,
+      config: providerConfig || {},
+      custom: true,
+    });
+  }
+  return providerChecks;
+}
+
 async function cmdDoctor(opts = {}) {
   console.log(`minitok ${minitokVersion} — Environment Check\n`);
 
@@ -62,31 +91,33 @@ async function cmdDoctor(opts = {}) {
   // LLM providers — informational per-provider; the overall check requires
   // at least one configured provider (most customers use exactly one).
   console.log("\nLLM Providers:");
-  const providerChecks = [
-    ["Anthropic", "anthropic", "ANTHROPIC_API_KEY"],
-    ["OpenAI", "openai", "OPENAI_API_KEY"],
-    ["Google", "google", "GOOGLE_API_KEY"],
-  ];
-  for (const [label, key, envVar] of providerChecks) {
-    check(`  ${label}`, providers.includes(key), providers.includes(key) ? "configured" : `${envVar} not set`);
+  const providerChecks = buildProviderChecks(config);
+  for (const provider of providerChecks) {
+    const available = providers.includes(provider.key);
+    const detail = provider.custom
+      ? (available ? `configured (${provider.config.base_url || provider.config.endpoint || "custom endpoint"})` : "endpoint unavailable")
+      : (available ? "configured" : `${provider.envVar} not set`);
+    check(`  ${provider.label}`, available, detail);
   }
 
   // --verify: live credential check (detects expired/revoked keys that
-  // presence checks cannot). Failures count toward the exit code.
+  // presence checks cannot). This includes configured custom endpoints.
   if (opts && opts.verify) {
     const { verifyCredentials } = require("../../llm/provider");
     console.log("\nLive credential check:");
-    for (const [label, key, envVar] of providerChecks) {
-      if (!providers.includes(key)) {
-        check(`  ${label} (live)`, false, `${envVar} not set - skipped`);
+    for (const provider of providerChecks) {
+      if (!provider.custom && !providers.includes(provider.key)) {
+        check(`  ${provider.label} (live)`, false, `${provider.envVar} not set - skipped`);
         continue;
       }
-      const v = await verifyCredentials(key, config.providers?.[key] || {});
-      if (v.status === "ok") {
-        check(`  ${label} (live)`, true, "verified");
+      const v = await verifyCredentials(provider.providerName, provider.config);
+      if (v.status === "ok" || v.status === "skipped") {
+        check(`  ${provider.label} (live)`, true, v.status === "skipped" ? v.detail : "verified");
       } else {
-        const reason = { absent: "no key found", invalid: `${v.detail} - renew with: minitok auth login ${key}`, network_error: "unreachable - " + v.detail, error: v.detail, skipped: "skipped (auth none)" }[v.status] || v.detail;
-        check(`  ${label} (live)`, false, reason);
+        const reason = provider.custom
+          ? { absent: "custom endpoint or credentials missing", invalid: `${v.detail} - check the provider configuration`, network_error: "unreachable - " + v.detail, error: v.detail }[v.status] || v.detail
+          : { absent: "no key found", invalid: `${v.detail} - renew with: minitok auth login ${provider.key}`, network_error: "unreachable - " + v.detail, error: v.detail }[v.status] || v.detail;
+        check(`  ${provider.label} (live)`, false, reason);
         allOk = false;
       }
     }
@@ -120,4 +151,4 @@ async function cmdDoctor(opts = {}) {
   return allOk ? 0 : 1;
 }
 
-module.exports = { cmdDoctor };
+module.exports = { cmdDoctor, buildProviderChecks };

@@ -79,6 +79,23 @@ describe("Regression: doctor success message reflects actual check results", () 
     }
   });
 
+  it("doctor includes configured custom providers in live checks", () => {
+    const { buildProviderChecks } = require("../src/cli/commands/doctor");
+    const checks = buildProviderChecks({ providers: {
+      anthropic: { api_key_env: "ANTHROPIC_API_KEY" },
+      openrouter: { base_url: "https://openrouter.ai/api/v1", api_key_env: "OPENROUTER_API_KEY" },
+    } });
+    assert.deepEqual(checks.slice(0, 3).map(check => check.key), ["anthropic", "openai", "google"]);
+    assert.deepEqual(checks[3], {
+      label: "Custom provider openrouter",
+      key: "openrouter",
+      providerName: "openrouter",
+      envVar: null,
+      config: { base_url: "https://openrouter.ai/api/v1", api_key_env: "OPENROUTER_API_KEY" },
+      custom: true,
+    });
+  });
+
   it("doctor check function return value is accumulated into allOk", () => {
     const fs = require("fs");
     const doctorSrc = fs.readFileSync(
@@ -97,10 +114,9 @@ describe("Regression: doctor success message reflects actual check results", () 
         `${provider} check must be present (informational)`
       );
     }
-    assert.equal(
-      doctorSrc.includes('"OpenRouter"'),
-      false,
-      "the provider list is the three supported providers plus custom endpoints"
+    assert.ok(
+      doctorSrc.includes("Custom provider"),
+      "configured custom providers must be represented in doctor output"
     );
     // Verify ~/.minitok check is accumulated
     assert.ok(

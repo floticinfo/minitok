@@ -416,7 +416,7 @@ async function runMcpOnboarding({ input = process.stdin, output = process.stderr
 }
 
 function register(program) {
-  const mcp = program.command("mcp");
+  const mcp = program.command("mcp").description("Manage MCP status, connections, tokens, and host setup");
 
   mcp.command("status")
     .option("--server <url>", "minitok server URL")

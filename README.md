@@ -117,13 +117,13 @@ AI coding tools can generate code, but repository work also needs a repeatable c
 
 Use minitok when you need:
 
-- repository-aware autonomous coding with explicit stage boundaries
+- repository-aware coding workflows with explicit stage boundaries
 - deterministic checks that can block an invalid change
 - retries and repair after verification or review failures
 - configurable model providers and role-specific models
 - local-first execution with opt-in telemetry disabled by default
 
-Search terms: `AI coding workflow`, `verified autonomous coding`, `repository-aware coding agent`, `LLM code review`, `deterministic AI verification`, `Node.js coding CLI`, `MCP coding agent`, `AI developer tool`, `automated code verification`.
+Search terms: `AI coding workflow`, `verified coding workflow`, `repository-aware coding agent`, `LLM code review`, `deterministic AI verification`, `Node.js coding CLI`, `MCP coding agent`, `AI developer tool`, `automated code verification`.
 
 ## Shareable product description
 
@@ -135,7 +135,7 @@ Use this description in directory listings, launch posts, and developer profiles
 
 ```bash
 minitok migrate                         # Project setup and verification gate
-minitok run "Add a health check"        # Run the autonomous workflow
+minitok run "Add a health check"        # Run the verified repository-aware workflow
 minitok run list                         # List recorded runs
 minitok run show <run-id>                # Show a recorded run
 minitok runs list                        # Alias for run list
@@ -150,7 +150,6 @@ minitok auth customer-login <email>      # Customer account login
 minitok account login                      # Browser device authorization (recommended)
 minitok account logout                     # Revoke and remove account credentials
 minitok account switch                     # Switch account through the browser
-minitok auth customer-login <email>        # Legacy/manual customer JWT login
 minitok activate <activation-key>         # Bind a purchased key to this machine
 minitok license activate <key>           # Alias for activate
 minitok checkout --plan open              # Purchase a canonical plan
