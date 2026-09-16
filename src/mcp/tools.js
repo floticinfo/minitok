@@ -28,7 +28,8 @@ const TOOLS = [
   { name: "minitok_run_cancel", description: "Cancel an active minitok run", annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, inputSchema: { type: "object", properties: { run_id: { type: "string", minLength: 1, maxLength: 128 } }, required: ["run_id"], additionalProperties: false } },
 { name: "minitok_approve_run", description: "Approve a pending minitok change request", annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, inputSchema: { type: "object", properties: { approval_file: { type: "string", minLength: 1, maxLength: 4096 }, nonce: { type: "string", minLength: 16, maxLength: 128 }, run_id: { type: "string", minLength: 1, maxLength: 128 } }, required: ["approval_file", "nonce", "run_id"], additionalProperties: false } },
    { name: "minitok_reject_run", description: "Reject a pending minitok change request", annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, inputSchema: { type: "object", properties: { approval_file: { type: "string", minLength: 1, maxLength: 4096 }, nonce: { type: "string", minLength: 16, maxLength: 128 }, run_id: { type: "string", minLength: 1, maxLength: 128 } }, required: ["approval_file", "nonce", "run_id"], additionalProperties: false } },
-  { name: "minitok_run", description: "Run the minitok pipeline; repository changes require approval unless an explicitly permitted policy allows auto_accept.", annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, inputSchema: { type: "object", properties: { run_id: { type: "string", minLength: 1, maxLength: 128 }, task: { type: "string", minLength: 1, maxLength: 20000 }, repo: { type: "string", minLength: 1, maxLength: 4096 }, workspace: { type: "string", minLength: 1, maxLength: 256 }, dry_run: { type: "boolean" }, auto_accept: { type: "boolean" }, provider_override: { type: "string", minLength: 1, maxLength: 256 }, approval_file: { type: "string", minLength: 1, maxLength: 4096 }, approval_timeout_ms: { type: "integer", minimum: 1000, maximum: 3600000 } }, required: ["task"], additionalProperties: false } },
+  { name: "minitok_run", description: "Run the full minitok pipeline with explicit repository, approval, and verification controls. Repository changes require approval unless an explicitly permitted auto_accept policy is used.", annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, inputSchema: { type: "object", properties: { run_id: { type: "string", minLength: 1, maxLength: 128 }, task: { type: "string", minLength: 1, maxLength: 20000 }, repo: { type: "string", minLength: 1, maxLength: 4096 }, workspace: { type: "string", minLength: 1, maxLength: 256 }, dry_run: { type: "boolean" }, auto_accept: { type: "boolean" }, provider_override: { type: "string", minLength: 1, maxLength: 256 }, approval_file: { type: "string", minLength: 1, maxLength: 4096 }, approval_timeout_ms: { type: "integer", minimum: 1000, maximum: 3600000 } }, required: ["task"], additionalProperties: false } },
+  { name: "minitok_task", description: "Run a repository task through minitok's plan, implement, approve, verify, review, repair, and evidence pipeline. Use this convenience facade for ordinary coding tasks; it preserves the existing approval and verification gates and keeps auto_accept unavailable by default.", annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, inputSchema: { type: "object", properties: { run_id: { type: "string", minLength: 1, maxLength: 128 }, task: { type: "string", minLength: 1, maxLength: 20000 }, repo: { type: "string", minLength: 1, maxLength: 4096 }, dry_run: { type: "boolean" }, approval_file: { type: "string", minLength: 1, maxLength: 4096 }, approval_timeout_ms: { type: "integer", minimum: 1000, maximum: 3600000 } }, required: ["task"], additionalProperties: false } },
   { name: "minitok_knowledge_query", description: "Query past minitok outcomes", annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", properties: { limit: { type: "integer", minimum: 0, maximum: 1000 }, project: { type: "string", maxLength: 4096 } }, additionalProperties: false } },
   { name: "minitok_knowledge_record", description: "Record an evolution outcome", annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", properties: { goal: { type: "string", minLength: 1, maxLength: 2000 }, status: { type: "string", enum: ["success", "failure", "partial"] }, cycles: { type: "integer", minimum: 0, maximum: 10000 }, summary: { type: "string", maxLength: 20000 } }, required: ["goal", "status"], additionalProperties: false } },
   { name: "minitok_analyze_failures", description: "Analyze failure patterns", annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", properties: { project: { type: "string", minLength: 1, maxLength: 4096 } }, additionalProperties: false } },
@@ -51,6 +52,7 @@ const TOOLS = [
  */
 const TOOL_SCOPES = Object.freeze({
   minitok_run: "write",
+  minitok_task: "write",
   minitok_run_cancel: "write",
   minitok_approve_run: "write",
   minitok_reject_run: "write",
@@ -64,7 +66,7 @@ function requiredScopeFor(name) { return TOOL_SCOPES[name] || "read"; }
 // client needs an explicit grant in addition to `write`: a repository the agent
 // can point at must not be able to run code merely because the client may write
 // files. `minitok_run` therefore also requires the `verify_exec` scope.
-const TOOL_EXTRA_SCOPES = Object.freeze({ minitok_run: ["verify_exec"] });
+const TOOL_EXTRA_SCOPES = Object.freeze({ minitok_run: ["verify_exec"], minitok_task: ["verify_exec"] });
 function requiredExtraScopesFor(name) { return TOOL_EXTRA_SCOPES[name] || []; }
 
 function getToolDefinitions() { return TOOLS; }
@@ -163,6 +165,14 @@ async function _getToolHandler(name, args, services, runtimeOptions = {}) {
   if (name === "minitok_run_cancel") { const run = runtimeOptions.runs?.get?.(args.run_id); if (!run) throw Object.assign(new Error("Run not found"), { code: "RUN_NOT_FOUND" }); run.controller.abort(); run.state = "cancelled"; return { content: [{ type: "text", text: JSON.stringify({ run_id: args.run_id, state: "cancelled" }) }] }; }
   if (["minitok_approve_run", "minitok_reject_run"].includes(name)) { const approvalFile = requireApprovalPath(args.approval_file, runtimeOptions.workspaceRoot || process.cwd()); if (typeof runtimeOptions.writeApproval !== "function") throw Object.assign(new Error("Approval transport unavailable"), { code: "APPROVAL_UNAVAILABLE" }); const decision = name === "minitok_approve_run" ? "approve" : "reject"; runtimeOptions.writeApproval(approvalFile, decision, { nonce: args.nonce, runId: args.run_id }); return { content: [{ type: "text", text: JSON.stringify({ decision, approval_file: approvalFile }) }] }; }
   switch (name) {
+    case "minitok_task": {
+      // The facade intentionally delegates to the canonical run handler. This
+      // keeps approval, verification, evidence, cancellation, and failure
+      // envelopes identical to minitok_run while exposing a smaller task-focused
+      // schema to MCP clients.
+      const delegated = Object.fromEntries(Object.entries({ task: args.task, repo: args.repo, dry_run: args.dry_run, approval_file: args.approval_file, approval_timeout_ms: args.approval_timeout_ms, run_id: args.run_id }).filter(([, value]) => value !== undefined));
+      return _getToolHandler("minitok_run", delegated, services, runtimeOptions);
+    }
     case "minitok_run": {
       let repoRoot = args.repo;
       if (!repoRoot && args.workspace) { const { WorkspaceManager } = require("../workspace/manager"); repoRoot = new WorkspaceManager().resolve(args.workspace).repository_root; }

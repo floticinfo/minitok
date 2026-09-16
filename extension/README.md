@@ -22,13 +22,15 @@ minitok brings repository-aware coding workflows into VS Code. Describe a task, 
 1. Install `@flotic/minitok` globally:
 
    ```bash
-   npm install -g @flotic/minitok@1.4.7-rc.3
+   npm install -g @flotic/minitok@1.4.7-rc.4
    ```
 
 2. Open a trusted VS Code workspace.
 3. Open the minitok activity bar panel.
 4. Select **Sign in with browser**.
 5. Describe the repository task and run it.
+
+You can also use **minitok: Run Selection through minitok** from the editor context menu, or **minitok: Run Problems through minitok** from the Command Palette. Both commands preserve workspace trust, entitlement, consent, cancellation, and verification safeguards.
 
 An active paid plan and a valid installation entitlement are required before a real run. Provider credentials remain configured through the minitok CLI configuration.
 

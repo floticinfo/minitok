@@ -182,6 +182,23 @@ test("project scoping arguments are accepted by the analysis tools", async () =>
   } finally { box.cleanup(); }
 });
 
+test("minitok_task exposes the focused schema and delegates to the canonical pipeline", async () => {
+  const seen = [];
+  const box = sandbox("read,write,verify_exec", async (task, options) => { seen.push({ task, options }); return { success: true, marker: "facade" }; });
+  try {
+    await box.init();
+    const tool = getToolDefinitions().find(item => item.name === "minitok_task");
+    assert.ok(tool);
+    assert.deepEqual(tool.inputSchema.required, ["task"]);
+    assert.equal(tool.inputSchema.properties.auto_accept, undefined);
+    const reply = await box.call(49, "minitok_task", { task: "facade pipeline probe", repo: box.root, dry_run: true });
+    assertToolSucceeded(reply, "minitok_task");
+    assert.deepEqual(seen.map(item => item.task), ["facade pipeline probe"]);
+    assert.equal(seen[0].options.dryRun, true);
+    assert.equal(box.payload(reply).result.marker, "facade");
+  } finally { box.cleanup(); }
+});
+
 test("the pipeline injected into the constructor replaces the real one", async () => {
   const seen = [];
   const box = sandbox("read,write,verify_exec", async (task) => { seen.push(task); return { success: true, marker: "injected" }; });
@@ -191,6 +208,16 @@ test("the pipeline injected into the constructor replaces the real one", async (
     assert.equal(reply.error, undefined, `the run must not fall back to the real pipeline: ${JSON.stringify(reply.error)}`);
     assert.deepEqual(seen, ["injected pipeline probe"]);
     assert.equal(box.payload(reply).result.marker, "injected");
+  } finally { box.cleanup(); }
+});
+
+test("minitok_task requires both write and verification scopes", async () => {
+  const box = sandbox("read,write");
+  try {
+    await box.init();
+    const reply = await box.call(51, "minitok_task", { task: "scope probe", repo: box.root });
+    assert.equal(box.errorType(reply), "PERMISSION_DENIED");
+    assert.equal(reply.error.data.scope, "verify_exec");
   } finally { box.cleanup(); }
 });
 

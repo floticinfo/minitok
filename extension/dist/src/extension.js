@@ -232,7 +232,7 @@ function activate(context) {
         child.on("error", (error) => { clearTimeout(timer); finish(`minitok MCP offline: ${error.message}`); });
         child.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "minitok-extension", version: extensionVersion(context) } } })}\n`);
     }));
-    context.subscriptions.push(vscode.commands.registerCommand("minitok.run", async () => {
+    const runTask = async (task, title) => {
         try {
             await requireEntitlement();
         }
@@ -240,9 +240,6 @@ function activate(context) {
             vscode.window.showErrorMessage(String(error));
             return;
         }
-        const task = await vscode.window.showInputBox({ prompt: "minitok task" });
-        if (!task)
-            return;
         const cwd = (0, workspace_2.workspacePath)();
         if (!cwd) {
             vscode.window.showErrorMessage("Open a workspace folder before running minitok");
@@ -253,9 +250,7 @@ function activate(context) {
             return;
         }
         // The spawned CLI has no TTY, so it refuses every file change unless
-        // --auto-accept is passed. The modal below collects the same consent the
-        // setting encodes; without forwarding it the run rejected every change after
-        // the cycle had already been paid for.
+        // --auto-accept is passed. The modal below is the explicit consent gate.
         let approved = (0, workspace_2.autoApprove)();
         if (!approved) {
             const answer = await vscode.window.showWarningMessage("Allow minitok to modify this workspace?", "Approve", "Cancel");
@@ -265,14 +260,9 @@ function activate(context) {
         }
         output.show(true);
         try {
-            // Pass --repo explicitly: without it cmdRun targets the globally registered
-            // workspace, which may be a different repository than the open folder.
             const evidencePath = vscode.workspace.getConfiguration("minitok").get("evidencePath", ".minitok/evidence/runs/latest.json").trim() || ".minitok/evidence/runs/latest.json";
             const runArgs = ["run", task, "--repo", cwd, "--evidence-path", evidencePath, ...(approved ? ["--auto-accept"] : [])];
-            // Run inside a cancellable notification. The spawned CLI has no TTY of its
-            // own, so this is the only way to stop a long run short of reloading the
-            // window (the promise used to have no timeout and no cancel path).
-            await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "minitok task", cancellable: true }, async (_progress, token) => {
+            await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title, cancellable: true }, async (_progress, token) => {
                 output.appendLine(redactExtensionOutput(await runCli((0, workspace_2.cliPath)(), runArgs, { timeoutMs: CLI_RUN_TIMEOUT_MS, token })));
             });
         }
@@ -281,6 +271,39 @@ function activate(context) {
             output.appendLine(safeError);
             vscode.window.showErrorMessage(String(error).includes("cancelled") ? "minitok task cancelled" : "minitok task failed");
         }
+    };
+    context.subscriptions.push(vscode.commands.registerCommand("minitok.run", async () => {
+        const task = await vscode.window.showInputBox({ prompt: "minitok task" });
+        if (task?.trim())
+            await runTask(task.trim(), "minitok task");
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand("minitok.runSelection", async () => {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor || editor.selection.isEmpty) {
+            vscode.window.showInformationMessage("Select code before running minitok on a selection");
+            return;
+        }
+        const selected = editor.document.getText(editor.selection).slice(0, 18000);
+        const file = vscode.workspace.asRelativePath(editor.document.uri, false);
+        const task = `Review and improve the selected code in ${file}. Preserve the surrounding design and verify the change.\n\nSelected code:\n\`\`\`\n${selected}\n\`\`\``;
+        await runTask(task, "minitok selection");
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand("minitok.runProblems", async () => {
+        const entries = [];
+        for (const [uri, diagnostics] of vscode.languages.getDiagnostics()) {
+            for (const diagnostic of diagnostics.slice(0, 100)) {
+                const relative = vscode.workspace.asRelativePath(uri, false);
+                const line = diagnostic.range.start.line + 1;
+                const severity = ["error", "warning", "info", "hint"][diagnostic.severity] || "diagnostic";
+                entries.push(`${relative}:${line} [${severity}] ${diagnostic.message}`);
+            }
+        }
+        if (!entries.length) {
+            vscode.window.showInformationMessage("No Problems were found in the workspace");
+            return;
+        }
+        const task = `Fix the following VS Code Problems in this repository, then run the relevant verification.\n\n${entries.join("\n").slice(0, 18000)}`;
+        await runTask(task, "minitok Problems");
     }));
     context.subscriptions.push(vscode.commands.registerCommand("minitok.status", async () => {
         output.show(true);

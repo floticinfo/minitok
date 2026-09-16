@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.4.7-rc.4 - 2026-09-16
+
+### Added
+
+- Added the focused `minitok_task` MCP facade for ordinary repository coding tasks. It delegates to the existing pipeline so approval, verification, review, repair, evidence, cancellation, and failure reporting remain unchanged; `auto_accept` is intentionally not exposed by the convenience schema.
+- Added a shorter `/minitok <task>` workflow and updated Cline guidance to prefer `minitok_task` while retaining `minitok_run` for advanced controls.
+- Added VS Code commands for `Run Selection through minitok` and `Run Problems through minitok`, with trusted-workspace, entitlement, consent, cancellation, and repository targeting safeguards.
+
+### Changed
+
+- Bumped the npm CLI candidate to `1.4.7-rc.4` and the VS Code Extension candidate to `0.3.7`.
+
 ## 1.4.7-rc.3 - 2026-09-16
 
 ### Added

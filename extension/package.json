@@ -3,10 +3,10 @@
   "displayName": "minitok",
   "description": "Run AI coding tasks through planning, verification, review, repair, and evidence",
   "publisher": "Flotic",
-  "version": "0.3.6",
+  "version": "0.3.7",
   "minitok": {
     "cliPackage": "@flotic/minitok",
-    "cliVersion": "1.4.7-rc.3"
+    "cliVersion": "1.4.7-rc.4"
   },
   "author": "Flotic",
   "license": "SEE LICENSE IN LICENSE",
@@ -53,6 +53,8 @@
   ],
   "activationEvents": [
     "onCommand:minitok.run",
+    "onCommand:minitok.runSelection",
+    "onCommand:minitok.runProblems",
     "onCommand:minitok.status",
     "onCommand:minitok.openPanel",
     "onCommand:minitok.openSettings",
@@ -80,10 +82,26 @@
         }
       ]
     },
+    "menus": {
+      "editor/context": [
+        {
+          "command": "minitok.runSelection",
+          "when": "editorHasSelection"
+        }
+      ]
+    },
     "commands": [
       {
         "command": "minitok.run",
         "title": "minitok: Run Task"
+      },
+      {
+        "command": "minitok.runSelection",
+        "title": "minitok: Run Selection through minitok"
+      },
+      {
+        "command": "minitok.runProblems",
+        "title": "minitok: Run Problems through minitok"
       },
       {
         "command": "minitok.status",

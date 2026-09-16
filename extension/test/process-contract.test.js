@@ -8,6 +8,7 @@ const root = path.join(__dirname, "..");
 const panel = fs.readFileSync(path.join(root, "src", "panel.ts"), "utf8");
 const sidebar = fs.readFileSync(path.join(root, "src", "sidebar.ts"), "utf8");
 const extension = fs.readFileSync(path.join(root, "src", "extension.ts"), "utf8");
+const manifest = fs.readFileSync(path.join(root, "package.json"), "utf8");
 const entitlement = fs.readFileSync(path.join(root, "src", "entitlement.ts"), "utf8");
 const sidebarHtml = fs.readFileSync(path.join(root, "src", "sidebar.html"), "utf8");
 const panelHtml = fs.readFileSync(path.join(root, "src", "panel.html"), "utf8");
@@ -233,6 +234,17 @@ test("Extension subprocesses inherit the configured server URL and disable updat
   assert.match(entitlement, /spawnOptionsFor\(spec/);
   assert.match(panel, /spawnOptionsFor\(processSpec/);
   assert.match(sidebar, /spawnOptionsFor\(processSpec/);
+});
+
+test("one-click task commands preserve workspace safety and selection/problem inputs", () => {
+  assert.match(extension, /minitok\.runSelection/);
+  assert.match(extension, /minitok\.runProblems/);
+  assert.match(extension, /activeTextEditor/);
+  assert.match(extension, /getDiagnostics/);
+  assert.match(manifest, /editorHasSelection/);
+  assert.match(extension, /requireEntitlement/);
+  assert.match(extension, /vscode\.workspace\.isTrusted/);
+  assert.match(extension, /--repo/);
 });
 
 test("extension commands target the folder that is open in the editor", () => {

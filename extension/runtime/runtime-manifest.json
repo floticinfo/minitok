@@ -1,7 +1,7 @@
 {
   "source": "canonical-root-src",
   "cliPackage": "@flotic/minitok",
-  "cliVersion": "1.4.7-rc.3",
+  "cliVersion": "1.4.7-rc.4",
   "entry": "src/runtime/stdio-entry.js",
   "files": [
     "auth/aliases.js",
@@ -193,8 +193,8 @@
       "embedded": "d07663e879ad91f12b327101f7b747e8bfc527bed6abc8aa2018ee393f4382d4"
     },
     "mcp/tools.js": {
-      "source": "8304d41d78839f75acb5fd14a89c6a5222d29e2d53de7b90e54de0edec4fa9b7",
-      "embedded": "8304d41d78839f75acb5fd14a89c6a5222d29e2d53de7b90e54de0edec4fa9b7"
+      "source": "d2c4a6bbf705f15bd8719d10ba64f970da5c94a5c6d37762eacb00ff783e8ba2",
+      "embedded": "d2c4a6bbf705f15bd8719d10ba64f970da5c94a5c6d37762eacb00ff783e8ba2"
     },
     "pipeline/authorization.js": {
       "source": "b6b7eb34e7a4d9790820d8a4b9828bf4ee965af1476b5d5c4522768b1d4aae4e",
@@ -285,8 +285,8 @@
       "embedded": "4023e87bc6dd66a33cd8bbaaab20cc07af46584ced03e6093aaa762e097fef02"
     },
     "runtime/stdio.js": {
-      "source": "f3b2b8c8e6b7c0ca7e2cf1cc4cce56183bf0d60d45c865ac01f597ab5c39a2cf",
-      "embedded": "f3b2b8c8e6b7c0ca7e2cf1cc4cce56183bf0d60d45c865ac01f597ab5c39a2cf"
+      "source": "e40b937cd1c9cf68670cd45d1177ac3643507ea6917a18a2ffe97da1fa9c5224",
+      "embedded": "e40b937cd1c9cf68670cd45d1177ac3643507ea6917a18a2ffe97da1fa9c5224"
     },
     "runtime/workspace.js": {
       "source": "1ccbe48769fd72363230d4a914849ce6b5fc52f5db6496e0b35ce8ac655ff220",

@@ -422,7 +422,7 @@ class RuntimeStdio {
     if (method === "prompts/list") return reply({ jsonrpc: "2.0", id, result: { prompts: [{ name: "minitok_task", description: "Start a verified autonomous minitok task", arguments: [{ name: "task", required: true }] }] } });
      if (method === "prompts/get") { if (params.name !== "minitok_task") return this._error(id, MCP_ERROR_CODES.NOT_FOUND, "Prompt not found", "PROMPT_NOT_FOUND", correlationId, {}, reply); return reply({ jsonrpc: "2.0", id, result: { description: "Verified minitok task", messages: [{ role: "user", content: { type: "text", text: String(params.arguments?.task || "") } }] } }); }
     // Advertise only what this session may actually call. The default grant is
-    // read-only, so listing all 14 tools taught every client to attempt
+    // read-only, so listing the full write-capable catalogue taught every client to attempt
     // `minitok_run` and collect PERMISSION_DENIED; scopes are opt-in
     // (`mcp connect --scopes write,verify_exec`), and the list now reflects the
     // grant instead of the catalogue.
@@ -440,8 +440,9 @@ class RuntimeStdio {
     for (const scope of requiredExtraScopesFor(params.name)) {
       if (!this._permissions.has(scope)) return this._error(id, MCP_ERROR_CODES.PERMISSION_DENIED, `Workspace verification permission required (add ${scope} to the MCP scopes)`, "PERMISSION_DENIED", correlationId, { scope }, reply);
     }
-    if (params.name === "minitok_run" && [...this._runs.values()].filter(run => run.state === "running").length >= this._maxConcurrentRuns) return this._error(id, MCP_ERROR_CODES.RUN_LIMIT_REACHED, "Concurrent run limit reached", "RUN_LIMIT_REACHED", correlationId, {}, reply);
-    const runId = params.name === "minitok_run" ? crypto.randomUUID() : null;
+    const isPipelineTool = params.name === "minitok_run" || params.name === "minitok_task";
+    if (isPipelineTool && [...this._runs.values()].filter(run => run.state === "running").length >= this._maxConcurrentRuns) return this._error(id, MCP_ERROR_CODES.RUN_LIMIT_REACHED, "Concurrent run limit reached", "RUN_LIMIT_REACHED", correlationId, {}, reply);
+    const runId = isPipelineTool ? crypto.randomUUID() : null;
     const controller = new AbortController();
      if (runId) {
        this._runs.set(runId, { runId, requestId: id, controller, state: "running", persistence: null });
@@ -457,7 +458,7 @@ class RuntimeStdio {
       // minitok_run_cancel, minitok_approve_run and minitok_reject_run with
       // null, so all four failed schema validation through the transport.
       const toolArguments = { ...(params.arguments || {}) };
-      if (runId) toolArguments.run_id = runId;
+      if (runId && isPipelineTool) toolArguments.run_id = runId;
       const result = await getToolHandler(params.name, toolArguments, this._services, { safeResult: true, signal: controller.signal, runs: this._runs, runPipeline: this._runPipeline, recoveredRuns: this._recoveredRuns, persistence: this._persistence, workspaceRoot: this._workspaceRoot, permissions: this._permissions, writeApproval: (file, decision, binding) => { const stat = fs.lstatSync(file); if (!stat.isFile() || stat.isSymbolicLink() || fs.realpathSync.native(file) !== file) throw Object.assign(new Error("Approval request path is not a regular file"), { code: "APPROVAL_INVALID" }); let request; try { request = JSON.parse(fs.readFileSync(file, "utf8")); } catch { throw Object.assign(new Error("Approval request is malformed"), { code: "APPROVAL_INVALID" }); } if (request.type !== "approval_request" || (decision !== "approve" && decision !== "reject") || typeof request.nonce !== "string" || request.nonce !== binding.nonce || request.run_id !== binding.runId || !Number.isFinite(request.expires_at) || Date.now() >= request.expires_at) throw Object.assign(new Error("Approval request is stale or mismatched"), { code: "APPROVAL_INVALID" }); const target = `${file}.response`; try { const targetStat = fs.lstatSync(target); if (targetStat.isSymbolicLink() || !targetStat.isFile()) throw Object.assign(new Error("Approval response path is not a regular file"), { code: "APPROVAL_INVALID" }); } catch (error) { if (error.code !== "ENOENT") throw error; } const temp = `${target}.tmp.${process.pid}.${crypto.randomBytes(6).toString("hex")}`; const fd = fs.openSync(temp, "wx", 0o600); try { fs.writeFileSync(fd, `${JSON.stringify({ decision, nonce: binding.nonce, run_id: binding.runId })}\n`, { encoding: "utf8" }); fs.fsyncSync(fd); } finally { fs.closeSync(fd); } try { fs.renameSync(temp, target); } catch (error) { try { fs.rmSync(temp, { force: true }); } catch {} throw error; } }, onProgress: event => { if (runId && !isNotification) { const progress = Number.isFinite(event.progress) ? event.progress : ({ intel: 1, plan: 2, work: 3, verify: 4, review: 5 }[event.phase] || 0); this._respond({ jsonrpc: "2.0", method: "notifications/progress", params: { progressToken: params._meta?.progressToken ?? params.meta?.progressToken ?? null, progress, total: 5, message: JSON.stringify({ phase: event.phase, state: event.state, run_id: runId, correlation_id: correlationId }) } }); } } });
        // The tool handler runs with safeResult, so a failing pipeline returns
        // `isError: true` instead of throwing. Recording "completed" regardless
