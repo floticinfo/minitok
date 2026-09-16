@@ -1,16 +1,12 @@
 <!--
   minitok brand mark based on the supplied 2.svg artwork.
 
-  Colours are the brand palette from src/core/palette.js:
-    #013DCF = primary tile
-    #FFFFFF = onPrimary glyph
-
-  The tile is intentionally shared by the website favicon, CLI/MCP static
-  artwork, Marketplace icon, and this Activity Bar asset. The font remains a
-  host-provided fallback here; distributable PNGs are rendered statically so
-  they do not redistribute the licensed Harlekin font.
+  The mark is a 45-degree rounded-square diamond with the large Harlekin
+  glyph. src/core/palette.js remains the single source of truth for colours.
+  Distributable PNGs are rendered statically so the licensed font is not
+  redistributed with the product package.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <rect width="32" height="32" rx="7" fill="#013DCF"/>
-  <text x="16" y="16" dy="0.04em" dominant-baseline="central" font-family="Harlekin,system-ui,-apple-system,sans-serif" font-size="18" font-weight="400" fill="#FFFFFF" text-anchor="middle">m</text>
+  <rect x="4.6863" y="4.6863" width="22.6274" height="22.6274" rx="4.682" transform="rotate(45 16 16)" fill="#013DCF"/>
+  <text x="12.1" y="12.2" dy="0.04em" dominant-baseline="central" font-family="Harlekin,system-ui,-apple-system,sans-serif" font-size="34" font-weight="400" fill="#FFFFFF" text-anchor="middle">m</text>
 </svg>
