@@ -2,16 +2,16 @@
 
 ![minitok Harlekin brand mark](media/minitok.png)
 
-**Verified repository-aware coding workflows for AI agents**
+**Verified coding workflows for the terminal**
 
-minitok brings repository-aware coding workflows into VS Code. Describe a task, let minitok inspect and plan the change, run implementation, verify the result, review failures, and preserve evidence for review.
+A repository-aware workflow for changes you can review. minitok brings the workflow from [minitok.dev](https://minitok.dev) into VS Code: describe a task, inspect the repository and proposed plan, execute the change, verify it with configured checks, review the result, adapt through bounded repair when checks fail, and preserve local evidence of the outcome.
 
 ## What it provides
 
 - Browser-based account sign-in with VS Code SecretStorage
 - Sign out and account switching
-- Repository-aware task execution through the minitok CLI
-- Deterministic verification and recorded evidence
+- Repository-aware task planning and execution through the minitok CLI
+- Deterministic verification, review, bounded repair, and recorded evidence
 - Sidebar workflow status and session history
 - MCP stdio integration through the embedded runtime
 - First-activation `Connect MCP Hosts` onboarding with read-only defaults

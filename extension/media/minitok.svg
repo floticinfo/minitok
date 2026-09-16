@@ -1,17 +1,78 @@
-<!--
-  minitok brand activity-bar icon.
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
 
-  Colours are the brand palette from src/core/palette.js, which is the single
-  source of truth:
-    #013DCF = primary    the wordmark glyph, 8.2:1 on white
-    #FFFFFF = onPrimary  kept available for a glyph drawn on a primary tile
-  The glyph is drawn in `primary` on a transparent background so the editor's
-  own activity-bar surface shows through; the tile variant (primary fill with
-  the white glyph, the same pairing the CLI ` ACT ` badge paints) is the
-  Marketplace listing icon, rasterized into media/minitok.png by
-  rasterize-icon.cjs. That script shares this geometry, so the two must be
-  edited together.
--->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <text x="16" y="23" font-family="Harlekin,system-ui,-apple-system,sans-serif" font-size="20" font-weight="800" fill="#013DCF" text-anchor="middle">m</text>
+<svg
+   width="72.105095mm"
+   height="72.105095mm"
+   viewBox="0 0 72.105095 72.105095"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.4.2 (f4327f4, 2025-05-13)"
+   sodipodi:docname="2.svg"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg"
+   shape-rendering="geometricPrecision"
+   color-interpolation="sRGB">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="0"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     inkscape:zoom="0.99528652"
+     inkscape:cx="-51.743894"
+     inkscape:cy="131.62039"
+     inkscape:window-width="1920"
+     inkscape:window-height="992"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1">
+    <inkscape:page
+       x="0"
+       y="0"
+       width="72.105095"
+       height="72.105095"
+       id="page2"
+       margin="0"
+       bleed="0" />
+  </sodipodi:namedview>
+  <defs
+     id="defs1" />
+  <g
+     inkscape:label="Layer 1"
+     inkscape:groupmode="layer"
+     id="layer1"
+     transform="translate(-68.947456,-112.44746)">
+    <g
+       id="g3"
+       inkscape:label="g1">
+      <path
+         id="rect1"
+         fill="#013dcf"
+         fill-opacity="1"
+         stroke="#013dcf"
+         stroke-opacity="1"
+         stroke-width="0.45"
+         stroke-linejoin="round"
+         style="fill:#013dcf;fill-opacity:1;fill-rule:evenodd;stroke:#013dcf;stroke-opacity:1;stroke-width:0.45;stroke-linejoin:round;paint-order:stroke fill markers"
+         transform="rotate(45)"
+         d="m 162.25157,1.7591448 h 34 c 6.648,0 12,5.352 12,12.0000002 v 34 c 0,6.648 -5.352,12 -12,12 h -34 c -6.648,0 -12,-5.352 -12,-12 v -34 c 0,-6.6480002 5.352,-12.0000002 12,-12.0000002 z" />
+      <path
+         fill="#ffffff"
+         fill-opacity="1"
+         stroke="none"
+         style="font-size:76.2px;font-family:Harlekin;-inkscape-font-specification:'Harlekin, Normal';fill:#ffffff;fill-opacity:1;fill-rule:evenodd;stroke:none;stroke-width:1.3575;paint-order:fill markers stroke"
+         d="m 83.625937,162.13977 c 2.286,0 3.81,-1.143 5.2578,-4.6482 l 3.9624,-9.6012 c 1.4478,-3.5052 3.7338,-5.1816 5.638799,-5.2578 1.4478,0 2.438404,1.0668 2.286004,2.0574 0,0.2286 -0.0762,0.4572 -0.1524,0.6858 l -0.1524,0.6858 -0.1524,0.381 -4.114803,10.2108 c -0.2286,0.381 -0.3048,0.8382 -0.381,1.2954 -0.5334,2.3622 0.8382,4.1148 3.276599,4.191 2.209804,0 3.733804,-1.143 5.181604,-4.6482 l 3.81,-9.2202 c 1.2192,-2.8956 3.2004,-4.8768 4.8006,-5.4102 1.8288,-0.6096 3.429,0.4572 3.429,1.9812 v 0.2286 0.3048 l -0.1524,0.3048 -0.0762,0.381 -3.1242,7.6962 c -0.1524,0.2286 -0.2286,0.5334 -0.3048,0.8382 -1.3716,4.2672 0.2286,6.9342 4.3434,6.9342 h 7.5438 c 1.8288,0 3.3528,-0.8382 4.191,-2.1336 1.3716,-2.0574 0.5334,-4.4196 -1.143,-4.953 -0.5334,-0.1524 -1.0668,-0.2286 -1.6002,-0.2286 h -4.8006 l 3.5814,-8.8392 c 0.2286,-0.5334 0.381,-1.0668 0.5334,-1.7526 0.9906,-4.7244 -2.667,-8.763 -8.5344,-8.0772 -2.1336,0.2286 -4.3434,1.2192 -6.3246,2.9718 -0.3048,0.2286 -0.6096,0.5334 -0.9144,0.8382 -0.381,-0.8382 -0.9906,-1.6002 -1.7526,-2.2098 -1.524,-1.3716 -3.429,-1.905 -6.4008,-1.6002 -1.2954,0.1524 -2.743204,0.762 -4.572004,2.1336 -0.457199,0.3048 -0.838199,0.6096 -1.142999,0.9906 -0.4572,-2.0574 -2.667,-3.2766 -5.1054,-2.5146 -1.143,0.381 -1.905,1.2192 -2.7432,3.2004 l -7.0866,17.2974 c -0.1524,0.4572 -0.2286,0.8382 -0.381,1.2954 -0.4572,2.3622 0.9144,4.1148 3.2766,4.191 z"
+         id="text1"
+         inkscape:label="text1"
+         aria-label="m" />
+    </g>
+  </g>
 </svg>

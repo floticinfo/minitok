@@ -1,9 +1,9 @@
 {
   "name": "minitok-extension",
   "displayName": "minitok",
-  "description": "Run AI coding tasks through planning, verification, review, repair, and evidence",
+  "description": "Verified coding workflows for the terminal",
   "publisher": "Flotic",
-  "version": "0.3.7",
+  "version": "0.3.8",
   "minitok": {
     "cliPackage": "@flotic/minitok",
     "cliVersion": "1.4.7-rc.4"
