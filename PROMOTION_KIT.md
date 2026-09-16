@@ -24,7 +24,7 @@ minitok gives AI coding tasks a workflow: research, plan, implement, verify, rev
 
 **Display name:** minitok
 
-**Tagline:** Run AI coding tasks through planning, verification, review, repair, and evidence.
+**Tagline:** Verified coding workflows for the terminal
 
 **Categories:** AI, Other
 
