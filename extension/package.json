@@ -3,7 +3,7 @@
   "displayName": "minitok",
   "description": "Verified coding workflows for the terminal",
   "publisher": "Flotic",
-  "version": "0.3.2",
+  "version": "0.3.8",
   "minitok": {
     "cliPackage": "@flotic/minitok",
     "cliVersion": "1.4.4"
