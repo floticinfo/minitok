@@ -1,17 +1,16 @@
 <!--
-  minitok brand activity-bar icon.
+  minitok brand mark based on the supplied 2.svg artwork.
 
-  Colours are the brand palette from src/core/palette.js, which is the single
-  source of truth:
-    #013DCF = primary    the wordmark glyph, 8.2:1 on white
-    #FFFFFF = onPrimary  kept available for a glyph drawn on a primary tile
-  The glyph is drawn in `primary` on a transparent background so the editor's
-  own activity-bar surface shows through; the tile variant (primary fill with
-  the white glyph, the same pairing the CLI ` ACT ` badge paints) is the
-  Marketplace listing icon, rasterized into media/minitok.png by
-  rasterize-icon.cjs. That script shares this geometry, so the two must be
-  edited together.
+  Colours are the brand palette from src/core/palette.js:
+    #013DCF = primary tile
+    #FFFFFF = onPrimary glyph
+
+  The tile is intentionally shared by the website favicon, CLI/MCP static
+  artwork, Marketplace icon, and this Activity Bar asset. The font remains a
+  host-provided fallback here; distributable PNGs are rendered statically so
+  they do not redistribute the licensed Harlekin font.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
-  <text x="16" y="23" font-family="Harlekin,system-ui,-apple-system,sans-serif" font-size="20" font-weight="800" fill="#013DCF" text-anchor="middle">m</text>
+  <rect width="32" height="32" rx="7" fill="#013DCF"/>
+  <text x="16" y="16" dy="0.04em" dominant-baseline="central" font-family="Harlekin,system-ui,-apple-system,sans-serif" font-size="18" font-weight="400" fill="#FFFFFF" text-anchor="middle">m</text>
 </svg>

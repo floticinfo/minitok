@@ -1,13 +1,17 @@
 const { chromium } = require('playwright');
-// Variant of rasterize-icon.cjs with the tile bleeding to the exact edges and
-// no border radius inset, used for the representative listing image. The colours
-// are the brand pairing from src/core/palette.js: `primary` (#013DCF) tile
-// behind the `onPrimary` white glyph (8.2:1).
+const fs = require('fs');
+// Representative listing image for the supplied 2.svg mark. This intentionally
+// uses the same full-bleed tile and glyph as rasterize-icon.cjs. The palette in
+// src/core/palette.js remains the single source of truth for brand colours.
 (async () => {
-  const svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="6" fill="#013DCF"/><text x="16" y="23" font-family="system-ui,-apple-system,sans-serif" font-size="20" font-weight="800" fill="#ffffff" text-anchor="middle">m</text></svg>';
+  const fontPath = process.env.MINITOK_HARLEKIN_FONT;
+  if (!fontPath || !fs.existsSync(fontPath)) throw new Error('Set MINITOK_HARLEKIN_FONT to the licensed Harlekin WOFF2 before rasterizing');
+  const font = fs.readFileSync(fontPath).toString('base64');
+  const fontStyle = font ? `<style>@font-face{font-family:Harlekin;src:url(data:font/woff2;base64,${font}) format('woff2')}</style>` : '';
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">${fontStyle}<rect width="32" height="32" rx="7" fill="#013DCF"/><text x="16" y="16" dy="0.04em" dominant-baseline="central" font-family="Harlekin,system-ui,sans-serif" font-size="18" font-weight="400" fill="#FFFFFF" text-anchor="middle">m</text></svg>`;
   const browser = await chromium.launch({ headless: true });
-  const page = await browser.newPage({ viewport: { width: 128, height: 128 }, deviceScaleFactor: 1 });
-  await page.setContent(`<body style="margin:0;background:transparent"><img style="display:block;width:128px;height:128px" src="data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}"></body>`);
+  const page = await browser.newPage({ viewport: { width: 512, height: 512 }, deviceScaleFactor: 1 });
+  await page.setContent(`<body style="margin:0;background:transparent"><img style="display:block;width:512px;height:512px" src="data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}"></body>`);
   await page.screenshot({ path: 'media/minitok.png', omitBackground: true });
   await browser.close();
 })();
