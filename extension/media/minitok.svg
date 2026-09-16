@@ -8,7 +8,7 @@
    version="1.1"
    id="svg1"
    inkscape:version="1.4.2 (f4327f4, 2025-05-13)"
-   sodipodi:docname="1.svg"
+   sodipodi:docname="2.svg"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns="http://www.w3.org/2000/svg"
@@ -23,9 +23,9 @@
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
      inkscape:document-units="mm"
-     inkscape:zoom="0.49764326"
-     inkscape:cx="-17.080509"
-     inkscape:cy="152.71984"
+     inkscape:zoom="0.99528652"
+     inkscape:cx="-51.743894"
+     inkscape:cy="131.62039"
      inkscape:window-width="1920"
      inkscape:window-height="992"
      inkscape:window-x="-8"
@@ -51,27 +51,17 @@
     <g
        id="g3"
        inkscape:label="g1">
-      <rect
-         style="fill:#013dcf;fill-opacity:1;fill-rule:evenodd;stroke-width:0.905;stroke-dasharray:none;paint-order:fill markers stroke"
+      <path
          id="rect1"
-         width="58"
-         height="58"
-         x="150.25157"
-         y="1.7591448"
-         rx="12"
-         transform="rotate(45)" />
-      <text
-         xml:space="preserve"
-         style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:12.7px;font-family:Harlekin;-inkscape-font-specification:'Harlekin, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;text-align:start;writing-mode:lr-tb;direction:ltr;text-anchor:start;fill:#013dcf;fill-opacity:1;fill-rule:evenodd;stroke-width:1.3575;stroke-dasharray:none;paint-order:fill markers stroke"
-         x="71.205338"
-         y="161.53017"
+         style="fill:#013dcf;fill-rule:evenodd;stroke-width:0.905;paint-order:fill markers stroke"
+         transform="rotate(45)"
+         d="m 162.25157,1.7591448 h 34 c 6.648,0 12,5.352 12,12.0000002 v 34 c 0,6.648 -5.352,12 -12,12 h -34 c -6.648,0 -12,-5.352 -12,-12 v -34 c 0,-6.6480002 5.352,-12.0000002 12,-12.0000002 z" />
+      <path
+         style="font-size:76.2px;font-family:Harlekin;-inkscape-font-specification:'Harlekin, Normal';fill:#ffffff;fill-rule:evenodd;stroke-width:1.3575;paint-order:fill markers stroke"
+         d="m 83.625937,162.13977 c 2.286,0 3.81,-1.143 5.2578,-4.6482 l 3.9624,-9.6012 c 1.4478,-3.5052 3.7338,-5.1816 5.638799,-5.2578 1.4478,0 2.438404,1.0668 2.286004,2.0574 0,0.2286 -0.0762,0.4572 -0.1524,0.6858 l -0.1524,0.6858 -0.1524,0.381 -4.114803,10.2108 c -0.2286,0.381 -0.3048,0.8382 -0.381,1.2954 -0.5334,2.3622 0.8382,4.1148 3.276599,4.191 2.209804,0 3.733804,-1.143 5.181604,-4.6482 l 3.81,-9.2202 c 1.2192,-2.8956 3.2004,-4.8768 4.8006,-5.4102 1.8288,-0.6096 3.429,0.4572 3.429,1.9812 v 0.2286 0.3048 l -0.1524,0.3048 -0.0762,0.381 -3.1242,7.6962 c -0.1524,0.2286 -0.2286,0.5334 -0.3048,0.8382 -1.3716,4.2672 0.2286,6.9342 4.3434,6.9342 h 7.5438 c 1.8288,0 3.3528,-0.8382 4.191,-2.1336 1.3716,-2.0574 0.5334,-4.4196 -1.143,-4.953 -0.5334,-0.1524 -1.0668,-0.2286 -1.6002,-0.2286 h -4.8006 l 3.5814,-8.8392 c 0.2286,-0.5334 0.381,-1.0668 0.5334,-1.7526 0.9906,-4.7244 -2.667,-8.763 -8.5344,-8.0772 -2.1336,0.2286 -4.3434,1.2192 -6.3246,2.9718 -0.3048,0.2286 -0.6096,0.5334 -0.9144,0.8382 -0.381,-0.8382 -0.9906,-1.6002 -1.7526,-2.2098 -1.524,-1.3716 -3.429,-1.905 -6.4008,-1.6002 -1.2954,0.1524 -2.743204,0.762 -4.572004,2.1336 -0.457199,0.3048 -0.838199,0.6096 -1.142999,0.9906 -0.4572,-2.0574 -2.667,-3.2766 -5.1054,-2.5146 -1.143,0.381 -1.905,1.2192 -2.7432,3.2004 l -7.0866,17.2974 c -0.1524,0.4572 -0.2286,0.8382 -0.381,1.2954 -0.4572,2.3622 0.9144,4.1148 3.2766,4.191 z"
          id="text1"
-         inkscape:label="text1"><tspan
-           sodipodi:role="line"
-           id="tspan1"
-           style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;font-size:76.2px;font-family:Harlekin;-inkscape-font-specification:'Harlekin, Normal';font-variant-ligatures:normal;font-variant-caps:normal;font-variant-numeric:normal;font-variant-east-asian:normal;fill:#ffffff;stroke-width:1.3575"
-           x="71.205338"
-           y="161.53017">m</tspan></text>
+         inkscape:label="text1"
+         aria-label="m" />
     </g>
   </g>
 </svg>
