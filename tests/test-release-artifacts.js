@@ -32,8 +32,9 @@ test("release artifact checks define one authoritative extension output", () => 
 test("release diagnostics distinguish dirty candidates", () => {
   assert.match(script, /DIRTY CANDIDATE \(not releasable source\)/);
   assert.match(script, /CLEAN SOURCE \(artifact checks still required\)/);
-  assert.match(releaseVerify, /HEAD does not match release manifest commit/);
-  assert.match(releaseVerify, /HEAD tree does not match release manifest tree/);
+  assert.match(releaseVerify, /HEAD or release tag does not match release manifest commit/);
+  assert.match(releaseVerify, /HEAD or release tag tree does not match release manifest tree/);
+  assert.match(releaseVerify, /taggedReleaseTree/);
   assert.match(script, /sha256/);
 });
 

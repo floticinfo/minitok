@@ -693,6 +693,12 @@ const verifyCache = new Map();
 
 function resetVerifyCache() { verifyCache.clear(); }
 
+function customModelsEndpoint(baseUrl) {
+  let normalized = String(baseUrl || "");
+  while (normalized.endsWith("/")) normalized = normalized.slice(0, -1);
+  return normalized.endsWith("/v1") ? `${normalized}/models` : `${normalized}/v1/models`;
+}
+
 async function _probeProvider(provider) {
   const auth = await provider._resolveAuth().catch(() => ({ headers: {}, token: null }));
   const headers = { ...(auth.headers || {}) };
@@ -722,7 +728,7 @@ async function _probeProvider(provider) {
       if (provider.config?.auth?.type === "none") return { status: "skipped", detail: "auth type none (local)" };
       if (!apiKey && !Object.keys(headers).length) return { status: "absent", detail: "custom provider without credentials" };
       if (!Object.keys(headers).some(h => /authorization|x-api-key|token/i.test(h)) && token) headers["authorization"] = "Bearer " + token;
-      url = provider.baseUrl.replace(/\/+$/, "") + "/v1/models";
+      url = customModelsEndpoint(provider.baseUrl);
     }
   }
 
@@ -788,5 +794,5 @@ async function verifyCredentials(providerName, providerConfig = {}) {
   return result;
 }
 
-module.exports = { LLMProvider, FallbackProvider, AnthropicProvider, OpenAIProvider, GoogleProvider, CustomProvider, createProvider, detectAvailableProviders, verifyCredentials, resetVerifyCache, fetchWithTimeout, configureRetries, validateProviderModel, _countTokens, _estimateCost };
+module.exports = { LLMProvider, FallbackProvider, AnthropicProvider, OpenAIProvider, GoogleProvider, CustomProvider, createProvider, detectAvailableProviders, verifyCredentials, resetVerifyCache, fetchWithTimeout, configureRetries, validateProviderModel, customModelsEndpoint, _countTokens, _estimateCost };
 

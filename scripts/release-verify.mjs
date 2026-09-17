@@ -31,11 +31,17 @@ try {
   const expectedTags = [`v${packageJson.version}`, packageJson.version];
   const releaseManifest = JSON.parse(readFileSync(path.join(root, "release-manifest.json"), "utf8"));
   let taggedReleaseCommit = "";
-  try { taggedReleaseCommit = git("rev-parse", `${expectedTags[0]}^{commit}`); } catch {}
+  let taggedReleaseTree = "";
+  try {
+    taggedReleaseCommit = git("rev-parse", `${expectedTags[0]}^{commit}`);
+    taggedReleaseTree = git("rev-parse", `${expectedTags[0]}^{tree}`);
+  } catch {}
   const releaseTagMatches = tags.some(tag => expectedTags.includes(tag)) || (taggedReleaseCommit && taggedReleaseCommit === releaseManifest.release?.commit);
   if (!releaseTagMatches) errors.push(`release tag does not point at the manifest release commit; HEAD=${head || "(unknown)"}; tagTarget=${taggedReleaseCommit || "(none)"}`);
-  if (releaseManifest.release?.commit && head !== releaseManifest.release.commit) errors.push(`HEAD does not match release manifest commit; HEAD=${head || "(unknown)"}; manifest=${releaseManifest.release.commit}`);
-  if (releaseManifest.release?.tree && tree !== releaseManifest.release.tree) errors.push(`HEAD tree does not match release manifest tree; HEAD=${tree || "(unknown)"}; manifest=${releaseManifest.release.tree}`);
+  const releaseCommitMatches = releaseManifest.release?.commit && (head === releaseManifest.release.commit || taggedReleaseCommit === releaseManifest.release.commit);
+  const releaseTreeMatches = releaseManifest.release?.tree && (tree === releaseManifest.release.tree || taggedReleaseTree === releaseManifest.release.tree);
+  if (releaseManifest.release?.commit && !releaseCommitMatches) errors.push(`HEAD or release tag does not match release manifest commit; HEAD=${head || "(unknown)"}; tagTarget=${taggedReleaseCommit || "(none)"}; manifest=${releaseManifest.release.commit}`);
+  if (releaseManifest.release?.tree && !releaseTreeMatches) errors.push(`HEAD or release tag tree does not match release manifest tree; HEAD=${tree || "(unknown)"}; tagTree=${taggedReleaseTree || "(none)"}; manifest=${releaseManifest.release.tree}`);
   if (releaseTag && !expectedTags.includes(releaseTag)) errors.push(`release ref ${releaseTag} does not match package version ${packageJson.version}`);
   if (lockJson.packages?.[""]?.version !== packageJson.version) errors.push("package-lock version does not match package version");
   const output = run(process.platform === "win32" ? process.env.ComSpec || "cmd.exe" : "npm", process.platform === "win32" ? ["/d", "/s", "/c", "npm pack --json"] : ["pack", "--json"]);

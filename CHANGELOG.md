@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.7-rc.5 - 2026-09-17
+
+### Fixed
+
+- Fixed OpenAI-compatible provider preflight URL normalization so `/v1` endpoints do not probe `/v1/v1/models`.
+- Added regression coverage for CamelStream-compatible `/v1/models` probing.
+- Reconciled the release candidate from the post-rc.4 checkpoint without moving the existing `v1.4.7-rc.4` tag.
+
 ## 1.4.7-rc.4 - 2026-09-16
 
 ### Added

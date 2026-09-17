@@ -1,7 +1,7 @@
 {
   "source": "canonical-root-src",
   "cliPackage": "@flotic/minitok",
-  "cliVersion": "1.4.7-rc.4",
+  "cliVersion": "1.4.7-rc.5",
   "entry": "src/runtime/stdio-entry.js",
   "files": [
     "auth/aliases.js",
@@ -190,8 +190,8 @@
       "embedded": "ed51e13d2df28376c4257a5203db3f915039d79dc908d7c00d0936b141c3cbd0"
     },
     "llm/provider.js": {
-      "source": "0816b9ad7ce0cfe23941435800fa65e604dc9523f9cbaf0a2fc62006b8820af9",
-      "embedded": "0816b9ad7ce0cfe23941435800fa65e604dc9523f9cbaf0a2fc62006b8820af9"
+      "source": "4f564f5fdde212069ca5eaf0154c8c560ce88c48e9577e8b375cff87bd84aef6",
+      "embedded": "4f564f5fdde212069ca5eaf0154c8c560ce88c48e9577e8b375cff87bd84aef6"
     },
     "mcp/runtime-token.js": {
       "source": "d07663e879ad91f12b327101f7b747e8bfc527bed6abc8aa2018ee393f4382d4",
