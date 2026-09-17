@@ -112,8 +112,8 @@ function runCli(cliPath, args, options = {}) {
         };
         timer = setTimeout(() => { killProcessTree(child); finish(new Error(`minitok timed out after ${Math.round(timeoutMs / 1000)}s`)); }, timeoutMs);
         cancellation = options.token?.onCancellationRequested(() => { killProcessTree(child); finish(new Error("minitok run cancelled")); });
-        child.stdout.on("data", chunk => { stdout += chunk.toString(); });
-        child.stderr.on("data", chunk => { stderr += chunk.toString(); });
+        child.stdout.on("data", chunk => { stdout = (0, workspace_2.appendBoundedOutput)(stdout, chunk.toString()); });
+        child.stderr.on("data", chunk => { stderr = (0, workspace_2.appendBoundedOutput)(stderr, chunk.toString()); });
         child.on("error", error => finish(error));
         child.on("close", code => code === 0 ? finish(null, stdout) : finish(new Error(stderr || stdout || `minitok exited with code ${code}`)));
     });

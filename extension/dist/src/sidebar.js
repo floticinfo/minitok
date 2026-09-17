@@ -184,7 +184,7 @@ class minitokSidebar {
             for (const role of roles)
                 if (!roleEnv[`minitok_${role}_model`])
                     roleEnv[`minitok_${role}_model`] = model;
-        const env = { ...process.env, ...roleEnv, ...(provider ? { minitok_default_provider: provider } : {}) };
+        const env = { ...roleEnv, ...(provider ? { minitok_default_provider: provider } : {}) };
         if (apiKey && provider === "anthropic")
             env.ANTHROPIC_API_KEY = apiKey;
         if (apiKey && provider === "openai")
@@ -193,8 +193,13 @@ class minitokSidebar {
             env.GOOGLE_API_KEY = apiKey;
         if (apiKey && provider === "custom")
             env.OPENAI_API_KEY = apiKey;
-        if (customBaseUrl && provider === "custom")
+        // Keep the endpoint outside workspace config/CLI args. The core loader
+        // materializes this into providers.custom and retains the legacy variable as
+        // a compatibility fallback for older installations.
+        if (customBaseUrl && provider === "custom") {
+            env.MINITOK_CUSTOM_BASE_URL = customBaseUrl;
             env.MINITOK_OPENAI_COMPATIBLE_BASE_URL = customBaseUrl;
+        }
         const timeouts = runTimeouts();
         if (cwd && args[0] === "run" && !args.includes("--dry-run") && !args.includes("--auto-accept")) {
             // autoApprove() adds --auto-accept just below, and auto-accept now takes
@@ -219,7 +224,7 @@ class minitokSidebar {
             let error = "";
             const consume = (chunk) => {
                 const text = chunk.toString();
-                output += text;
+                output = (0, workspace_1.appendBoundedOutput)(output, text);
                 this.output.append(redactOutputText(text));
                 for (const line of text.split(/\r?\n/).filter(Boolean))
                     this.progress(redactOutputText(line));
@@ -227,7 +232,7 @@ class minitokSidebar {
             child.stdout.on("data", consume);
             child.stderr.on("data", (chunk) => {
                 const text = chunk.toString();
-                error += text;
+                error = (0, workspace_1.appendBoundedOutput)(error, text);
                 this.output.append(redactOutputText(text));
                 for (const line of text.split(/\r?\n/).filter(Boolean))
                     this.view?.webview.postMessage({ type: "log", stream: "stderr", text: redactOutputText(line) });
@@ -252,12 +257,8 @@ class minitokSidebar {
         if (!child || child.killed)
             return;
         if (process.platform === "win32") {
-            try {
-                (0, node_child_process_1.execFileSync)("taskkill", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true, timeout: 10000 });
-            }
-            catch {
-                child.kill();
-            }
+            (0, node_child_process_1.execFile)("taskkill", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true, timeout: 10000 }, error => { if (error)
+                child.kill(); });
         }
         else {
             try {
@@ -446,6 +447,7 @@ class minitokSidebar {
             return;
         }
         if (message.command === "discover-models") {
+            await (0, entitlement_1.requireEntitlement)();
             await this.discoverModels(cwd, message.provider);
             return;
         }
@@ -504,8 +506,9 @@ class minitokSidebar {
             }
             this.activeRunId = runId;
             this.activeRunStartedAt = startedAt;
-            const evidencePath = vscode.workspace.getConfiguration("minitok").get("evidencePath", ".minitok/evidence/runs/latest.json").trim() || ".minitok/evidence/runs/latest.json";
-            const args = ["run", message.task, "--repo", cwd, "--evidence-path", evidencePath];
+            const evidenceSetting = vscode.workspace.getConfiguration("minitok").get("evidencePath", ".minitok/evidence/runs/latest.json").trim() || ".minitok/evidence/runs/latest.json";
+            (0, workspace_1.workspaceRelativePath)(cwd, evidenceSetting, "evidencePath");
+            const args = ["run", message.task, "--repo", cwd, "--evidence-path", evidenceSetting];
             if (message.command === "dry-run")
                 args.push("--dry-run");
             else if ((0, workspace_1.autoApprove)())
@@ -586,6 +589,7 @@ class minitokSidebar {
     }
     async discoverModels(cwd, provider) {
         (0, workspace_1.requireTrustedWorkspace)(cwd);
+        await (0, entitlement_1.requireEntitlement)();
         const args = ["models", "--discover"];
         if (provider)
             args.splice(1, 0, provider);
@@ -837,7 +841,11 @@ class minitokSidebar {
         fs.writeFileSync(path.join(checkpoint, "status.txt"), status, { mode: 0o600 });
     }
     async restoreCheckpoint(cwd, checkpoint) {
-        const patch = path.join(checkpoint, "working-tree.patch");
+        const resolvedCheckpoint = (0, workspace_1.workspaceRelativePath)(cwd, checkpoint, "checkpoint");
+        const checkpointRoot = path.join(path.resolve(cwd), ".minitok", "checkpoints") + path.sep;
+        if (!resolvedCheckpoint.startsWith(checkpointRoot))
+            throw new Error("Checkpoint must stay under workspace/.minitok/checkpoints");
+        const patch = path.join(resolvedCheckpoint, "working-tree.patch");
         if (!fs.existsSync(patch))
             throw new Error("Checkpoint patch not found");
         const status = await this.execGit(cwd, ["status", "--porcelain"]);

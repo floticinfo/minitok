@@ -37,6 +37,7 @@
     "typecheck": "tsc -p tsconfig.json",
     "test:pty": "node --test tests/test-cli-pty-matrix.js tests/test-cli-commercial.js",
     "test:extension": "npm --prefix extension run test:unit",
+    "test:host": "npm --prefix extension run test:host",
     "lint:extension": "npm --prefix extension run lint",
     "release:check": "npm run check:version-metadata && npm test && npm run lint && npm run lint:extension && npm run typecheck && npm run test:extension && npm audit --audit-level=high && npm run docs:check && node scripts/secret-scan.mjs && npm run stage2:parity && npm pack --dry-run --json && npm run test:packed-install && node VERIFY_CMD.mjs && npm run release:verify",
     "docs:check": "node scripts/documentation-consistency.mjs",

@@ -52,12 +52,8 @@ const redactPanelOutput = redaction_1.redactSensitiveText;
  */
 function killProcessTree(child) {
     if (process.platform === "win32") {
-        try {
-            (0, node_child_process_1.execFileSync)("taskkill", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true, timeout: 10000 });
-        }
-        catch {
-            child.kill();
-        }
+        (0, node_child_process_1.execFile)("taskkill", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true, timeout: 10000 }, error => { if (error)
+            child.kill(); });
     }
     else {
         try {
@@ -96,8 +92,8 @@ function runCli(cliPath, args, cwd, onProcess) {
             // fires and the panel would stay "run active" forever.
             finish(new Error("minitok timed out after 30 minutes"));
         }, CLI_TIMEOUT_MS);
-        child.stdout.on("data", chunk => { stdout += chunk.toString(); });
-        child.stderr.on("data", chunk => { stderr += chunk.toString(); });
+        child.stdout.on("data", chunk => { stdout = (0, workspace_1.appendBoundedOutput)(stdout, chunk.toString()); });
+        child.stderr.on("data", chunk => { stderr = (0, workspace_1.appendBoundedOutput)(stderr, chunk.toString()); });
         child.on("error", error => finish(error));
         child.on("close", code => { if (code === 0)
             finish();
@@ -229,8 +225,9 @@ class minitokPanel {
                     throw new Error("Task description required");
                 if (this.process)
                     throw new Error("A minitok run is already active");
-                const evidencePath = vscode.workspace.getConfiguration("minitok").get("evidencePath", ".minitok/evidence/runs/latest.json").trim() || ".minitok/evidence/runs/latest.json";
-                const args = ["run", message.task, "--repo", cwd, "--evidence-path", evidencePath];
+                const evidenceSetting = vscode.workspace.getConfiguration("minitok").get("evidencePath", ".minitok/evidence/runs/latest.json").trim() || ".minitok/evidence/runs/latest.json";
+                (0, workspace_1.workspaceRelativePath)(cwd, evidenceSetting, "evidencePath");
+                const args = ["run", message.task, "--repo", cwd, "--evidence-path", evidenceSetting];
                 if (message.command === "dry-run")
                     args.push("--dry-run");
                 else if ((0, workspace_1.autoApprove)())

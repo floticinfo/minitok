@@ -10,6 +10,19 @@ const path = require("path");
 const os = require("os");
 
 const DEFAULT_AUDIT_PATH = path.join(os.homedir(), ".minitok", "audit.jsonl");
+const AUDIT_MAX_BYTES = 5 * 1024 * 1024;
+const AUDIT_ROTATIONS = 3;
+
+function rotateAuditLog(fp) {
+  // Rename oldest first so a failed rename cannot destroy the newest record.
+  for (let index = AUDIT_ROTATIONS; index >= 1; index -= 1) {
+    const source = index === 1 ? fp : `${fp}.${index - 1}`;
+    const target = `${fp}.${index}`;
+    if (!fs.existsSync(source)) continue;
+    try { if (fs.existsSync(target)) fs.rmSync(target, { force: true }); } catch {}
+    fs.renameSync(source, target);
+  }
+}
 
 /**
  * Record an audit event.
@@ -26,7 +39,11 @@ function auditLog(entry, auditPath) {
   try {
     const dir = path.dirname(fp);
     fs.mkdirSync(dir, { recursive: true });
-    fs.appendFileSync(fp, JSON.stringify(record) + "\n", "utf-8");
+    const line = `${JSON.stringify(record)}\n`;
+    let currentSize = 0;
+    try { currentSize = fs.statSync(fp).size; } catch (error) { if (error.code !== "ENOENT") throw error; }
+    if (currentSize > 0 && currentSize + Buffer.byteLength(line, "utf8") > AUDIT_MAX_BYTES) rotateAuditLog(fp);
+    fs.appendFileSync(fp, line, "utf-8");
   } catch (error) {
     const warning = { persisted: false, record, warning: `Audit persistence failed: ${error.message}` };
     process.emitWarning(warning.warning, { code: "MINITOK_AUDIT_PERSISTENCE" });
@@ -96,4 +113,4 @@ function auditRead(auditPath, limit = 100) {
   }
 }
 
-module.exports = { auditLog, auditRead, DEFAULT_AUDIT_PATH };
+module.exports = { auditLog, auditRead, DEFAULT_AUDIT_PATH, AUDIT_MAX_BYTES, AUDIT_ROTATIONS, rotateAuditLog };

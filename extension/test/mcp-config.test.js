@@ -26,6 +26,23 @@ test("MCP subprocess environment is allowlisted and does not inherit arbitrary s
   assert.doesNotMatch(source, /return \{\.\.\.process\.env,\s*minitok_server_url/);
 });
 
+test("workspace-relative extension paths stay inside the workspace", () => {
+  assert.match(source, /export function workspaceRelativePath/);
+  assert.match(source, /must stay inside the workspace/);
+  assert.match(sidebarSource, /Checkpoint must stay under workspace/);
+});
+
+test("ordinary CLI subprocesses use an allowlist and bounded output", () => {
+  assert.match(source, /const CLI_ENV_ALLOWLIST/);
+  assert.match(source, /const CLI_EXPLICIT_ENV/);
+  assert.match(source, /MINITOK_MCP_AUTH_TOKEN_FILE/);
+  assert.match(source, /MINITOK_MCP_SCOPES/);
+  assert.match(source, /MINITOK_MCP_WORKSPACE_ROOT/);
+  assert.match(source, /appendBoundedOutput/);
+  assert.match(sidebarSource, /output = appendBoundedOutput\(output, text\)/);
+  assert.match(sidebarSource, /error = appendBoundedOutput\(error, text\)/);
+});
+
 test("MCP command configuration propagates and persists the trusted workspace root", () => {
   assert.match(source, /MINITOK_MCP_WORKSPACE_ROOT/);
   assert.match(sidebarSource, /configuredEnv\.MINITOK_MCP_WORKSPACE_ROOT/);

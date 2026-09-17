@@ -71,6 +71,23 @@ function normalizeCustomerSession(value) {
 const SESSION_KEY = "minitok.secret.accountSession";
 const SHARED_SESSION_FILE = path.join(os.homedir(), ".minitok", "account", "session.json");
 const LEGACY_CUSTOMER_TOKEN_FILE = path.join(os.homedir(), ".minitok", "entitlement", "customer-token.json");
+function legacyCustomerSession() {
+    try {
+        const raw = JSON.parse(fs.readFileSync(LEGACY_CUSTOMER_TOKEN_FILE, "utf8"));
+        if (typeof raw.token !== "string" || !raw.token)
+            return undefined;
+        const part = raw.token.split(".")[1];
+        if (part) {
+            const payload = JSON.parse(Buffer.from(part, "base64url").toString("utf8"));
+            if (typeof payload.exp === "number" && Date.now() >= payload.exp * 1000 - 60000)
+                return undefined;
+        }
+        return { access_token: raw.token, token_type: "Bearer" };
+    }
+    catch {
+        return undefined;
+    }
+}
 function expiry(session) {
     return session.expires_at || (Number.isFinite(Number(session.expires_in)) ? new Date(Date.now() + Number(session.expires_in) * 1000).toISOString() : undefined);
 }
@@ -153,6 +170,9 @@ async function readExtensionSession(context) {
         }
         return shared;
     }
+    const legacy = legacyCustomerSession();
+    if (legacy)
+        return legacy;
     const raw = await context.secrets.get(SESSION_KEY);
     if (!raw)
         return undefined;

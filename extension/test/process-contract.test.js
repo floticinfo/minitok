@@ -26,8 +26,10 @@ test("panel process lifecycle contract", () => {
   assert.match(panel, /taskkill/);
   assert.match(panel, /A minitok run is already active/);
   assert.match(panel, /statusArgs = cwd \? \["status", "--repo", cwd\] : \["status"\]/);
-  assert.match(panel, /\["run", message\.task, "--repo", cwd!, "--evidence-path", evidencePath\]/);
-  assert.match(sidebar, /\["run", message\.task, "--repo", cwd!, "--evidence-path", evidencePath\]/);
+  assert.match(panel, /workspaceRelativePath\(cwd!, evidenceSetting, "evidencePath"\)/);
+  assert.match(sidebar, /workspaceRelativePath\(cwd!, evidenceSetting, "evidencePath"\)/);
+  assert.match(sidebarHtml, /taskSaved==='true'/);
+  assert.match(manifest, /minitok-activitybar\.svg/);
 });
 
 test("extension entitlement contract", () => {
@@ -54,8 +56,18 @@ test("first-run authentication UI contract", () => {
   assert.match(sidebar, /customerLogin/);
 });
 
+test("each Webview acquires the VS Code API exactly once", () => {
+  for (const html of [panelHtml, sidebarHtml]) {
+    assert.equal((html.match(/acquireVsCodeApi\(\)/g) || []).length, 1);
+    assert.match(html, /const authVscode=vscode/);
+  }
+});
+
 test("webview accessibility contract", () => {
   for (const html of [panelHtml, sidebarHtml]) {
+    assert.match(html, /<html[^>]+lang="en"/);
+    assert.match(html, /name="viewport"/);
+    assert.match(html, /vscode-reduce-motion/);
     assert.match(html, /aria-live=/);
     assert.match(html, /<label[^>]+for="task"/);
     assert.match(html, /type="button"/);
@@ -215,7 +227,11 @@ test("sidebar process lifecycle contract", () => {
   assert.match(sidebar, /redactSensitiveText/);
   assert.match(sidebar, /redactOutputText/);
   assert.match(workspace, /MINITOK_MCP_SCOPES/);
-  assert.match(workspace, /MINITOK_UPDATE_CHECK: "0"/);
+  assert.match(workspace, /MINITOK_CUSTOM_BASE_URL/);
+  assert.match(sidebar, /env\.MINITOK_CUSTOM_BASE_URL = customBaseUrl/);
+  assert.match(workspace, /env\.MINITOK_UPDATE_CHECK = "0"/);
+  assert.match(workspace, /const CLI_ENV_ALLOWLIST/);
+  assert.match(workspace, /appendBoundedOutput/);
   assert.match(workspace, /minitok_server_url = configuredServerUrl\(\)/);
   assert.match(extension, /let finished = false/);
   assert.match(sidebar, /let finished = false/);
@@ -249,7 +265,8 @@ test("host integration is bounded and supports an explicit VS Code executable", 
 test("Extension subprocesses inherit the configured server URL and disable update checks", () => {
   assert.match(workspace, /export function extensionCliEnvironment/);
   assert.match(workspace, /env\.minitok_server_url = configuredServerUrl\(\)/);
-  assert.match(workspace, /MINITOK_UPDATE_CHECK: "0"/);
+  assert.match(workspace, /env\.MINITOK_UPDATE_CHECK = "0"/);
+  assert.match(workspace, /for \(const key of CLI_ENV_ALLOWLIST\)/);
   assert.match(entitlement, /spawnOptionsFor\(spec/);
   assert.match(panel, /spawnOptionsFor\(processSpec/);
   assert.match(sidebar, /spawnOptionsFor\(processSpec/);

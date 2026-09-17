@@ -43,8 +43,8 @@ function checkEntitlement() {
         let stdout = "";
         let stderr = "";
         const timer = setTimeout(() => { child.kill(); settle({ checked: true, allowed: false, message: "Entitlement check timed out" }); }, 30000);
-        child.stdout.on("data", chunk => { stdout += chunk.toString(); });
-        child.stderr.on("data", chunk => { stderr += chunk.toString(); });
+        child.stdout.on("data", chunk => { stdout = (0, workspace_1.appendBoundedOutput)(stdout, chunk.toString()); });
+        child.stderr.on("data", chunk => { stderr = (0, workspace_1.appendBoundedOutput)(stderr, chunk.toString()); });
         child.on("error", error => { clearTimeout(timer); settle({ checked: true, allowed: false, message: stderr || error.message }); });
         child.on("close", code => {
             clearTimeout(timer);

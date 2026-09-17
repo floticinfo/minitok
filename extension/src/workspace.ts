@@ -106,6 +106,14 @@ export function spawnSpec(command: string, args: string[]) {
  * Windows verbatim-argument fix and the Electron-as-Node environment a
  * JavaScript CLI entry needs when the extension host itself is Electron.
  */
+export function workspaceRelativePath(cwd: string, configured: string, label: string) {
+  const root = path.resolve(cwd);
+  const file = path.resolve(root, configured || "");
+  const boundary = root.endsWith(path.sep) ? root : `${root}${path.sep}`;
+  if (file !== root && !file.startsWith(boundary)) throw new Error(`minitok.${label} must stay inside the workspace`);
+  return file;
+}
+
 export function configuredServerUrl() {
   const configured = vscode.workspace.getConfiguration("minitok").get<string>("serverUrl", "https://api.minitok.dev").trim();
   let url: URL;
@@ -115,9 +123,41 @@ export function configuredServerUrl() {
   return url.origin;
 }
 
+/** Maximum retained output from an Extension-owned CLI subprocess. */
+export const CLI_OUTPUT_MAX_BYTES = 4 * 1024 * 1024;
+
+/** Append process output without allowing a long-lived Extension host to grow unbounded. */
+export function appendBoundedOutput(current: string, chunk: string, maxBytes = CLI_OUTPUT_MAX_BYTES) {
+  const next = `${current}${chunk}`;
+  if (Buffer.byteLength(next, "utf8") <= maxBytes) return next;
+  const marker = "\n[output truncated by minitok extension]\n";
+  const budget = Math.max(0, maxBytes - Buffer.byteLength(marker, "utf8"));
+  let retained = next;
+  while (Buffer.byteLength(retained, "utf8") > budget) retained = retained.slice(Math.max(1, Math.ceil(retained.length / 8)));
+  return `${retained}${marker}`;
+}
+
+const CLI_ENV_ALLOWLIST = [
+  "PATH", "Path", "PATHEXT", "ComSpec", "SystemRoot", "WINDIR",
+  "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "TEMP", "TMP",
+  "LANG", "LC_ALL", "LC_CTYPE", "NODE_PATH",
+] as const;
+const CLI_EXPLICIT_ENV = new Set([
+  "MINITOK_UPDATE_CHECK", "MINITOK_CUSTOM_BASE_URL", "MINITOK_OPENAI_COMPATIBLE_BASE_URL",
+  "MINITOK_MCP_AUTH_TOKEN_FILE", "MINITOK_MCP_SCOPES", "MINITOK_MCP_WORKSPACE_ROOT",
+  "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY",
+  "MINITOK_EXTENSION_CUSTOMER_TOKEN", "MINITOK_CUSTOMER_EMAIL", "MINITOK_CUSTOMER_PASSWORD",
+]);
+function isAllowedCliEnv(key: string) {
+  return (CLI_ENV_ALLOWLIST as readonly string[]).includes(key) || CLI_EXPLICIT_ENV.has(key) || /^minitok_(?:default_provider|model|server_url|plan_|work_|review_|intel_)/.test(key);
+}
+
 /** Environment shared by every Extension-owned CLI subprocess. */
 export function extensionCliEnvironment(extra: NodeJS.ProcessEnv = {}) {
-  const env: NodeJS.ProcessEnv = { ...process.env, ...extra, MINITOK_UPDATE_CHECK: "0" };
+  const env: NodeJS.ProcessEnv = {};
+  for (const key of CLI_ENV_ALLOWLIST) if (process.env[key] !== undefined) env[key] = process.env[key];
+  for (const [key, value] of Object.entries(extra)) if (value !== undefined && isAllowedCliEnv(key)) env[key] = value;
+  env.MINITOK_UPDATE_CHECK = "0";
   // The CLI resolver intentionally uses the lower-case name so this also works
   // on POSIX hosts, where environment variable names are case-sensitive.
   env.minitok_server_url = configuredServerUrl();
@@ -167,6 +207,9 @@ const MCP_ENV_ALLOWLIST = [
   "PATH", "Path", "PATHEXT", "ComSpec", "SystemRoot", "WINDIR",
   "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "TEMP", "TMP",
   "LANG", "LC_ALL", "LC_CTYPE", "NODE_PATH",
+  // Non-secret provider configuration used by the extension custom-provider
+  // contract. Credentials are added per provider by the caller, never inherited.
+  "MINITOK_CUSTOM_BASE_URL", "MINITOK_OPENAI_COMPATIBLE_BASE_URL",
 ] as const;
 function inheritedMcpEnvironment() {
   const env: NodeJS.ProcessEnv = {};

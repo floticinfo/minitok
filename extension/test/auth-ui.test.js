@@ -60,7 +60,9 @@ test("panel does not expose task controls before authentication", () => {
   assert.match(html, /document\.getElementById\('run'\)\.disabled=!entitled/);
   assert.match(html, /logoutButton\.hidden=!authenticated/);
   assert.match(html, /id="loginForm" hidden/);
-  assert.match(html, /const authVscode=acquireVsCodeApi\(\)/);
+  assert.match(html, /const vscode=acquireVsCodeApi\(\)/);
+  assert.match(html, /const authVscode=vscode/);
+  assert.equal((html.match(/acquireVsCodeApi\(\)/g) || []).length, 1, "the panel must acquire the Webview API exactly once");
 });
 
 test("entitlement gates execution controls and explains access state", () => {

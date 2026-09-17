@@ -193,9 +193,15 @@ test("minitok_task exposes the focused schema and delegates to the canonical pip
     assert.equal(tool.inputSchema.properties.auto_accept, undefined);
     const reply = await box.call(49, "minitok_task", { task: "facade pipeline probe", repo: box.root, dry_run: true });
     assertToolSucceeded(reply, "minitok_task");
+    const started = box.payload(reply);
+    assert.equal(started.state, "running");
+    assert.equal(reply.result.isAsync, true);
+    const run = box.runtime._runs.get(started.run_id);
+    await run.promise;
+    const completed = await box.call(50, "minitok_run_get", { run_id: started.run_id });
     assert.deepEqual(seen.map(item => item.task), ["facade pipeline probe"]);
     assert.equal(seen[0].options.dryRun, true);
-    assert.equal(box.payload(reply).result.marker, "facade");
+    assert.equal(box.payload(completed).result.structuredContent.result.marker, "facade");
   } finally { box.cleanup(); }
 });
 
@@ -204,10 +210,13 @@ test("the pipeline injected into the constructor replaces the real one", async (
   const box = sandbox("read,write,verify_exec", async (task) => { seen.push(task); return { success: true, marker: "injected" }; });
   try {
     await box.init();
-    const reply = await box.call(50, "minitok_run", { task: "injected pipeline probe", repo: box.root });
-    assert.equal(reply.error, undefined, `the run must not fall back to the real pipeline: ${JSON.stringify(reply.error)}`);
+    const reply = await box.call(51, "minitok_run", { task: "injected pipeline probe", repo: box.root });
+    assert.equal(reply.error, undefined, `the run must not fail to start: ${JSON.stringify(reply.error)}`);
+    const started = box.payload(reply);
+    await box.runtime._runs.get(started.run_id).promise;
+    const completed = await box.call(52, "minitok_run_get", { run_id: started.run_id });
     assert.deepEqual(seen, ["injected pipeline probe"]);
-    assert.equal(box.payload(reply).result.marker, "injected");
+    assert.equal(box.payload(completed).result.structuredContent.result.marker, "injected");
   } finally { box.cleanup(); }
 });
 

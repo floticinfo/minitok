@@ -460,7 +460,15 @@ class RuntimeStdio {
        this._requestToRun.set(id, runId);
        const persistence = this._saveRunState();
        const run = this._runs.get(runId);
-       if (run) run.persistence = persistence;
+       if (run) {
+          run.persistence = persistence;
+          controller.signal.addEventListener("abort", () => {
+            if (run.state === "running") {
+              run.state = "cancelled";
+              run.persistence = this._saveRunState();
+            }
+          }, { once: true });
+        }
        this._pruneRuns();
      }
      try {
@@ -472,6 +480,34 @@ class RuntimeStdio {
       if (runId && isPipelineTool) toolArguments.run_id = runId;
       const operation = getToolHandler(params.name, toolArguments, this._services, { safeResult: true, signal: controller.signal, runs: this._runs, runPipeline: this._runPipeline, recoveredRuns: this._recoveredRuns, persistence: this._persistence, workspaceRoot: this._workspaceRoot, permissions: this._permissions, entitlementPolicy, serverUrl: this._serverUrl, entitlementDir: this._entitlementDir, writeApproval: (file, decision, binding) => { const stat = fs.lstatSync(file); if (!stat.isFile() || stat.isSymbolicLink() || fs.realpathSync.native(file) !== file) throw Object.assign(new Error("Approval request path is not a regular file"), { code: "APPROVAL_INVALID" }); let request; try { request = JSON.parse(fs.readFileSync(file, "utf8")); } catch { throw Object.assign(new Error("Approval request is malformed"), { code: "APPROVAL_INVALID" }); } if (request.type !== "approval_request" || (decision !== "approve" && decision !== "reject") || typeof request.nonce !== "string" || request.nonce !== binding.nonce || request.run_id !== binding.runId || !Number.isFinite(request.expires_at) || Date.now() >= request.expires_at) throw Object.assign(new Error("Approval request is stale or mismatched"), { code: "APPROVAL_INVALID" }); const target = `${file}.response`; try { const targetStat = fs.lstatSync(target); if (targetStat.isSymbolicLink() || !targetStat.isFile()) throw Object.assign(new Error("Approval response path is not a regular file"), { code: "APPROVAL_INVALID" }); } catch (error) { if (error.code !== "ENOENT") throw error; } const temp = `${target}.tmp.${process.pid}.${crypto.randomBytes(6).toString("hex")}`; const fd = fs.openSync(temp, "wx", 0o600); try { fs.writeFileSync(fd, `${JSON.stringify({ decision, nonce: binding.nonce, run_id: binding.runId })}\n`, { encoding: "utf8" }); fs.fsyncSync(fd); } finally { fs.closeSync(fd); } try { fs.renameSync(temp, target); } catch (error) { try { fs.rmSync(temp, { force: true }); } catch {} throw error; } }, onProgress: event => { if (runId && !isNotification) { const progress = Number.isFinite(event.progress) ? event.progress : ({ intel: 1, plan: 2, work: 3, verify: 4, review: 5 }[event.phase] || 0); this._respond({ jsonrpc: "2.0", method: "notifications/progress", params: { progressToken: params._meta?.progressToken ?? params.meta?.progressToken ?? null, progress, total: 5, message: JSON.stringify({ phase: event.phase, state: event.state, run_id: runId, correlation_id: correlationId }) } }); } } });
       if (runId) { const pending = this._runs.get(runId); if (pending) pending.promise = operation; }
+      if (runId) {
+        const run = this._runs.get(runId);
+        if (run) {
+          // Long-running pipeline work must not occupy the MCP request until it
+          // finishes: hosts commonly apply a 60-120 second request deadline while
+          // planning, approval, provider calls, and verification can take much
+          // longer. The run registry already provides the durable async contract.
+          run.promise = operation.then(result => {
+            const payload = /** @type {any} */ (result)?.structuredContent;
+            const failed = /** @type {any} */ (result)?.isError === true || payload?.state === "failed" || payload?.result?.success === false || payload?.result?.cancelled === true;
+            if (run.state !== "cancelled" && !controller.signal.aborted) run.state = failed ? "failed" : "completed";
+            run.result = result;
+            run.persistence = this._saveRunState();
+            this._pruneRuns();
+            return result;
+          }, error => {
+            run.state = controller.signal.aborted ? "cancelled" : "failed";
+            run.result = { error: error instanceof Error ? error.message : String(error) };
+            run.persistence = this._saveRunState();
+            this._pruneRuns();
+            throw error;
+          });
+          const started = { schema_version: 1, run_id: runId, state: "running", message: "minitok run started; use minitok_run_get to poll for completion" };
+          reply({ jsonrpc: "2.0", id, result: { content: [{ type: "text", text: JSON.stringify(started) }], run_id: runId, correlation_id: correlationId, structuredContent: started, persistence: run.persistence || this._persistence, isAsync: true } });
+          return;
+        }
+      }
+
       const result = await operation;
 
        // The tool handler runs with safeResult, so a failing pipeline returns
@@ -481,8 +517,8 @@ class RuntimeStdio {
        // well as the flag, because a run that ends in `success: false` (rejected
        // change, failed verification, cancellation) is a legitimate result object
        // rather than a tool fault.
-       if (runId) { const run = this._runs.get(runId); const payload = /** @type {any} */ (result)?.structuredContent; const failed = result?.isError === true || payload?.state === "failed" || payload?.result?.success === false || payload?.result?.cancelled === true; if (run && run.state !== "cancelled" && !controller.signal.aborted) run.state = failed ? "failed" : "completed"; if (run) { run.result = result; run.persistence = this._saveRunState(); } }
-        reply({ jsonrpc: "2.0", id, result: { ...result, run_id: runId, correlation_id: correlationId, structuredContent: /** @type {any} */ (result).structuredContent || null, persistence: runId ? this._runs.get(runId)?.persistence || this._persistence : undefined, isError: result.isError === true } });
+       if (runId) { const run = this._runs.get(runId); const payload = /** @type {any} */ (result)?.structuredContent; const failed = /** @type {any} */ (result)?.isError === true || payload?.state === "failed" || payload?.result?.success === false || payload?.result?.cancelled === true; if (run && run.state !== "cancelled" && !controller.signal.aborted) run.state = failed ? "failed" : "completed"; if (run) { run.result = result; run.persistence = this._saveRunState(); } }
+        reply({ jsonrpc: "2.0", id, result: { ...result, run_id: runId, correlation_id: correlationId, structuredContent: /** @type {any} */ (result).structuredContent || null, persistence: runId ? this._runs.get(runId)?.persistence || this._persistence : undefined, isError: /** @type {any} */ (result).isError === true } });
      } catch (error) { if (runId) { const run = this._runs.get(runId); if (run) { run.state = controller.signal.aborted ? "cancelled" : "failed"; run.result = { error: error.message }; run.persistence = this._saveRunState(); } } this._error(id, this._errorCode(error.code), error.message, error.code || "MCP_TOOL_ERROR", correlationId, { run_id: runId, persistence: runId ? this._runs.get(runId)?.persistence || this._persistence : undefined }, reply); }
     finally { if (runId) { this._requestToRun.delete(id); this._pruneRuns(); } }
   }

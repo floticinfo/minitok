@@ -1,10 +1,10 @@
 import * as vscode from "vscode";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { spawn, ChildProcessWithoutNullStreams, execFile, execFileSync } from "node:child_process";
+import { spawn, ChildProcessWithoutNullStreams, execFile } from "node:child_process";
 import * as os from "node:os";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
-import { cliPath, mcpCommand, mcpEnvironment, configuredMcpScopes, ensureMcpAuthToken, workspacePath, requireTrustedWorkspace, autoApprove, spawnSpec, spawnOptionsFor, npmSpawnSpec, normalizeProviderName } from "./workspace";
+import { cliPath, mcpCommand, mcpEnvironment, configuredMcpScopes, ensureMcpAuthToken, workspacePath, requireTrustedWorkspace, autoApprove, spawnSpec, spawnOptionsFor, npmSpawnSpec, normalizeProviderName, appendBoundedOutput, workspaceRelativePath } from "./workspace";
 import { checkEntitlement, invalidateEntitlementCache, requireEntitlement } from "./entitlement";
 import { authErrorText, deviceLogin, logoutExtension, refreshExtensionSession } from "./device-auth";
 import { redactSensitiveText } from "./redaction";
@@ -121,12 +121,18 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
     const apiKey = await this.context.secrets.get("minitok.secret.providerApiKey");
     const customBaseUrl = await this.context.secrets.get("minitok.secret.customBaseUrl");
     if (model) for (const role of roles) if (!roleEnv[`minitok_${role}_model`]) roleEnv[`minitok_${role}_model`] = model;
-    const env: NodeJS.ProcessEnv = { ...process.env, ...roleEnv, ...(provider ? { minitok_default_provider: provider } : {}) };
+    const env: NodeJS.ProcessEnv = { ...roleEnv, ...(provider ? { minitok_default_provider: provider } : {}) };
     if (apiKey && provider === "anthropic") env.ANTHROPIC_API_KEY = apiKey;
     if (apiKey && provider === "openai") env.OPENAI_API_KEY = apiKey;
     if (apiKey && provider === "google") env.GOOGLE_API_KEY = apiKey;
     if (apiKey && provider === "custom") env.OPENAI_API_KEY = apiKey;
-    if (customBaseUrl && provider === "custom") env.MINITOK_OPENAI_COMPATIBLE_BASE_URL = customBaseUrl;
+    // Keep the endpoint outside workspace config/CLI args. The core loader
+    // materializes this into providers.custom and retains the legacy variable as
+    // a compatibility fallback for older installations.
+    if (customBaseUrl && provider === "custom") {
+      env.MINITOK_CUSTOM_BASE_URL = customBaseUrl;
+      env.MINITOK_OPENAI_COMPATIBLE_BASE_URL = customBaseUrl;
+    }
     const timeouts = runTimeouts();
     if (cwd && args[0] === "run" && !args.includes("--dry-run") && !args.includes("--auto-accept")) {
       // autoApprove() adds --auto-accept just below, and auto-accept now takes
@@ -145,14 +151,14 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
       let error = "";
       const consume = (chunk: Buffer) => {
         const text = chunk.toString();
-        output += text;
+        output = appendBoundedOutput(output, text);
         this.output.append(redactOutputText(text));
         for (const line of text.split(/\r?\n/).filter(Boolean)) this.progress(redactOutputText(line));
       };
       child.stdout.on("data", consume);
       child.stderr.on("data", (chunk: Buffer) => {
         const text = chunk.toString();
-        error += text;
+        error = appendBoundedOutput(error, text);
         this.output.append(redactOutputText(text));
         for (const line of text.split(/\r?\n/).filter(Boolean)) this.view?.webview.postMessage({ type: "log", stream: "stderr", text: redactOutputText(line) });
       });
@@ -173,7 +179,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
   private stopChild(child?: ChildProcessWithoutNullStreams) {
     if (!child || child.killed) return;
     if (process.platform === "win32") {
-      try { execFileSync("taskkill", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true, timeout: 10000 }); } catch { child.kill(); }
+      execFile("taskkill", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true, timeout: 10000 }, error => { if (error) child.kill(); });
     } else {
       try { process.kill(-child.pid!, "SIGTERM"); } catch { child.kill("SIGTERM"); }
     }
@@ -251,7 +257,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
     if (message.command === "sessions") { this.view?.webview.postMessage({ type: "sessions", items: this.context.workspaceState.get<Array<Record<string, unknown>>>("minitok.history", []) }); return; }
     if (message.command === "clear-history") { await this.context.workspaceState.update("minitok.history", []); this.view?.webview.postMessage({ type: "history-cleared", text: "Local Extension run history cleared. Repository evidence, checkpoints, and patches were preserved." }); return; }
     if (message.command === "info") { await this.readInfo(cwd); return; }
-    if (message.command === "discover-models") { await this.discoverModels(cwd, message.provider); return; }
+    if (message.command === "discover-models") { await requireEntitlement(); await this.discoverModels(cwd, message.provider); return; }
     if (message.command === "activate" || message.command === "manage-plan") { await this.openBilling(message.command === "activate" ? "checkout" : "portal"); return; }
     if (message.command === "attach-file") { const uri = await vscode.window.showOpenDialog({ canSelectMany: false, openLabel: "Attach file" }); if (uri?.[0]) this.view?.webview.postMessage({ type: "attachment", value: `@file ${vscode.workspace.asRelativePath(uri[0])}` }); return; }
     if (message.command === "attach-folder") { const uri = await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectMany: false, openLabel: "Attach folder" }); if (uri?.[0]) this.view?.webview.postMessage({ type: "attachment", value: `@folder ${vscode.workspace.asRelativePath(uri[0])}` }); return; }
@@ -272,8 +278,9 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
       }
       this.activeRunId = runId;
       this.activeRunStartedAt = startedAt;
-    const evidencePath = vscode.workspace.getConfiguration("minitok").get<string>("evidencePath", ".minitok/evidence/runs/latest.json").trim() || ".minitok/evidence/runs/latest.json";
-    const args = ["run", message.task, "--repo", cwd!, "--evidence-path", evidencePath];
+    const evidenceSetting = vscode.workspace.getConfiguration("minitok").get<string>("evidencePath", ".minitok/evidence/runs/latest.json").trim() || ".minitok/evidence/runs/latest.json";
+    workspaceRelativePath(cwd!, evidenceSetting, "evidencePath");
+    const args = ["run", message.task, "--repo", cwd!, "--evidence-path", evidenceSetting];
     if (message.command === "dry-run") args.push("--dry-run");
     else if (autoApprove()) args.push("--auto-accept");
       this.view?.webview.postMessage({ type: "started", runId });
@@ -327,6 +334,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
   }
 private async discoverModels(cwd?: string, provider?: string) {
      requireTrustedWorkspace(cwd);
+     await requireEntitlement();
     const args = ["models", "--discover"];
     if (provider) args.splice(1, 0, provider);
     // cliPath() resolves the real entry point; the configured setting alone
@@ -500,7 +508,10 @@ private async discoverModels(cwd?: string, provider?: string) {
     fs.writeFileSync(path.join(checkpoint, "status.txt"), status, { mode: 0o600 });
   }
   private async restoreCheckpoint(cwd: string, checkpoint: string) {
-    const patch = path.join(checkpoint, "working-tree.patch");
+    const resolvedCheckpoint = workspaceRelativePath(cwd, checkpoint, "checkpoint");
+    const checkpointRoot = path.join(path.resolve(cwd), ".minitok", "checkpoints") + path.sep;
+    if (!resolvedCheckpoint.startsWith(checkpointRoot)) throw new Error("Checkpoint must stay under workspace/.minitok/checkpoints");
+    const patch = path.join(resolvedCheckpoint, "working-tree.patch");
     if (!fs.existsSync(patch)) throw new Error("Checkpoint patch not found");
     const status = await this.execGit(cwd, ["status", "--porcelain"]);
     const answer = await vscode.window.showWarningMessage("Restore checkpoint? Current working-tree changes will be replaced.", "Restore", "Cancel");

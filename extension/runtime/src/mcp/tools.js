@@ -162,7 +162,7 @@ async function _getToolHandler(name, args, services, runtimeOptions = {}) {
   // which made the run_id rule below unreachable.
   args = validateArgs(name, args);
   if (name === "minitok_run_list") return { content: [{ type: "text", text: JSON.stringify([...(runtimeOptions.recoveredRuns || []).map(run => ({ run_id: run.run_id, state: run.state, recovery: run.recovery || undefined })), ...[...runtimeOptions.runs?.values?.() || []].map(run => ({ run_id: run.runId, state: run.state || (run.controller.signal.aborted ? "cancelled" : "running"), persistence: run.persistence || runtimeOptions.persistence || null }))]) }] };
-  if (name === "minitok_run_get") { const run = runtimeOptions.runs?.get?.(args.run_id) || (runtimeOptions.recoveredRuns || []).find(item => item.run_id === args.run_id); if (!run) throw Object.assign(new Error("Run not found"), { code: "RUN_NOT_FOUND" }); return { content: [{ type: "text", text: JSON.stringify({ run_id: run.runId || run.run_id, state: run.state || "unknown", recovery: run.recovery || undefined, persistence: run.persistence || runtimeOptions.persistence || null }) }] }; }
+  if (name === "minitok_run_get") { const run = runtimeOptions.runs?.get?.(args.run_id) || (runtimeOptions.recoveredRuns || []).find(item => item.run_id === args.run_id); if (!run) throw Object.assign(new Error("Run not found"), { code: "RUN_NOT_FOUND" }); const result = { run_id: run.runId || run.run_id, state: run.state || "unknown", recovery: run.recovery || undefined, persistence: run.persistence || runtimeOptions.persistence || null, ...(run.result !== undefined ? { result: run.result } : {}) }; return { content: [{ type: "text", text: JSON.stringify(result) }], structuredContent: result }; }
   if (name === "minitok_run_cancel") { const run = runtimeOptions.runs?.get?.(args.run_id); if (!run) throw Object.assign(new Error("Run not found"), { code: "RUN_NOT_FOUND" }); run.controller.abort(); run.state = "cancelled"; return { content: [{ type: "text", text: JSON.stringify({ run_id: args.run_id, state: "cancelled" }) }] }; }
   if (["minitok_approve_run", "minitok_reject_run"].includes(name)) { const approvalFile = requireApprovalPath(args.approval_file, runtimeOptions.workspaceRoot || process.cwd()); if (typeof runtimeOptions.writeApproval !== "function") throw Object.assign(new Error("Approval transport unavailable"), { code: "APPROVAL_UNAVAILABLE" }); const decision = name === "minitok_approve_run" ? "approve" : "reject"; runtimeOptions.writeApproval(approvalFile, decision, { nonce: args.nonce, runId: args.run_id }); return { content: [{ type: "text", text: JSON.stringify({ decision, approval_file: approvalFile }) }] }; }
   switch (name) {
@@ -217,7 +217,7 @@ async function getToolHandler(name, args, services, runtimeOptions = {}) {
     })();
     // A handler that already decided the call failed keeps its flag: overwriting
     // it unconditionally made `isError` impossible to set from a handler.
-    return { ...result, structuredContent, isError: result.isError === true };
+    return { ...result, structuredContent, isError: /** @type {any} */ (result).isError === true };
   } catch (error) {
     const code = error.code || "MCP_TOOL_ERROR";
     const structuredContent = { schema_version: 1, error: { code, message: error.message } };

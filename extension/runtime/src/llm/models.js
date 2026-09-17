@@ -94,6 +94,12 @@ function findEscalationModel(providerName, targetTier) {
   return matches.reduce((best, m) => (m.max_output > best.max_output ? m : best));
 }
 
+/** Normalize an OpenAI-compatible base URL before appending its API path. */
+function modelsEndpoint(baseUrl) {
+  const normalized = String(baseUrl || "").replace(/\/+$/, "");
+  return normalized.toLowerCase().endsWith("/v1") ? `${normalized}/models` : `${normalized}/v1/models`;
+}
+
 /** Fetch model IDs from OpenAI-compatible /v1/models */
 async function fetchOpenAIModels(baseUrl, apiKey, auth, providerName = "openai") {
   const { fetchWithTimeout } = require("./provider");
@@ -101,7 +107,7 @@ async function fetchOpenAIModels(baseUrl, apiKey, auth, providerName = "openai")
     const resolved = await authManager.resolve(providerName, { api_key: apiKey, ...(auth ? { auth } : {}) });
     const headers = { ...(resolved.headers || {}) };
     if (resolved.token && !Object.keys(headers).some(header => header.toLowerCase() === "authorization")) headers.Authorization = `Bearer ${resolved.token}`;
-    const res = await fetchWithTimeout(`${baseUrl}/v1/models`, { headers }, 10000);
+    const res = await fetchWithTimeout(modelsEndpoint(baseUrl), { headers }, 10000);
     if (!res.ok) return [];
     const data = await res.json();
     return (data.data || []).map(m => m.id).sort();

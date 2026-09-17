@@ -3,7 +3,7 @@ import { spawn, execFile, ChildProcessWithoutNullStreams } from "node:child_proc
 import { minitokPanel } from "./panel";
 import { spawnSpec, requireTrustedWorkspace } from "./workspace";
 import { minitokSidebar } from "./sidebar";
-import { cliPath, workspacePath, autoApprove, isCliCompatible, mcpCommand, mcpEnvironment, configuredMcpScopes, ensureMcpAuthToken, spawnOptionsFor } from "./workspace";
+import { cliPath, workspacePath, autoApprove, isCliCompatible, mcpCommand, mcpEnvironment, configuredMcpScopes, ensureMcpAuthToken, spawnOptionsFor, appendBoundedOutput } from "./workspace";
 import { checkEntitlement, EntitlementState } from "./entitlement";
 import { redactSensitiveText } from "./redaction";
 
@@ -68,8 +68,8 @@ function runCli(cliPath: string, args: string[], options: RunCliOptions = {}): P
     };
     timer = setTimeout(() => { killProcessTree(child); finish(new Error(`minitok timed out after ${Math.round(timeoutMs / 1000)}s`)); }, timeoutMs);
     cancellation = options.token?.onCancellationRequested(() => { killProcessTree(child); finish(new Error("minitok run cancelled")); });
-    child.stdout.on("data", chunk => { stdout += chunk.toString(); });
-    child.stderr.on("data", chunk => { stderr += chunk.toString(); });
+    child.stdout.on("data", chunk => { stdout = appendBoundedOutput(stdout, chunk.toString()); });
+    child.stderr.on("data", chunk => { stderr = appendBoundedOutput(stderr, chunk.toString()); });
     child.on("error", error => finish(error));
     child.on("close", code => code === 0 ? finish(null, stdout) : finish(new Error(stderr || stdout || `minitok exited with code ${code}`)));
   });

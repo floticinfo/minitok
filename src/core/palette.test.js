@@ -120,7 +120,7 @@ test("the shipped brand assets carry the primary colour", () => {
   }
   const manifest = JSON.parse(read("extension", "package.json"));
   assert.equal(manifest.icon, "media/minitok.png", "the Marketplace icon is the rasterized tile");
-  assert.equal(manifest.contributes.viewsContainers.activitybar[0].icon, "media/minitok.svg", "the activity bar uses the transparent glyph, not the tile");
+  assert.equal(manifest.contributes.viewsContainers.activitybar[0].icon, "media/minitok-activitybar.svg", "the activity bar uses the theme-adaptive icon, not the marketplace tile");
   // `galleryBanner.color` is the one brand surface that cannot carry a comment
   // (the file is strict JSON), so the assertion below is its only guard.
   assert.equal(manifest.galleryBanner.color.toUpperCase(), BRAND.primary.toUpperCase(), "the Marketplace banner must use the primary colour");

@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { cliPath, workspacePath, spawnSpec, spawnOptionsFor } from "./workspace";
+import { cliPath, workspacePath, spawnSpec, spawnOptionsFor, appendBoundedOutput } from "./workspace";
 
 export type EntitlementState = { checked: boolean; allowed: boolean; plan?: string | null; message?: string; cached?: boolean };
 
@@ -37,8 +37,8 @@ export function checkEntitlement(): Promise<EntitlementState> {
     let stdout = "";
     let stderr = "";
     const timer = setTimeout(() => { child.kill(); settle({ checked: true, allowed: false, message: "Entitlement check timed out" }); }, 30000);
-    child.stdout.on("data", chunk => { stdout += chunk.toString(); });
-    child.stderr.on("data", chunk => { stderr += chunk.toString(); });
+    child.stdout.on("data", chunk => { stdout = appendBoundedOutput(stdout, chunk.toString()); });
+    child.stderr.on("data", chunk => { stderr = appendBoundedOutput(stderr, chunk.toString()); });
     child.on("error", error => { clearTimeout(timer); settle({ checked: true, allowed: false, message: stderr || error.message }); });
     child.on("close", code => {
       clearTimeout(timer);

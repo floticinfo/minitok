@@ -62,7 +62,13 @@ test("concurrent minitok_run requests cannot exceed maxConcurrentRuns", async ()
     const limited = replies.filter(reply => errorCode(reply) === "RUN_LIMIT_REACHED");
     assert.equal(limited.length, 1, "exactly one request must be rejected by the run limit");
     assert.equal(limited[0].id, 3, "the later request must be the one rejected");
-    assert.equal(runningCount(runtime), 0, "no run may be left marked running after the requests settle");
+    const active = [...runtime._runs.values()].find(run => run.state === "running");
+    if (active) {
+      active.controller.abort();
+      await active.promise.catch(() => {});
+    }
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(runningCount(runtime), 0, "no run may be left marked running after cleanup");
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 

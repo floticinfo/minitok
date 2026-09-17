@@ -1,9 +1,9 @@
 import * as vscode from "vscode";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import { spawn, ChildProcessWithoutNullStreams, execFile, execFileSync } from "node:child_process";
+import { spawn, ChildProcessWithoutNullStreams, execFile } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { cliPath, workspacePath, requireTrustedWorkspace, autoApprove, spawnSpec, spawnOptionsFor } from "./workspace";
+import { cliPath, workspacePath, requireTrustedWorkspace, autoApprove, spawnSpec, spawnOptionsFor, appendBoundedOutput, workspaceRelativePath } from "./workspace";
 import { checkEntitlement, invalidateEntitlementCache, requireEntitlement } from "./entitlement";
 import { deviceLogin, logoutExtension, refreshExtensionSession, readExtensionSession, authErrorText } from "./device-auth";
 import { redactSensitiveText } from "./redaction";
@@ -19,7 +19,7 @@ const redactPanelOutput = redactSensitiveText;
  */
 function killProcessTree(child: ChildProcessWithoutNullStreams) {
   if (process.platform === "win32") {
-    try { execFileSync("taskkill", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true, timeout: 10000 }); } catch { child.kill(); }
+    execFile("taskkill", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true, timeout: 10000 }, error => { if (error) child.kill(); });
   } else {
     try { process.kill(-child.pid!, "SIGTERM"); } catch { child.kill("SIGTERM"); }
   }
@@ -48,8 +48,8 @@ function runCli(cliPath: string, args: string[], cwd: string | undefined, onProc
       // fires and the panel would stay "run active" forever.
       finish(new Error("minitok timed out after 30 minutes"));
     }, CLI_TIMEOUT_MS);
-    child.stdout.on("data", chunk => { stdout += chunk.toString(); });
-    child.stderr.on("data", chunk => { stderr += chunk.toString(); });
+    child.stdout.on("data", chunk => { stdout = appendBoundedOutput(stdout, chunk.toString()); });
+    child.stderr.on("data", chunk => { stderr = appendBoundedOutput(stderr, chunk.toString()); });
     child.on("error", error => finish(error));
     child.on("close", code => { if (code === 0) finish(); else finish(new Error(stderr || stdout || `minitok exited with code ${code}`)); });
   });
@@ -147,8 +147,9 @@ export class minitokPanel {
         await requireEntitlement();
         if (!message.task?.trim()) throw new Error("Task description required");
         if (this.process) throw new Error("A minitok run is already active");
-        const evidencePath = vscode.workspace.getConfiguration("minitok").get<string>("evidencePath", ".minitok/evidence/runs/latest.json").trim() || ".minitok/evidence/runs/latest.json";
-        const args = ["run", message.task, "--repo", cwd!, "--evidence-path", evidencePath];
+        const evidenceSetting = vscode.workspace.getConfiguration("minitok").get<string>("evidencePath", ".minitok/evidence/runs/latest.json").trim() || ".minitok/evidence/runs/latest.json";
+        workspaceRelativePath(cwd!, evidenceSetting, "evidencePath");
+        const args = ["run", message.task, "--repo", cwd!, "--evidence-path", evidenceSetting];
         if (message.command === "dry-run") args.push("--dry-run");
         else if (autoApprove()) args.push("--auto-accept");
         else {

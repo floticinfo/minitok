@@ -143,13 +143,11 @@ test("a failed run is recorded as failed, not completed", async () => {
   const box = runtimeFixture(async () => { throw new Error("pipeline exploded"); });
   try {
     await box.initialize();
-    const run = await box.send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "minitok_run", arguments: { task: "failing task", repo: box.root } } });
-    assert.equal(run.result.isError, true, "a throwing pipeline must be reported as a tool error");
-    const envelope = box.payload(run);
-    // The failure envelope carries the error instead of a run state; the bug was
-    // that the state recorded behind it claimed success.
-    assert.equal(envelope.error.code, "MCP_TOOL_ERROR", `unexpected envelope: ${JSON.stringify(envelope)}`);
-    assert.equal(envelope.state, undefined, "a failed run must not receive a completed envelope");
+    const started = await box.send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "minitok_run", arguments: { task: "failing task", repo: box.root } } });
+    const startedPayload = box.payload(started);
+    assert.equal(started.result.isAsync, true);
+    assert.equal(startedPayload.state, "running");
+    await box.runtime._runs.get(startedPayload.run_id).promise.catch(() => {});
 
     const listed = await box.send({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "minitok_run_list", arguments: {} } });
     const runs = box.payload(listed);
@@ -169,8 +167,11 @@ test("a successful run is still recorded as completed", async () => {
   const box = runtimeFixture(async () => ({ success: true, cycles: [] }));
   try {
     await box.initialize();
-    const run = await box.send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "minitok_run", arguments: { task: "working task", repo: box.root } } });
-    assert.equal(run.result.isError, false);
+    const started = await box.send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "minitok_run", arguments: { task: "working task", repo: box.root } } });
+    const startedPayload = box.payload(started);
+    assert.equal(started.result.isAsync, true);
+    assert.equal(startedPayload.state, "running");
+    await box.runtime._runs.get(startedPayload.run_id).promise;
     const listed = await box.send({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "minitok_run_list", arguments: {} } });
     assert.equal(box.payload(listed)[0].state, "completed");
   } finally { box.cleanup(); }
@@ -185,11 +186,11 @@ test("a pipeline outcome of success:false is recorded and reported as failed", a
   const box = runtimeFixture(async () => ({ success: false, cycles: [{ status: "rejected_by_user" }] }));
   try {
     await box.initialize();
-    const run = await box.send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "minitok_run", arguments: { task: "rejected task", repo: box.root } } });
-    assert.equal(run.result.isError, true, "a failed run must not be reported as a successful tool call");
-    const envelope = box.payload(run);
-    assert.equal(envelope.state, "failed");
-    assert.equal(envelope.result.success, false, "the full result must still reach the client");
+    const started = await box.send({ jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "minitok_run", arguments: { task: "rejected task", repo: box.root } } });
+    const startedPayload = box.payload(started);
+    assert.equal(started.result.isAsync, true);
+    assert.equal(startedPayload.state, "running");
+    await box.runtime._runs.get(startedPayload.run_id).promise;
 
     const listed = await box.send({ jsonrpc: "2.0", id: 3, method: "tools/call", params: { name: "minitok_run_list", arguments: {} } });
     const runs = box.payload(listed);
