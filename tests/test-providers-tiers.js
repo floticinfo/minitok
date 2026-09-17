@@ -151,6 +151,25 @@ describe("Provider selection by role", () => {
     assert.equal(resolveProviderName(config, "plan"), "openai");
   });
 
+  it("materializes the extension custom-provider environment contract", () => {
+    const { loadConfig } = require("../src/config/loader");
+    const previousDefault = process.env.MINITOK_DEFAULT_PROVIDER;
+    const previousBase = process.env.MINITOK_CUSTOM_BASE_URL;
+    const previousLegacy = process.env.MINITOK_OPENAI_COMPATIBLE_BASE_URL;
+    process.env.MINITOK_DEFAULT_PROVIDER = "custom";
+    process.env.MINITOK_CUSTOM_BASE_URL = "https://gateway.example/v1";
+    delete process.env.MINITOK_OPENAI_COMPATIBLE_BASE_URL;
+    try {
+      const config = loadConfig("/definitely-missing-minitok.yml");
+      assert.equal(config.default_provider, "custom");
+      assert.deepEqual(config.providers.custom, { base_url: "https://gateway.example/v1", api_key_env: "OPENAI_API_KEY" });
+    } finally {
+      if (previousDefault === undefined) delete process.env.MINITOK_DEFAULT_PROVIDER; else process.env.MINITOK_DEFAULT_PROVIDER = previousDefault;
+      if (previousBase === undefined) delete process.env.MINITOK_CUSTOM_BASE_URL; else process.env.MINITOK_CUSTOM_BASE_URL = previousBase;
+      if (previousLegacy === undefined) delete process.env.MINITOK_OPENAI_COMPATIBLE_BASE_URL; else process.env.MINITOK_OPENAI_COMPATIBLE_BASE_URL = previousLegacy;
+    }
+  });
+
   it("uses a CLI override for every role", () => {
     const { resolveProviderName } = require("../src/config/loader");
     const config = { default_provider: "default", roles: { plan: { provider: "plan" } } };

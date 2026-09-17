@@ -29,7 +29,11 @@ function updateJson(file, transform) {
   const before = readFileSync(absolute, "utf8");
   const value = JSON.parse(before);
   transform(value);
-  const after = `${JSON.stringify(value, null, 2)}\n`;
+  // Preserve the repository file's newline style. On Windows, comparing a CRLF
+  // JSON file with an LF-only serialization falsely reports metadata drift even
+  // when every version field is already synchronized.
+  const eol = before.includes("\r\n") ? "\r\n" : "\n";
+  const after = `${JSON.stringify(value, null, 2).replaceAll("\n", eol)}${eol}`;
   if (before !== after && !checkOnly) writeFileSync(absolute, after, "utf8");
   return before !== after;
 }

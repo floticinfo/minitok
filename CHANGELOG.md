@@ -4,7 +4,10 @@
 
 ### Fixed
 
-- Fixed OpenAI-compatible provider preflight URL normalization so `/v1` endpoints do not probe `/v1/v1/models`.
+- Fixed OpenAI-compatible provider and model-discovery URL normalization so `/v1` endpoints do not probe `/v1/v1/models`.
+- Added the Extension custom-provider environment contract (`MINITOK_CUSTOM_BASE_URL` plus `OPENAI_API_KEY`) without persisting credentials.
+- Strengthened run-evidence and Extension redaction for JWTs, Basic auth, provider keys, and URL credentials.
+- Bounded Extension subprocess output, rotated oversized audit logs, and allowlisted Extension CLI subprocess environments.
 - Added regression coverage for CamelStream-compatible `/v1/models` probing.
 - Reconciled the release candidate from the post-rc.4 checkpoint without moving the existing `v1.4.7-rc.4` tag.
 

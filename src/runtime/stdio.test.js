@@ -137,6 +137,22 @@ describe("stdio run registry and scopes", () => {
     }
   });
 
+  it("completes initialize and advertises only tools allowed by the granted scope", async () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mt-stdio-handshake-"));
+    try {
+      const { runtime, replies } = harness(root, "read");
+      await runtime._handleMessage({ jsonrpc: "2.0", id: 0, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "fixture-host", version: "test" }, authToken: "token" } });
+      assert.equal(replies.find(message => message.id === 0).result.protocolVersion, "2024-11-05");
+      await runtime._handleMessage({ jsonrpc: "2.0", method: "notifications/initialized", params: {} });
+      await runtime._handleMessage({ jsonrpc: "2.0", id: 1, method: "tools/list", params: { authToken: "token" } });
+      const tools = replies.find(message => message.id === 1).result.tools;
+      assert.ok(tools.length > 0, "read scope must expose read-only tools");
+      assert.equal(tools.some(tool => tool.name === "minitok_run"), false);
+      assert.equal(tools.some(tool => tool.name === "minitok_task"), false);
+      assert.equal(tools.every(tool => ["minitok_run_list", "minitok_run_get", "minitok_knowledge_query", "minitok_analyze_failures", "minitok_recommend_policy", "minitok_compact_context", "minitok_collect_evidence", "minitok_status"].includes(tool.name)), true);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
+
   it("requires the verification scope before a run executes repository code", async () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "mt-stdio-scope-"));
     try {

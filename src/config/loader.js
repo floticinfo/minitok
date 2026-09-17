@@ -14,6 +14,9 @@ const { normalizeProvider } = require("../auth/aliases");
 
 const ENV_ALLOWLIST = new Set([
   "minitok_offline", "minitok_default_provider", "minitok_model", "minitok_server_url",
+  // Extension custom-provider contract. The legacy name remains accepted so
+  // existing installations do not silently lose their endpoint.
+  "minitok_custom_base_url", "minitok_openai_compatible_base_url",
   "minitok_plan_provider", "minitok_plan_model", "minitok_review_provider", "minitok_review_model",
   "minitok_work_provider", "minitok_work_model", "minitok_intel_provider", "minitok_intel_model",
   "minitok_project_name", "minitok_project_stack",
@@ -121,6 +124,8 @@ function loadEnvVars() {
     validation_timeout_ms: ["validation", "timeout_ms"],
     validation_confidence_threshold: ["validation", "confidence_threshold"],
     validation_max_changed_files: ["validation", "max_changed_files"],
+    custom_base_url: ["custom_base_url"],
+    openai_compatible_base_url: ["openai_compatible_base_url"],
   };
   for (const [key, value] of Object.entries(process.env)) {
     const normalizedKey = key.toLowerCase();
@@ -145,6 +150,21 @@ function loadEnvVars() {
       cur[parts[parts.length - 1]] = coerceValue(value);
       result.roles = deepMerge(result.roles, roleNested);
     }
+  }
+  // The extension stores the custom endpoint in SecretStorage and passes only
+  // the endpoint through the child-process environment. Materialize a normal
+  // provider entry here so every CLI/core entry point resolves the same config;
+  // the key itself remains outside config and is read from OPENAI_API_KEY.
+  const customBaseUrl = process.env.MINITOK_CUSTOM_BASE_URL || process.env.MINITOK_OPENAI_COMPATIBLE_BASE_URL;
+  if (typeof customBaseUrl === "string" && customBaseUrl.trim()) {
+    result.providers = {
+      ...(result.providers || {}),
+      custom: {
+        ...((result.providers && result.providers.custom) || {}),
+        base_url: customBaseUrl.trim(),
+        api_key_env: "OPENAI_API_KEY",
+      },
+    };
   }
   return result;
 }

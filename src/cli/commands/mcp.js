@@ -84,12 +84,35 @@ function configuredScopes(file) {
   }
 }
 
+/**
+ * Validate the executable contract without launching a host process. MCP hosts
+ * invoke the configured command directly; a JavaScript entrypoint must therefore
+ * be paired with Node, not with an editor executable such as Code.exe.
+ */
+function configuredEntryContract(file) {
+  try {
+    const data = readConfig(file);
+    const entry = serverContainer(data).value?.minitok;
+    if (!entry || typeof entry !== "object") return { contract: "unknown", contract_reason: "minitok server entry is missing" };
+    const command = typeof entry.command === "string" ? entry.command.trim() : "";
+    const args = Array.isArray(entry.args) ? entry.args.filter(value => typeof value === "string") : [];
+    if (!command || !args.length) return { contract: "invalid", contract_reason: "MCP entry requires a command and at least one argument" };
+    const commandName = path.basename(command).toLowerCase();
+    const jsEntry = args.some(arg => /(?:^|[\\/])(?:stdio-entry|cline-compat)\.js$/i.test(arg));
+    if (jsEntry && !["node", "node.exe"].includes(commandName)) return { contract: "invalid", contract_reason: `JavaScript MCP entry must run with Node, not ${path.basename(command)}` };
+    if (jsEntry) return { contract: "valid", contract_reason: null };
+    return { contract: "unknown", contract_reason: "MCP command is not a recognized minitok JavaScript entrypoint" };
+  } catch (error) {
+    return { contract: "invalid", contract_reason: error.message };
+  }
+}
+
 function detect() {
   const candidates = hostCandidates();
   return Object.entries(candidates).map(([name, list]) => {
     const file = list.find(candidate => fs.existsSync(candidate)) || list[0];
     const row = { name, file, detected: fs.existsSync(file), candidates: list };
-    return row.detected ? { ...row, ...configuredScopes(file) } : row;
+    return row.detected ? { ...row, ...configuredScopes(file), ...configuredEntryContract(file) } : row;
   });
 }
 
@@ -428,7 +451,7 @@ function register(program) {
     .option("--server <url>", "minitok server URL")
     .option("--json")
     .action(opts => {
-      /** @type {Array<{ name: string, file: string, detected: boolean, candidates?: string[], scopes?: string[], scopes_explicit?: boolean, scopes_source?: string, invalid_scopes?: string[], scope_error?: string, reason?: string | null, action?: string | null }>} */
+      /** @type {Array<{ name: string, file: string, detected: boolean, candidates?: string[], scopes?: string[], scopes_explicit?: boolean, scopes_source?: string, invalid_scopes?: string[], scope_error?: string, contract?: string, contract_reason?: string | null, reason?: string | null, action?: string | null }>} */
       const rows = detect();
       rows.unshift({ name: "server", file: resolveServerUrl({ cliServer: opts.server }), detected: true });
       // The token row explains a class of silent failure: an MCP host is configured
@@ -447,6 +470,9 @@ function register(program) {
           continue;
         }
         console.log(`${row.name}: ${row.detected ? "detected" : "not found"} (${row.file})`);
+        if (row.detected && row.contract) {
+          console.log(`  contract: ${row.contract}${row.contract_reason ? ` (${row.contract_reason})` : ""}`);
+        }
         if (row.detected && row.scopes) {
           console.log(`  scopes: ${row.scopes.join(",") || "none"} (${row.scopes_source || "default"})`);
           if (row.invalid_scopes?.length) console.log(`  invalid scopes: ${row.invalid_scopes.join(",")}`);
@@ -584,4 +610,4 @@ function register(program) {
       console.log(JSON.stringify({ status: "ok", path: record.path, expires_at: new Date(record.expires_at).toISOString() }));
     });
 }
-module.exports = { register, detect, configuredScopes, readConfig, writeConfig, configs, serverContainer, configuredServerUrl, planChange, readLock, processIsRunning, hostCandidates, resolveHost, configuredTokenFiles, runMcpOnboarding, unconfiguredHosts };
+module.exports = { register, detect, configuredScopes, configuredEntryContract, readConfig, writeConfig, configs, serverContainer, configuredServerUrl, planChange, readLock, processIsRunning, hostCandidates, resolveHost, configuredTokenFiles, runMcpOnboarding, unconfiguredHosts };

@@ -69,6 +69,24 @@ describe("Models", () => {
     assert.ok(Array.isArray(result));
   });
 
+  it("does not duplicate /v1 when discovering OpenAI-compatible models", async () => {
+    const { fetchOpenAIModels } = require("../src/llm/models");
+    const provider = require("../src/llm/provider");
+    const original = provider.fetchWithTimeout;
+    const requests = [];
+    provider.fetchWithTimeout = async url => { requests.push(String(url)); return { ok: false }; };
+    try {
+      await fetchOpenAIModels("https://gateway.example/v1/", "key");
+      await fetchOpenAIModels("https://gateway.example", "key");
+      assert.deepEqual(requests, [
+        "https://gateway.example/v1/models",
+        "https://gateway.example/v1/models",
+      ]);
+    } finally {
+      provider.fetchWithTimeout = original;
+    }
+  });
+
   it("fetchGoogleModels returns array", async () => {
     const { fetchGoogleModels } = require("../src/llm/models");
     const result = await fetchGoogleModels("https://generativelanguage.googleapis.com", "");

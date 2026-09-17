@@ -63,6 +63,46 @@ function remoteError(message, classification, details = {}) {
   return Object.assign(new Error(message), { code: "REMOTE_MCP_ERROR", classification, ...details });
 }
 
+/**
+ * Fetch OAuth metadata with a stable diagnostic that identifies which discovery
+ * document failed. The endpoint URL is safe to report (credentials are rejected
+ * by validateMetadataUrl), while the response body is deliberately not retained.
+ */
+async function fetchOAuthMetadata(url, stage, timeoutMs) {
+  let response;
+  try {
+    response = await fetchWithTimeout(url, { headers: { Accept: "application/json" }, redirect: "error" }, timeoutMs);
+  } catch (error) {
+    throw remoteError(`Remote MCP OAuth ${stage} metadata request failed`, "auth", {
+      code: "REMOTE_OAUTH_METADATA_REQUEST_FAILED",
+      metadata_stage: stage,
+      metadata_url: url,
+      cause: error,
+    });
+  }
+  let metadata;
+  try {
+    metadata = await response.json();
+  } catch (error) {
+    throw remoteError(`Remote MCP OAuth ${stage} metadata returned invalid JSON`, "auth", {
+      code: "REMOTE_OAUTH_METADATA_INVALID_JSON",
+      metadata_stage: stage,
+      metadata_url: url,
+      status: response.status,
+      cause: error,
+    });
+  }
+  if (!response.ok) {
+    throw remoteError(`Remote MCP OAuth ${stage} metadata endpoint returned HTTP ${response.status}`, "auth", {
+      code: response.status === 404 ? `REMOTE_OAUTH_${stage.toUpperCase()}_METADATA_NOT_FOUND` : "REMOTE_OAUTH_METADATA_HTTP_ERROR",
+      metadata_stage: stage,
+      metadata_url: url,
+      status: response.status,
+    });
+  }
+  return metadata;
+}
+
 /** Extract RFC 6750 resource_metadata from common WWW-Authenticate forms. */
 function extractResourceMetadata(challenge) {
   const value = String(challenge || "");
@@ -143,15 +183,13 @@ class RemoteMcpClient {
     try {
       const resourceUrl = new URL(this.url);
       const trustedMetadataUrl = validateMetadataUrl(metadataUrl, resourceUrl);
-      const response = await fetchWithTimeout(trustedMetadataUrl, { headers: { Accept: "application/json" }, redirect: "error" }, this.timeoutMs);
-      metadata = await response.json();
-      if (!response.ok || !metadata?.authorization_servers?.[0]) throw new Error("Protected-resource metadata is invalid");
+      metadata = await fetchOAuthMetadata(trustedMetadataUrl, "protected_resource", this.timeoutMs);
+      if (!metadata?.authorization_servers?.[0]) throw remoteError("Remote MCP protected-resource metadata is missing authorization_servers", "auth", { code: "REMOTE_OAUTH_PROTECTED_RESOURCE_METADATA_INVALID", metadata_stage: "protected_resource", metadata_url: trustedMetadataUrl });
       const serverUrl = new URL(metadata.authorization_servers[0]);
       if (serverUrl.protocol !== "https:" || serverUrl.username || serverUrl.password || isPrivateOrLoopbackHost(serverUrl.hostname) || (serverUrl.hostname !== resourceUrl.hostname && !TRUSTED_MCP_AUTH_HOSTS.has(serverUrl.hostname))) throw remoteError("Remote MCP authorization server is not trusted", "auth", { code: "REMOTE_OAUTH_UNTRUSTED_AUTHORITY" });
       const serverMetadataUrl = validateMetadataUrl(serverUrl.pathname.includes("/.well-known/") ? serverUrl.toString() : `${serverUrl.toString().replace(/\/$/, "")}/.well-known/oauth-authorization-server`, resourceUrl);
-      const serverResponse = await fetchWithTimeout(serverMetadataUrl, { headers: { Accept: "application/json" }, redirect: "error" }, this.timeoutMs);
-      const serverMetadata = await serverResponse.json();
-      if (!serverResponse.ok || !serverMetadata.authorization_endpoint || !serverMetadata.token_endpoint) throw new Error("Authorization-server metadata is invalid");
+      const serverMetadata = await fetchOAuthMetadata(serverMetadataUrl, "authorization_server", this.timeoutMs);
+      if (!serverMetadata.authorization_endpoint || !serverMetadata.token_endpoint) throw remoteError("Remote MCP authorization-server metadata is missing authorization_endpoint or token_endpoint", "auth", { code: "REMOTE_OAUTH_AUTHORIZATION_SERVER_METADATA_INVALID", metadata_stage: "authorization_server", metadata_url: serverMetadataUrl });
       const authorizationEndpoint = validateMetadataUrl(serverMetadata.authorization_endpoint, resourceUrl);
       const tokenEndpoint = validateMetadataUrl(serverMetadata.token_endpoint, resourceUrl);
       const token = await new OAuthFlow({ openBrowser: this.accountOptions.openBrowser, port: this.accountOptions.port }).authorize("mcp", { authorize_url: authorizationEndpoint, token_url: tokenEndpoint, client_id: this.clientId, scope: metadata.scopes_supported?.[0] || "read" });
@@ -159,7 +197,10 @@ class RemoteMcpClient {
       this.tokenStore.save(this.resourceKey, { resource: this.url, ...token, expires_at: token.expires_at || new Date(Date.now() + 2592000000).toISOString() });
       return this.token;
     } catch (error) {
-      if (error?.code === "REMOTE_MCP_ERROR" || error?.code === "REMOTE_OAUTH_UNTRUSTED_AUTHORITY") throw error;
+      // Preserve actionable discovery diagnostics (especially HTTP 404) at the
+      // top level. Callers should not have to inspect a nested cause to learn
+      // which metadata document is missing.
+      if (error?.code === "REMOTE_MCP_ERROR" || String(error?.code || "").startsWith("REMOTE_OAUTH_")) throw error;
       throw remoteError("Remote MCP OAuth discovery failed", "auth", { code: "REMOTE_OAUTH_DISCOVERY_FAILED", cause: error });
     }
   }

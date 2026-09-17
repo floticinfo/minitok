@@ -31,8 +31,15 @@ function redact(value, key = '') {
   }
   if (typeof value === 'string') {
     return value
-      .replace(/(api[_-]?key|token|secret|password|license)[=:]\s*[^\s,]+/gi, '$1=[REDACTED]')
-      .replace(/Bearer\s+[^\s]+/gi, 'Bearer [REDACTED]');
+      // Named credentials, including access/refresh tokens and client secrets.
+      .replace(/((?:api[_-]?key|token|secret|password|license|authorization|cookie|access[_-]?token|refresh[_-]?token|client[_-]?secret)\s*[=:]\s*)[^\s,;&]+/gi, '$1[REDACTED]')
+      // Header credentials and common provider token shapes.
+      .replace(/Bearer\s+[^\s]+/gi, 'Bearer [REDACTED]')
+      .replace(/Basic\s+[A-Za-z0-9+/=]+/gi, 'Basic [REDACTED]')
+      .replace(/\b(?:sk-(?:proj-|ant-)?[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{12,}|xox[baprs]-[A-Za-z0-9-]{12,})\b/g, '[REDACTED]')
+      .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, '[REDACTED]')
+      // Remove URL userinfo without hiding the destination host.
+      .replace(/(https?:\/\/)[^\s/@:]+(?::[^\s/@]*)?@([^\s/]+)/gi, '$1[REDACTED]@$2');
   }
   return value;
 }

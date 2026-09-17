@@ -204,6 +204,8 @@ providers:
 
 A provider name without an endpoint is refused with `Unknown LLM provider: <name>. Set base_url for custom providers.`, and `api_key_env` must name an environment variable rather than hold a literal key, so a typo is reported instead of leaving the provider without credentials.
 
+The VS Code Extension's custom-provider settings use the child-process contract `MINITOK_CUSTOM_BASE_URL` plus `OPENAI_API_KEY`; the older `MINITOK_OPENAI_COMPATIBLE_BASE_URL` name remains accepted for compatibility. The CLI materializes this into `providers.custom` without writing the endpoint key or credential into workspace config. Both `https://host` and `https://host/v1` endpoint forms are supported for model discovery.
+
 After purchasing, run `minitok activate <activation-key>` once. The key is bound to the current installation; use `minitok doctor` to diagnose missing, expired, or server-rejected entitlements.
 
 Every non-dry-run pipeline execution requires entitlement authorization before provider work. The legacy `skipEntitlementCheck` option is rejected; it is not a supported public or production control. Every non-dry-run pipeline execution also requires the portable deterministic verification gate `VERIFY_CMD.mjs`. The command must exit with status 0 for the gate to pass; the LLM review is supplementary and cannot replace this gate. `VERIFY_CMD.sh` is retained only as a compatibility wrapper where a POSIX shell is available. `minitok migrate` creates a portable npm/pytest template.

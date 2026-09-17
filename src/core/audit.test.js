@@ -81,4 +81,17 @@ describe("auditRead", () => {
       assert.deepEqual(auditRead(file, 10).map(e => e.n), [1, 2]);
     } finally { clean(dir); }
   });
+
+  it("rotates oversized logs and keeps the newest record active", () => {
+    const { dir, file } = tmpFile();
+    try {
+      const { AUDIT_MAX_BYTES, AUDIT_ROTATIONS } = require("./audit");
+      fs.writeFileSync(file, `${JSON.stringify({ old: true, padding: "x".repeat(AUDIT_MAX_BYTES)})}\n`);
+      const result = auditLog({ newest: true }, file);
+      assert.equal(result.persisted, true);
+      assert.equal(auditRead(file, 1)[0].newest, true);
+      assert.equal(fs.existsSync(`${file}.1`), true);
+      assert.equal(fs.existsSync(`${file}.${AUDIT_ROTATIONS + 1}`), false);
+    } finally { clean(dir); }
+  });
 });

@@ -119,6 +119,42 @@ test("an expired cached OAuth token is not reused", () => {
   }
 });
 
+test("protected-resource metadata 404 identifies the missing discovery document", async () => {
+  const originalFetch = global.fetch;
+  try {
+    global.fetch = async () => response(404, { error: "not found" });
+    const client = new RemoteMcpClient({ url: "https://service.example/mcp", token: "jwt" });
+    await assert.rejects(() => client.authorizeFromMetadata("https://service.example/.well-known/oauth-protected-resource"), error => {
+      assert.equal(error.code, "REMOTE_OAUTH_PROTECTED_RESOURCE_METADATA_NOT_FOUND");
+      assert.equal(error.metadata_stage, "protected_resource");
+      assert.equal(error.status, 404);
+      assert.match(error.message, /protected_resource metadata endpoint returned HTTP 404/);
+      return true;
+    });
+  } finally { global.fetch = originalFetch; }
+});
+
+test("authorization-server metadata 404 identifies the second discovery document", async () => {
+  const originalFetch = global.fetch;
+  let calls = 0;
+  try {
+    global.fetch = async () => {
+      calls += 1;
+      return calls === 1
+        ? response(200, { authorization_servers: ["https://service.example/oauth"] })
+        : response(404, { error: "not found" });
+    };
+    const client = new RemoteMcpClient({ url: "https://service.example/mcp", token: "jwt" });
+    await assert.rejects(() => client.authorizeFromMetadata("https://service.example/.well-known/oauth-protected-resource"), error => {
+      assert.equal(error.code, "REMOTE_OAUTH_AUTHORIZATION_SERVER_METADATA_NOT_FOUND");
+      assert.equal(error.metadata_stage, "authorization_server");
+      assert.equal(error.status, 404);
+      assert.match(error.message, /authorization_server metadata endpoint returned HTTP 404/);
+      return true;
+    });
+  } finally { global.fetch = originalFetch; }
+});
+
 test("a 401 with an expired cached token enters the OAuth refresh path", async () => {
   const fs = require("node:fs");
   const os = require("node:os");
@@ -137,7 +173,11 @@ test("a 401 with an expired cached token enters the OAuth refresh path", async (
       // Deliberately invalid discovery metadata: the point is that discovery starts.
       return response(200, { authorization_servers: [] });
     };
-    await assert.rejects(() => client.request("tools/list"), error => error.code === "REMOTE_OAUTH_DISCOVERY_FAILED");
+    await assert.rejects(() => client.request("tools/list"), error => {
+      assert.equal(error.code, "REMOTE_OAUTH_PROTECTED_RESOURCE_METADATA_INVALID");
+      assert.equal(error.metadata_stage, "protected_resource");
+      return true;
+    });
     assert.ok(seen.some(url => url.includes(".well-known")), "the client must attempt discovery instead of retrying the expired token");
     assert.equal(store.load("mcp-service.example"), null, "the unusable credential must be discarded");
   } finally {

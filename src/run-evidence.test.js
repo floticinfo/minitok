@@ -128,3 +128,15 @@ test('redacts sensitive values', () => {
   assert.doesNotMatch(JSON.stringify(evidence), /abc123|secret-value|private-key/);
   assert.equal(evidence.task, 'Do not expose token=[REDACTED]');
 });
+
+test('redacts bearer variants, JWTs, provider keys, and URL credentials', () => {
+  const jwt = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxIn0.signature-value';
+  const evidence = normalizeEvidence({
+    task: `access_token=access-secret refresh_token=refresh-secret Basic QWxhZGRpbjpvcGVu c sk-proj-123456789012 ghp_123456789012 https://user:password@example.test ${jwt}`,
+    outcome: 'success'
+  });
+  const serialized = JSON.stringify(evidence);
+  assert.doesNotMatch(serialized, /access-secret|refresh-secret|QWxhZGRpbjpvcGVu|sk-proj-123456789012|ghp_123456789012|user:password|eyJhbGci/);
+  assert.match(evidence.task, /Basic \[REDACTED\]/);
+  assert.match(evidence.task, /https:\/\/\[REDACTED\]@example\.test/);
+});

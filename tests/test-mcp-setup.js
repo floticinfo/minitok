@@ -167,6 +167,24 @@ test("Cline rule and skill guidance is marker-idempotent", () => {
   }
 });
 
+test("MCP host entry contract distinguishes Node stdio from an editor executable", () => {
+  const validRoot = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-mcp-entry-valid-"));
+  const validFile = path.join(validRoot, "config.json");
+  fs.writeFileSync(validFile, JSON.stringify({ mcpServers: { minitok: { command: process.execPath, args: [path.join(validRoot, "src", "runtime", "stdio-entry.js")] } } }));
+  const invalidRoot = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-mcp-entry-invalid-"));
+  const invalidFile = path.join(invalidRoot, "config.json");
+  fs.writeFileSync(invalidFile, JSON.stringify({ mcpServers: { minitok: { command: "Code.exe", args: [path.join(invalidRoot, "stdio-entry.js")] } } }));
+  try {
+    assert.deepEqual(mcp.configuredEntryContract(validFile), { contract: "valid", contract_reason: null });
+    const invalid = mcp.configuredEntryContract(invalidFile);
+    assert.equal(invalid.contract, "invalid");
+    assert.match(invalid.contract_reason, /must run with Node/);
+  } finally {
+    fs.rmSync(validRoot, { recursive: true, force: true });
+    fs.rmSync(invalidRoot, { recursive: true, force: true });
+  }
+});
+
 test("invalid setup scopes fail before a configuration write", () => {
   const { root, file } = fixture({ mcpServers: { existing: { command: "keep" } } });
   try {
