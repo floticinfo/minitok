@@ -38,7 +38,10 @@ function collectFiles() {
 }
 
 function sha256(file) {
-  return createHash("sha256").update(readFileSync(file)).digest("hex");
+  // Git may materialize tracked text as CRLF on Windows. Hash the canonical LF
+  // representation so runtime manifests are stable across checkout platforms.
+  const canonical = readFileSync(file, "utf8").replaceAll("\r\n", "\n");
+  return createHash("sha256").update(canonical, "utf8").digest("hex");
 }
 
 const files = collectFiles();

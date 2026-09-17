@@ -70,256 +70,256 @@
   ],
   "hashes": {
     "auth/aliases.js": {
-      "source": "4c931117494925eed406bc05d7f5df1fd291216943513d264c8f0161e076ba61",
-      "embedded": "4c931117494925eed406bc05d7f5df1fd291216943513d264c8f0161e076ba61"
+      "source": "ab5f099a46bb6fde52854087049b227fd4d7ced88182bc3a89973994c687ce0d",
+      "embedded": "ab5f099a46bb6fde52854087049b227fd4d7ced88182bc3a89973994c687ce0d"
     },
     "auth/index.js": {
-      "source": "215fa2b4f247ad30ea593128d361003f2a4158596ed84096141a5b2ccca65540",
-      "embedded": "215fa2b4f247ad30ea593128d361003f2a4158596ed84096141a5b2ccca65540"
+      "source": "8a6c64d18c87a1b4802ffe3dd8cb2b8b3c172d770cac5c8419132723c780a137",
+      "embedded": "8a6c64d18c87a1b4802ffe3dd8cb2b8b3c172d770cac5c8419132723c780a137"
     },
     "auth/oauth.js": {
-      "source": "f86c2936afdd19bffea57c2ced6811fa6f210d8e2c719bdcd5d6bc81a318f7ca",
-      "embedded": "f86c2936afdd19bffea57c2ced6811fa6f210d8e2c719bdcd5d6bc81a318f7ca"
+      "source": "6e5e3561fd421cf3414f809b4820d64b5a53eaaa33fa92fad03137e32ab72adc",
+      "embedded": "6e5e3561fd421cf3414f809b4820d64b5a53eaaa33fa92fad03137e32ab72adc"
     },
     "auth/service-account.js": {
-      "source": "8c56368bc6d689f5d6a9981da7a280d92dfb518597cf67a9e6c72023f39b925c",
-      "embedded": "8c56368bc6d689f5d6a9981da7a280d92dfb518597cf67a9e6c72023f39b925c"
+      "source": "3604245eeda277a71264f1b28398d3e9c8386ad45f3af022ad65003881f50f4d",
+      "embedded": "3604245eeda277a71264f1b28398d3e9c8386ad45f3af022ad65003881f50f4d"
     },
     "auth/token-store.js": {
-      "source": "4edfb2ae7b61790cc7d62315ed8b0aeadbd6c0a44686753f6b62a4534680f7a2",
-      "embedded": "4edfb2ae7b61790cc7d62315ed8b0aeadbd6c0a44686753f6b62a4534680f7a2"
+      "source": "ae3b1ff8e30eddc1611ae4c392dfc97c17411f1f339631ec9f836526ef95d66b",
+      "embedded": "ae3b1ff8e30eddc1611ae4c392dfc97c17411f1f339631ec9f836526ef95d66b"
     },
     "cli/commands/server-config.js": {
-      "source": "0f86e6c56aa35589b35c7940696ee2b819fad071e46e280cb136b8e006656fe9",
-      "embedded": "0f86e6c56aa35589b35c7940696ee2b819fad071e46e280cb136b8e006656fe9"
+      "source": "266cb457823a66187f52d4cbb025f01009e89e24f7014c0e5aa48eb8a4d5f0b7",
+      "embedded": "266cb457823a66187f52d4cbb025f01009e89e24f7014c0e5aa48eb8a4d5f0b7"
     },
     "config/loader.js": {
-      "source": "dd90112ca95d8e1e0a523dfefe3164c195d1f0def84cb2d668715c5844d757a4",
-      "embedded": "dd90112ca95d8e1e0a523dfefe3164c195d1f0def84cb2d668715c5844d757a4"
+      "source": "25a07b6eb9d44fc128089117b6d9c9006c7e9b0dfc18f61a36a9e409971fbe3f",
+      "embedded": "25a07b6eb9d44fc128089117b6d9c9006c7e9b0dfc18f61a36a9e409971fbe3f"
     },
     "context/compaction.js": {
-      "source": "0475f4c5ed57462603366a047689064c136cf596822394fff72f0c456bb27cdf",
-      "embedded": "0475f4c5ed57462603366a047689064c136cf596822394fff72f0c456bb27cdf"
+      "source": "aee92eaf54f8c6881192679baa4f334c58c9816a88790730320c9ad85e16c835",
+      "embedded": "aee92eaf54f8c6881192679baa4f334c58c9816a88790730320c9ad85e16c835"
     },
     "core/audit.js": {
-      "source": "955108c9d32a716aee5293137071693d11124f10211b7ffcffc2b0af43aa5c92",
-      "embedded": "955108c9d32a716aee5293137071693d11124f10211b7ffcffc2b0af43aa5c92"
+      "source": "27e4df9195e0d22a848e01033f2bc356008a3081f94792e2940fc6d73c168bbf",
+      "embedded": "27e4df9195e0d22a848e01033f2bc356008a3081f94792e2940fc6d73c168bbf"
     },
     "core/errors.js": {
-      "source": "a7625b151d79991794a0c034a239a0ff40d44b764d8078788bee83665ad704b1",
-      "embedded": "a7625b151d79991794a0c034a239a0ff40d44b764d8078788bee83665ad704b1"
+      "source": "f5b185d1c81d0f57cdf6ebd5e27e52bc1840e140aa24642222ab6ef2d45e72f4",
+      "embedded": "f5b185d1c81d0f57cdf6ebd5e27e52bc1840e140aa24642222ab6ef2d45e72f4"
     },
     "core/http.js": {
-      "source": "59425e2e46a032b56b4ce669d1455340d320843480c476814f496faf587dcce2",
-      "embedded": "59425e2e46a032b56b4ce669d1455340d320843480c476814f496faf587dcce2"
+      "source": "c81f4be79b72beb37e74b028bb91a5b1e1f1acfc5258dde02765db368d893a92",
+      "embedded": "c81f4be79b72beb37e74b028bb91a5b1e1f1acfc5258dde02765db368d893a92"
     },
     "core/package-manager.js": {
       "source": "bf82b14f7a71da10ef78353e819510589de800057989aecbbcd1c9c80ad8a9ef",
       "embedded": "bf82b14f7a71da10ef78353e819510589de800057989aecbbcd1c9c80ad8a9ef"
     },
     "entitlement/gate.js": {
-      "source": "804857f8b52c62853aea965d05981c28bf2b0ec5b9efa4fda982ac86e1d8666b",
-      "embedded": "804857f8b52c62853aea965d05981c28bf2b0ec5b9efa4fda982ac86e1d8666b"
+      "source": "41134846a2a29534cd20d1f5145a12072d22b5934cb674dfd30b0dd87dedcec9",
+      "embedded": "41134846a2a29534cd20d1f5145a12072d22b5934cb674dfd30b0dd87dedcec9"
     },
     "entitlement/model.js": {
-      "source": "6fd1854e21bde7294904a610fa22e4f24655366163faa7a0cdaa42a8108aadd8",
-      "embedded": "6fd1854e21bde7294904a610fa22e4f24655366163faa7a0cdaa42a8108aadd8"
+      "source": "2c87291576db354c3bd9044b20b515efb2b7e87b5aef0cf98ba7afea2c03489a",
+      "embedded": "2c87291576db354c3bd9044b20b515efb2b7e87b5aef0cf98ba7afea2c03489a"
     },
     "entitlement/online.js": {
-      "source": "a796aa2e3dd48255dcb2c64bbd0950a963916850aef2e652691d62e581e8c064",
-      "embedded": "a796aa2e3dd48255dcb2c64bbd0950a963916850aef2e652691d62e581e8c064"
+      "source": "bebb86373c5a040f85ecfb7f9914c2a9116e769e43cd2e3a1a0646549cfe1473",
+      "embedded": "bebb86373c5a040f85ecfb7f9914c2a9116e769e43cd2e3a1a0646549cfe1473"
     },
     "entitlement/policy.js": {
       "source": "a29b442fdfdbf75c009fe94d85acc5821f68b86fe07659eb15b946ce881c1582",
       "embedded": "a29b442fdfdbf75c009fe94d85acc5821f68b86fe07659eb15b946ce881c1582"
     },
     "entitlement/public-key.js": {
-      "source": "1f5052a5de285358f7583c3e5b85b14e37d35a55eedfc7cd234bbbdaeaaccaef",
-      "embedded": "1f5052a5de285358f7583c3e5b85b14e37d35a55eedfc7cd234bbbdaeaaccaef"
+      "source": "7f8666cb8db97ec9a2f29f24f3ed8439dc0acb0461c1539e50747defb2439b2c",
+      "embedded": "7f8666cb8db97ec9a2f29f24f3ed8439dc0acb0461c1539e50747defb2439b2c"
     },
     "entitlement/store.js": {
-      "source": "ee9f695b4d125bba2aa3129adba640d58a57f05c742966e7f53f142489772efa",
-      "embedded": "ee9f695b4d125bba2aa3129adba640d58a57f05c742966e7f53f142489772efa"
+      "source": "51435e39f0406c983bdfd474a70371565f0d6b699af57f00563974619fedcb34",
+      "embedded": "51435e39f0406c983bdfd474a70371565f0d6b699af57f00563974619fedcb34"
     },
     "entitlement/trial.js": {
-      "source": "bd04661e3ac71fda71e00894d0ed9d2027108ffd25692348b8285dee880b1e44",
-      "embedded": "bd04661e3ac71fda71e00894d0ed9d2027108ffd25692348b8285dee880b1e44"
+      "source": "58104e2958dc66d47d5c492cd97e7eeb60aa9082c6fdac4bc57d9ec74e2805fc",
+      "embedded": "58104e2958dc66d47d5c492cd97e7eeb60aa9082c6fdac4bc57d9ec74e2805fc"
     },
     "entitlement/verify.js": {
-      "source": "eb12f269cb9e11584a589104b6835274910a2c069c3db36cb234aa2554a9913f",
-      "embedded": "eb12f269cb9e11584a589104b6835274910a2c069c3db36cb234aa2554a9913f"
+      "source": "9a4b756dbd26ea876ef28da3b9b4da5f2b75a148ed7f3771dbcddf995704d5b2",
+      "embedded": "9a4b756dbd26ea876ef28da3b9b4da5f2b75a148ed7f3771dbcddf995704d5b2"
     },
     "evidence/collector.js": {
-      "source": "dc612468cf2f66a1fb97c777d189e035e300e92eff62546b00c67b16ada55ae9",
-      "embedded": "dc612468cf2f66a1fb97c777d189e035e300e92eff62546b00c67b16ada55ae9"
+      "source": "87c8770948cfae8dc6d484d7077c8b4e14656225e7bd40c6d254a2a8f4f55a2a",
+      "embedded": "87c8770948cfae8dc6d484d7077c8b4e14656225e7bd40c6d254a2a8f4f55a2a"
     },
     "evolution/analyzer.js": {
       "source": "269a707b54ebf4cae43d998ba46f639371078874d1057ff1cb405b7609e27e5e",
       "embedded": "269a707b54ebf4cae43d998ba46f639371078874d1057ff1cb405b7609e27e5e"
     },
     "evolution/knowledge.js": {
-      "source": "679f09ac8bb8e648a39870093681c00eee1014bd377eae373f7d3daa50bfc3bc",
-      "embedded": "679f09ac8bb8e648a39870093681c00eee1014bd377eae373f7d3daa50bfc3bc"
+      "source": "06764817162ca07a01a345e88dca586d5f146c69191671694add5fdd054915c3",
+      "embedded": "06764817162ca07a01a345e88dca586d5f146c69191671694add5fdd054915c3"
     },
     "evolution/optin.js": {
-      "source": "9aa278bd76ecb1fc08a58955a8934486b609d021eb9da2577d992d90df176c23",
-      "embedded": "9aa278bd76ecb1fc08a58955a8934486b609d021eb9da2577d992d90df176c23"
+      "source": "8d12c32011d47bb3488edadec3f7173d79a39e8119389fd57621f5e9b858e9a9",
+      "embedded": "8d12c32011d47bb3488edadec3f7173d79a39e8119389fd57621f5e9b858e9a9"
     },
     "evolution/policy.js": {
-      "source": "027b30ad7d4f2e9f904105d5e0719ca54f6994396da60ae42b534db121ab2154",
-      "embedded": "027b30ad7d4f2e9f904105d5e0719ca54f6994396da60ae42b534db121ab2154"
+      "source": "6deb7a7078755d4ee84463b3da0c1ef3125b717f52af337d0bf5b12586c5bde6",
+      "embedded": "6deb7a7078755d4ee84463b3da0c1ef3125b717f52af337d0bf5b12586c5bde6"
     },
     "evolution/sanitize.js": {
-      "source": "6a6c1309c79cbed188e50ab17176e9d5c2b6caad5d6312158a2d6c4174c7ef58",
-      "embedded": "6a6c1309c79cbed188e50ab17176e9d5c2b6caad5d6312158a2d6c4174c7ef58"
+      "source": "deb7ed58f25550cce0b39e9b8e090c627ab284d67ab85b218128f4c658c695c6",
+      "embedded": "deb7ed58f25550cce0b39e9b8e090c627ab284d67ab85b218128f4c658c695c6"
     },
     "evolution/telemetry-policy.js": {
       "source": "0591f501ebdeb43e7cc130c9fed69afd7055caf20799e9e23c36e558c03635a4",
       "embedded": "0591f501ebdeb43e7cc130c9fed69afd7055caf20799e9e23c36e558c03635a4"
     },
     "evolution/upload.js": {
-      "source": "442fff2dd8002303fcfb52fc06108eae7f40db690882d40da5f81dcb5bab61fa",
-      "embedded": "442fff2dd8002303fcfb52fc06108eae7f40db690882d40da5f81dcb5bab61fa"
+      "source": "5d7f37e87f49bea5062aee5c4f818a2b534fe778dc42f7adb69cc99f50e7aa41",
+      "embedded": "5d7f37e87f49bea5062aee5c4f818a2b534fe778dc42f7adb69cc99f50e7aa41"
     },
     "git/operations.js": {
-      "source": "26d689131d68eaf4b0d247af5cbd0d3a6d6ca7dcfc1216392769bca7ba0ec72c",
-      "embedded": "26d689131d68eaf4b0d247af5cbd0d3a6d6ca7dcfc1216392769bca7ba0ec72c"
+      "source": "9037e44d448ae133257670b3931c948d14efd72ad67a09a182412a5113f78240",
+      "embedded": "9037e44d448ae133257670b3931c948d14efd72ad67a09a182412a5113f78240"
     },
     "llm/models.js": {
-      "source": "b2c02dece33c22343a3a9538442a1f09e7ab997fce7fccf215574658711195b1",
-      "embedded": "b2c02dece33c22343a3a9538442a1f09e7ab997fce7fccf215574658711195b1"
+      "source": "e9600043ce4e25c70b09fa38a87cddca594361bc1c6ec96d8343b716fe9fe708",
+      "embedded": "e9600043ce4e25c70b09fa38a87cddca594361bc1c6ec96d8343b716fe9fe708"
     },
     "llm/provider.js": {
-      "source": "4f564f5fdde212069ca5eaf0154c8c560ce88c48e9577e8b375cff87bd84aef6",
-      "embedded": "4f564f5fdde212069ca5eaf0154c8c560ce88c48e9577e8b375cff87bd84aef6"
+      "source": "aa4ff8ecda44fe298f4f4d14b9f0e6df1ea2631ecd29d38c7891aee302ad0ea3",
+      "embedded": "aa4ff8ecda44fe298f4f4d14b9f0e6df1ea2631ecd29d38c7891aee302ad0ea3"
     },
     "mcp/runtime-token.js": {
-      "source": "d07663e879ad91f12b327101f7b747e8bfc527bed6abc8aa2018ee393f4382d4",
-      "embedded": "d07663e879ad91f12b327101f7b747e8bfc527bed6abc8aa2018ee393f4382d4"
+      "source": "8c29f37dba94cf2fc661066acbc62c4c30738e8efa9efb38d0367404c1e16d8b",
+      "embedded": "8c29f37dba94cf2fc661066acbc62c4c30738e8efa9efb38d0367404c1e16d8b"
     },
     "mcp/tools.js": {
-      "source": "6be3363e89d7306dc7da26a5f90f469b40d4fe190778fd231577e04f89d331c0",
-      "embedded": "6be3363e89d7306dc7da26a5f90f469b40d4fe190778fd231577e04f89d331c0"
+      "source": "c17a7e587c6c7e829c088de795f737d3b8cf40acf973218da0e015a3e87b76bf",
+      "embedded": "c17a7e587c6c7e829c088de795f737d3b8cf40acf973218da0e015a3e87b76bf"
     },
     "pipeline/authorization.js": {
-      "source": "b6b7eb34e7a4d9790820d8a4b9828bf4ee965af1476b5d5c4522768b1d4aae4e",
-      "embedded": "b6b7eb34e7a4d9790820d8a4b9828bf4ee965af1476b5d5c4522768b1d4aae4e"
+      "source": "56140301e1799a5444a6b7fc57e75d5aff461fd53a65f54ed90c76f4c9ec5be9",
+      "embedded": "56140301e1799a5444a6b7fc57e75d5aff461fd53a65f54ed90c76f4c9ec5be9"
     },
     "pipeline/check.js": {
-      "source": "7f75a014ac851debe77b210138b13156b676347fa7c449874828dc67cacf412e",
-      "embedded": "7f75a014ac851debe77b210138b13156b676347fa7c449874828dc67cacf412e"
+      "source": "53b6a049e7eab7afdd42be7e4b0e5d0d25ab3fb542b1c5b27f47b8c5cf12c3d2",
+      "embedded": "53b6a049e7eab7afdd42be7e4b0e5d0d25ab3fb542b1c5b27f47b8c5cf12c3d2"
     },
     "pipeline/implementer.js": {
-      "source": "a0aa55503a17fa44bc09ec5f509fba0e06bb94e348d4debc6c2460914fc973a6",
-      "embedded": "a0aa55503a17fa44bc09ec5f509fba0e06bb94e348d4debc6c2460914fc973a6"
+      "source": "0722cb306e69f963bfa4d579a68d63d2a66fe6868732a9cca9a968afc00d9b42",
+      "embedded": "0722cb306e69f963bfa4d579a68d63d2a66fe6868732a9cca9a968afc00d9b42"
     },
     "pipeline/intel.js": {
       "source": "156f608704bbfde60702b53b83647612b49f28f98d7b2fc010986c27d517a442",
       "embedded": "156f608704bbfde60702b53b83647612b49f28f98d7b2fc010986c27d517a442"
     },
     "pipeline/json_utils.js": {
-      "source": "d139507183711739b0829b47ff81b475b8f78f0d985ddc26e1d1ab187133976f",
-      "embedded": "d139507183711739b0829b47ff81b475b8f78f0d985ddc26e1d1ab187133976f"
+      "source": "ad47652be5c41133b3e3d5388882b8528bfcd246e8d1bcdb5b18f19f9448f744",
+      "embedded": "ad47652be5c41133b3e3d5388882b8528bfcd246e8d1bcdb5b18f19f9448f744"
     },
     "pipeline/loop.js": {
-      "source": "4b3286d13994c8f387eb6c92fb33e2c830cbada691a3554d0ee95e8f5f24bd45",
-      "embedded": "4b3286d13994c8f387eb6c92fb33e2c830cbada691a3554d0ee95e8f5f24bd45"
+      "source": "7c6f51f2a0b7ddcb5facb94ca751154ee90d9c2aa6ae4b50ffcce9d75f9d0dfd",
+      "embedded": "7c6f51f2a0b7ddcb5facb94ca751154ee90d9c2aa6ae4b50ffcce9d75f9d0dfd"
     },
     "pipeline/next_task.js": {
-      "source": "d319a3b34dc5d80f4ce9e74e3e0805d2d4ee79aa4cfda8bc9be3dcaf8d9ce583",
-      "embedded": "d319a3b34dc5d80f4ce9e74e3e0805d2d4ee79aa4cfda8bc9be3dcaf8d9ce583"
+      "source": "c796ebf97d03b93bb0947a61805e3121b6060aad0f88dbbbe464825dc75b9486",
+      "embedded": "c796ebf97d03b93bb0947a61805e3121b6060aad0f88dbbbe464825dc75b9486"
     },
     "pipeline/planner.js": {
-      "source": "cc1f16bff302e0fc0fac02239b6d1c8c6048c5aad7b9ec9e259c805f4467c1e0",
-      "embedded": "cc1f16bff302e0fc0fac02239b6d1c8c6048c5aad7b9ec9e259c805f4467c1e0"
+      "source": "aa92de1095673b3675291008af5bd4f7931561cffefcc4c9b7140ed4729b9aec",
+      "embedded": "aa92de1095673b3675291008af5bd4f7931561cffefcc4c9b7140ed4729b9aec"
     },
     "pipeline/repair.js": {
-      "source": "5af8a747993fb9cbae9671ac978328f211352057d8ef950fd82eb52e44b7c39e",
-      "embedded": "5af8a747993fb9cbae9671ac978328f211352057d8ef950fd82eb52e44b7c39e"
+      "source": "56ece90d7f45f22fac03c49a6b6edad45610ef3e894a393421e7c5f83c5b18bf",
+      "embedded": "56ece90d7f45f22fac03c49a6b6edad45610ef3e894a393421e7c5f83c5b18bf"
     },
     "pipeline/verifier.js": {
-      "source": "c299e51592a4d48eb7658384d593926d40dbd1beb86e2a4c13a90d441c081e0b",
-      "embedded": "c299e51592a4d48eb7658384d593926d40dbd1beb86e2a4c13a90d441c081e0b"
+      "source": "1d5025c778c8ba3e087bf025ea8798231ebf58c664d6c675111ff1f1b62d76ed",
+      "embedded": "1d5025c778c8ba3e087bf025ea8798231ebf58c664d6c675111ff1f1b62d76ed"
     },
     "run-evidence.js": {
-      "source": "2ddd46eb3a5712f096a84a2777bd2234cb1fc994cec6f3d3bd8a71994302c6d2",
-      "embedded": "2ddd46eb3a5712f096a84a2777bd2234cb1fc994cec6f3d3bd8a71994302c6d2"
+      "source": "7674e7dbc8a6c3a5158005f7f123eac0b1afd3fa25b78ee52809d56257b4851e",
+      "embedded": "7674e7dbc8a6c3a5158005f7f123eac0b1afd3fa25b78ee52809d56257b4851e"
     },
     "runtime/analysis.js": {
-      "source": "82fc1050072be0220307b58a92f640887cec6a3847b67be28df7412e1a29b372",
-      "embedded": "82fc1050072be0220307b58a92f640887cec6a3847b67be28df7412e1a29b372"
+      "source": "8226db43e00868c55d183cd8e93d93445ec47d5b9e67fd584064b22de52c6718",
+      "embedded": "8226db43e00868c55d183cd8e93d93445ec47d5b9e67fd584064b22de52c6718"
     },
     "runtime/audit.js": {
-      "source": "2ca2eff4cef6bb8542925c7115c39f971b091efadaeeddd88675295cb85ab371",
-      "embedded": "2ca2eff4cef6bb8542925c7115c39f971b091efadaeeddd88675295cb85ab371"
+      "source": "d645ef0615996ca9709b527eee94b27355f35c7251836d264194f38db21ca0cf",
+      "embedded": "d645ef0615996ca9709b527eee94b27355f35c7251836d264194f38db21ca0cf"
     },
     "runtime/compact.js": {
-      "source": "8ee674ccd1f92815fb09b1bdedf5f0e5618fbc58a69772272cc85bee8bd37257",
-      "embedded": "8ee674ccd1f92815fb09b1bdedf5f0e5618fbc58a69772272cc85bee8bd37257"
+      "source": "6bdf1a6c943723e458ff561251c8506e526fa9c09108d36855822706ebf17c74",
+      "embedded": "6bdf1a6c943723e458ff561251c8506e526fa9c09108d36855822706ebf17c74"
     },
     "runtime/entitlement.js": {
-      "source": "4c5a38b19a9601fd1330d3d9337e30433899d55c82730a1180f50e09e0daf022",
-      "embedded": "4c5a38b19a9601fd1330d3d9337e30433899d55c82730a1180f50e09e0daf022"
+      "source": "3af5a2b9a3cd3c27b422f52f80ac13cfc4a2728bbac913582e2b9f4af65b08de",
+      "embedded": "3af5a2b9a3cd3c27b422f52f80ac13cfc4a2728bbac913582e2b9f4af65b08de"
     },
     "runtime/evidence.js": {
-      "source": "f79c69533e18358dcbf824cfc893f87ae46a13037c873cddf24fd62c6adecb67",
-      "embedded": "f79c69533e18358dcbf824cfc893f87ae46a13037c873cddf24fd62c6adecb67"
+      "source": "03041563ed2c4167ff9cee481c35e91f29f48297f2f208aabdd6687f9ded391a",
+      "embedded": "03041563ed2c4167ff9cee481c35e91f29f48297f2f208aabdd6687f9ded391a"
     },
     "runtime/index.js": {
-      "source": "51a58a52a04f57906e5749a0c5625601eeb327d5c31a0a15fe9d42ee28d56df0",
-      "embedded": "51a58a52a04f57906e5749a0c5625601eeb327d5c31a0a15fe9d42ee28d56df0"
+      "source": "665485a6d43e2f082a38ac098853affc044c30b61d936a119484009216af9d4e",
+      "embedded": "665485a6d43e2f082a38ac098853affc044c30b61d936a119484009216af9d4e"
     },
     "runtime/knowledge.js": {
-      "source": "40e62c141798e0f931668a349804ecc4d853528c7523d092631f7d950cf2907a",
-      "embedded": "40e62c141798e0f931668a349804ecc4d853528c7523d092631f7d950cf2907a"
+      "source": "ad496aabc421d25074846dee6a7fafdcad8e6efd8405434ace5ffaa46fbedbb2",
+      "embedded": "ad496aabc421d25074846dee6a7fafdcad8e6efd8405434ace5ffaa46fbedbb2"
     },
     "runtime/observations.js": {
       "source": "856551f1845549ca43c19ab689ee3cdcdc58237bf7941c0dbf369d67d15707fe",
       "embedded": "856551f1845549ca43c19ab689ee3cdcdc58237bf7941c0dbf369d67d15707fe"
     },
     "runtime/routes.js": {
-      "source": "4af7b96185ee48e397a768d4cbff53a6dfc925f3019d655646959c8a56e676c3",
-      "embedded": "4af7b96185ee48e397a768d4cbff53a6dfc925f3019d655646959c8a56e676c3"
+      "source": "c05911b8dbab30ceade174d7f413b2e332695714c378c98fe96e468b47b36026",
+      "embedded": "c05911b8dbab30ceade174d7f413b2e332695714c378c98fe96e468b47b36026"
     },
     "runtime/server.js": {
-      "source": "cdd83d9bb9406e0321648f1aac2df73076e37cadbd4b3b88106d037171531585",
-      "embedded": "cdd83d9bb9406e0321648f1aac2df73076e37cadbd4b3b88106d037171531585"
+      "source": "72221fcf64bbd778771dfff6583a33e8e04ceb2bf47990db701e86937f8a4b1f",
+      "embedded": "72221fcf64bbd778771dfff6583a33e8e04ceb2bf47990db701e86937f8a4b1f"
     },
     "runtime/stdio-entry.js": {
-      "source": "4023e87bc6dd66a33cd8bbaaab20cc07af46584ced03e6093aaa762e097fef02",
-      "embedded": "4023e87bc6dd66a33cd8bbaaab20cc07af46584ced03e6093aaa762e097fef02"
+      "source": "769a360fb658523c0dd3d4fda80559031039e7deaf96ff36f57a8a6d5b2d9cff",
+      "embedded": "769a360fb658523c0dd3d4fda80559031039e7deaf96ff36f57a8a6d5b2d9cff"
     },
     "runtime/stdio.js": {
       "source": "ed9424fbda6247fb9a2cc6a5dc91acaab56192f19175ba7ca017629e900112b2",
       "embedded": "ed9424fbda6247fb9a2cc6a5dc91acaab56192f19175ba7ca017629e900112b2"
     },
     "runtime/workspace.js": {
-      "source": "1ccbe48769fd72363230d4a914849ce6b5fc52f5db6496e0b35ce8ac655ff220",
-      "embedded": "1ccbe48769fd72363230d4a914849ce6b5fc52f5db6496e0b35ce8ac655ff220"
+      "source": "56269c719b4abbc4fde330a13a7282b2cab35d5a265274f6d47a2c8135b6ef31",
+      "embedded": "56269c719b4abbc4fde330a13a7282b2cab35d5a265274f6d47a2c8135b6ef31"
     },
     "state/contracts.js": {
       "source": "41f6db3f10b3a5e10b9d30586e4e9413ba71fcf22c94256aa6db3fe72b64b91e",
       "embedded": "41f6db3f10b3a5e10b9d30586e4e9413ba71fcf22c94256aa6db3fe72b64b91e"
     },
     "state/run-lock.js": {
-      "source": "7a2bf5656dad325561b60a91a9421aea83fdcf6bec752fe8348c9b575bc71a17",
-      "embedded": "7a2bf5656dad325561b60a91a9421aea83fdcf6bec752fe8348c9b575bc71a17"
+      "source": "f544bc8d65acb2ac49e53ad313bc94bc6e11a14fbd57bf9d83db34f8a3809f9d",
+      "embedded": "f544bc8d65acb2ac49e53ad313bc94bc6e11a14fbd57bf9d83db34f8a3809f9d"
     },
     "utils/file-permissions.js": {
-      "source": "857fdde926aae950cbfab73dd25adb0a415f958eb10d2cc44dd36c1d0a5eda57",
-      "embedded": "857fdde926aae950cbfab73dd25adb0a415f958eb10d2cc44dd36c1d0a5eda57"
+      "source": "ca7b903f8f94745e10de48c78101bc3afdc38f54bbdf6e5eba6b7adbdcc3f8fb",
+      "embedded": "ca7b903f8f94745e10de48c78101bc3afdc38f54bbdf6e5eba6b7adbdcc3f8fb"
     },
     "utils/temp-cleanup.js": {
-      "source": "849aedd9715de90f9187d31df677d3ae44ae682ae84aa86f1e5e6d6642d5dea6",
-      "embedded": "849aedd9715de90f9187d31df677d3ae44ae682ae84aa86f1e5e6d6642d5dea6"
+      "source": "5dacfc88deaa4c00e457d6eba5f21b9e069cafac9a1cad9be36bb0a24e1592a1",
+      "embedded": "5dacfc88deaa4c00e457d6eba5f21b9e069cafac9a1cad9be36bb0a24e1592a1"
     },
     "workspace/isolation.js": {
-      "source": "c306657ea93a007191210663428245177fd6f620aacbace9c0b98f32afaa40e4",
-      "embedded": "c306657ea93a007191210663428245177fd6f620aacbace9c0b98f32afaa40e4"
+      "source": "0ff26520305c2aca4e3b24f45a4fd4929163967eacdee62151c4387401eb3b8a",
+      "embedded": "0ff26520305c2aca4e3b24f45a4fd4929163967eacdee62151c4387401eb3b8a"
     },
     "workspace/manager.js": {
-      "source": "f05c755fc21149e7325aec39422cc05d0e493da387189ed7602a0775feefc901",
-      "embedded": "f05c755fc21149e7325aec39422cc05d0e493da387189ed7602a0775feefc901"
+      "source": "f9b95bb580fdaa263196790dc74a313a1518117706d56226fff2793587f8a48e",
+      "embedded": "f9b95bb580fdaa263196790dc74a313a1518117706d56226fff2793587f8a48e"
     }
   }
 }

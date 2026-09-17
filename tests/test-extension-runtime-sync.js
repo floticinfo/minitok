@@ -9,7 +9,9 @@ const root = path.join(__dirname, "..");
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "extension", "runtime", "runtime-manifest.json"), "utf8"));
 
 function hash(file) {
-  return crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
+  // Match sync-extension-runtime.mjs: tracked text may be CRLF on Windows.
+  const canonical = fs.readFileSync(file, "utf8").replaceAll("\r\n", "\n");
+  return crypto.createHash("sha256").update(canonical, "utf8").digest("hex");
 }
 
 test("embedded security-sensitive runtime files match canonical source hashes", () => {
