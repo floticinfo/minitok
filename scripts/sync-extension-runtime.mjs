@@ -55,12 +55,14 @@ for (const relative of files) {
 }
 const rootPackage = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
 const runtimePackagePath = path.join(runtimeRoot, "package.json");
-const runtimePackage = JSON.parse(readFileSync(runtimePackagePath, "utf8"));
+const runtimePackageBefore = readFileSync(runtimePackagePath, "utf8");
+const runtimePackage = JSON.parse(runtimePackageBefore);
 runtimePackage.name = rootPackage.name;
 runtimePackage.version = rootPackage.version;
 runtimePackage.main = rootPackage.main;
 runtimePackage.bin = rootPackage.bin;
-writeFileSync(runtimePackagePath, `${JSON.stringify(runtimePackage, null, 2)}\n`);
+const jsonEol = text => text.includes("\r\n") ? "\r\n" : "\n";
+writeFileSync(runtimePackagePath, `${JSON.stringify(runtimePackage, null, 2).replaceAll("\n", jsonEol(runtimePackageBefore))}${jsonEol(runtimePackageBefore)}`);
 const hashes = Object.fromEntries(files.map(relative => [relative, { source: sha256(path.join(sourceRoot, relative)), embedded: sha256(path.join(runtimeSourceRoot, relative)) }]));
 const manifest = {
   source: "canonical-root-src",
@@ -70,5 +72,7 @@ const manifest = {
   files,
   hashes
 };
-writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+const manifestBefore = readFileSync(manifestPath, "utf8");
+const manifestEol = jsonEol(manifestBefore);
+writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2).replaceAll("\n", manifestEol)}${manifestEol}`);
 console.log(JSON.stringify({ status: "synced", cliPackage: rootPackage.name, cliVersion: rootPackage.version, files: files.length, manifest: path.relative(root, manifestPath).replaceAll(path.sep, "/") }));
