@@ -98,7 +98,10 @@ export function activate(context: vscode.ExtensionContext) {
     if (answer !== "Connect") return;
     output.show(true);
     try {
-      output.appendLine(redactExtensionOutput(await runCli(cliPath(), ["mcp", "setup", "all", "--only-unconfigured", "--scopes", "read"], { timeoutMs: CLI_STATUS_TIMEOUT_MS, requireWorkspace: false })));
+      const setupArgs = ["mcp", "setup", "all", "--only-unconfigured", "--scopes", "read"];
+      const root = workspacePath();
+      if (root) setupArgs.push("--workspace-root", root);
+      output.appendLine(redactExtensionOutput(await runCli(cliPath(), setupArgs, { timeoutMs: CLI_STATUS_TIMEOUT_MS, requireWorkspace: false })));
       vscode.window.showInformationMessage("minitok MCP setup completed. Restart or refresh the MCP host if required.");
     } catch (error) {
       const message = redactExtensionOutput(String(error));

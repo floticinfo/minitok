@@ -21,8 +21,9 @@ test("discovery manifest exposes agent-facing capabilities and safe recommendati
 test("promotion bundle is trial-safe and publication remains operator controlled", () => {
   const bundle = buildPromotionBundle();
   assert.equal(bundle.status, "preview_only");
-  assert.equal(bundle.trial.requiresProviderCredentials, false);
+  assert.equal(bundle.trial.requiresProviderCredentials, true);
   assert.equal(bundle.trial.changesRepository, false);
+  assert.equal(bundle.trial.consumesTrialQuota, false);
   assert.equal(bundle.propagation.automaticPosting, false);
   assert.equal(bundle.propagation.operatorApprovalRequired, true);
 });

@@ -25,6 +25,8 @@ const { analyzeFailurePatterns, FailureAnalyzer } = require("../evolution/analyz
 const { recommendPolicy, EscalationEngine } = require("../evolution/policy");
 const { uploadEvolutionOutcome } = require("../evolution/upload");
 const { authorizeEntitlement } = require("../entitlement/policy");
+const { consumeTrialRun } = require("../entitlement/online");
+const { EntitlementStore } = require("../entitlement/store");
 const { ALLOWED_FIELDS } = require("../evolution/sanitize");
 const { findEscalationModel } = require("../llm/models");
 const { resolveServerUrl } = require("../cli/commands/server-config");
@@ -287,6 +289,9 @@ function summarizeRunOutcome(cycles) {
 
 async function runPipelineInWorkspace(task, opts = {}) {
   const startTime = Date.now();
+  // Direct embedders may bypass the CLI/MCP wrappers; assign the id at the
+  // canonical pipeline boundary so trial consumption is always idempotent.
+  opts.runId = typeof opts.runId === "string" && opts.runId.trim() ? opts.runId.trim() : crypto.randomUUID();
   let rawRepoContext = null; // P1: computed once (see cycle loop below)
   const repoRoot = opts.repoRoot || process.cwd();
   const configPath = opts.configPath || path.join(repoRoot, "minitok.yml");
@@ -339,8 +344,13 @@ async function runPipelineInWorkspace(task, opts = {}) {
   }
   writeContract(repoRoot, { status: "running", goal: task, verify_command: config.validation?.script_path || "VERIFY_CMD.sh" });
 
-  let gateResult = null;
-  if (opts.authorization !== PREAUTHORIZED) {
+  let gateResult = opts.entitlementResult || null;
+  // Every preflight path runs after the durable contract enters `running`.
+  // Keep these checks inside their own terminal-state boundary: entitlement,
+  // provider availability, and server-authoritative trial consumption can all
+  // fail before the cycle loop's catch block is installed.
+  try {
+  if (opts.authorization !== PREAUTHORIZED && !gateResult) {
     const { GateState } = require("../entitlement/gate");
     gateResult = await authorizeEntitlement({ entitlementDir: opts.entitlementDir, serverUrl: opts.serverUrl || resolveServerUrl() });
     if (!gateResult.allowed) {
@@ -355,19 +365,19 @@ async function runPipelineInWorkspace(task, opts = {}) {
     }
   }
 
-  const providersConfig = config.providers || {};
-  const configuredProviderNames = Object.keys(providersConfig);
-  const defaultProvider = config.default_provider || configuredProviderNames[0] || "";
+  var providersConfig = config.providers || {};
+  var configuredProviderNames = Object.keys(providersConfig);
+  var defaultProvider = config.default_provider || configuredProviderNames[0] || "";
   providerModule.configureRetries({
     maxRetries: config.execution?.max_retries === "unlimited" ? (Number(config.execution?.retry_hard_limit) || 5) : (Number(config.execution?.max_retries) || 5),
     backoffMs: (Number(config.execution?.retry_backoff_sec) || 1) * 1000,
     maxBackoffMs: (Number(config.execution?.retry_max_sec) || 30) * 1000,
   });
-  const pricingFor = (providerName) => {
+  var pricingFor = (providerName) => {
     const canonical = normalizeProvider(providerName);
     return providersConfig[providerName]?.pricing || providersConfig[canonical]?.pricing || null;
   };
-  const createRoleProvider = (role) => {
+  var createRoleProvider = (role) => {
     const providerName = resolveProviderName(config, role, opts.providerOverride) || defaultProvider;
     if (!providerName) throw new Error(`No provider configured for role '${role}'. Configure default_provider or providers.`);
     const canonicalName = normalizeProvider(providerName);
@@ -378,7 +388,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
     }
     return { name: providerName, provider };
   };
-  const roleProviders = {};
+  var roleProviders = {};
   for (const role of ["plan", "work", "review", "intel"]) {
     // The intel role is only needed when research is enabled; requiring its
     // credentials unconditionally made an unrelated missing key fatal.
@@ -387,6 +397,23 @@ async function runPipelineInWorkspace(task, opts = {}) {
     if (!(await roleProviders[role].provider.isAvailable())) {
       throw new Error(`Provider '${roleProviders[role].name}' for role '${role}' is not available. Configure its credentials or choose another provider.`);
     }
+  }
+
+  // Provider availability is checked before consuming a server-authoritative
+  // trial run. A failed provider setup must not burn quota.
+  if (!opts.dryRun && gateResult?.trial && opts.trialEntitlement && !opts.trialRunConsumed) {
+    const trialResult = await consumeTrialRun({
+      serverUrl: opts.serverUrl || resolveServerUrl(),
+      entitlementDir: opts.entitlementDir,
+      _loadArtifact: () => new EntitlementStore(opts.entitlementDir).load(),
+      idempotencyKey: opts.runId,
+    });
+    if (!trialResult.consumed) throw new Error(`Trial run unavailable: ${trialResult.message}`);
+  }
+  } catch (error) {
+    const cancelled = error?.code === "RUN_CANCELLED" || opts.signal?.aborted;
+    writeContract(repoRoot, { status: cancelled ? "cancelled" : "failed", goal: task, verify_command: config.validation?.script_path || "VERIFY_CMD.sh", error: error instanceof Error ? error.message : String(error) });
+    throw error;
   }
 
   const hardCycleLimit = Math.max(1, Number(config.budget.max_cycles_hard_limit) || 100);
@@ -625,7 +652,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
         // long-lived host process (the MCP stdio server), where a synchronous gate
         // would freeze /health, /status and every other MCP session (and its
         // request timeout) for the whole gate run.
-        ? await verifyCommandAsync(repoRoot, { script_path: config.validation?.script_path, timeout_ms: config.validation?.timeout_ms })
+        ? await verifyCommandAsync(repoRoot, { script_path: config.validation?.script_path, timeout_ms: config.validation?.timeout_ms, environment_allowlist: config.validation?.environment_allowlist })
         : { passed: true, evidence: { status: "skipped", command: "validation.enabled=false", output: "Verification command skipped by configuration." } };
     opts.onProgress?.({ phase: "verify", state: "completed", cycle, passed: checkResult.passed, total_tokens: results.totalTokens, total_cost: results.totalCost });
 

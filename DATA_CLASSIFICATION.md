@@ -39,7 +39,7 @@ Upload requires valid entitlement, the `evolution_upload` feature, explicit loca
 
 ## 4. D1 — LICENSE
 
-The activation and entitlement flows process identifiers and entitlement attributes such as `entitlement_id`, `installation_id`, `plan_id`, `features`, `max_devices`, `issued_at`, `expires_at`, and `key_id`. The server also accepts an optional activation `hostname`; the current server deletion path clears stored installation hostnames.
+The activation and entitlement flows process identifiers and entitlement attributes such as `entitlement_id`, `installation_id`, `plan_id`, `features`, `max_devices`, `issued_at`, `expires_at`, and `key_id`. Trial entitlements additionally carry `telemetry_mode`, `run_quota`, and `runs_used`; the server consumes trial quota atomically before a real run and does not grant telemetry features. The server also accepts an optional activation `hostname`; the current server deletion path clears stored installation hostnames.
 
 ## 5. D2 — BILLING and Account Data
 

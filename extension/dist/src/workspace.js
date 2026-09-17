@@ -222,9 +222,28 @@ function configuredMcpScopes() {
         throw new Error(`Unsupported MCP scope(s): ${invalid.join(", ")}. Allowed: ${exports.MCP_SCOPES.join(", ")}`);
     return scopes.length ? scopes : ["read"];
 }
+const MCP_ENV_ALLOWLIST = [
+    "PATH", "Path", "PATHEXT", "ComSpec", "SystemRoot", "WINDIR",
+    "HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "TEMP", "TMP",
+    "LANG", "LC_ALL", "LC_CTYPE", "NODE_PATH",
+];
+function inheritedMcpEnvironment() {
+    const env = {};
+    for (const key of MCP_ENV_ALLOWLIST)
+        if (process.env[key] !== undefined)
+            env[key] = process.env[key];
+    return env;
+}
 function mcpEnvironment() {
     const scopes = configuredMcpScopes().join(",");
-    return { ...process.env, minitok_server_url: configuredServerUrl(), MINITOK_MCP_AUTH_TOKEN_FILE: path.join(os.homedir(), ".minitok", "mcp", "runtime-token.json"), MINITOK_MCP_SCOPES: scopes };
+    const root = workspacePath();
+    return {
+        ...inheritedMcpEnvironment(),
+        minitok_server_url: configuredServerUrl(),
+        MINITOK_MCP_AUTH_TOKEN_FILE: path.join(os.homedir(), ".minitok", "mcp", "runtime-token.json"),
+        MINITOK_MCP_SCOPES: scopes,
+        ...(root ? { MINITOK_MCP_WORKSPACE_ROOT: root } : {}),
+    };
 }
 function mcpAuthToken() {
     const tokenFile = path.join(os.homedir(), ".minitok", "mcp", "runtime-token.json");

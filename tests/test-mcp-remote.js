@@ -13,6 +13,15 @@ test("remote MCP requires HTTPS /mcp URLs", () => {
   assert.throws(() => validateRemoteUrl("https://user:pass@service.example/mcp"), /credentials/);
 });
 
+test("remote OAuth metadata rejects HTTP, private, and cross-origin endpoints", () => {
+  const { validateMetadataUrl } = require("../src/mcp/remote");
+  const resource = new URL("https://service.example/mcp");
+  assert.throws(() => validateMetadataUrl("http://service.example/meta", resource), /trusted HTTPS/);
+  assert.throws(() => validateMetadataUrl("https://127.0.0.1/meta", resource), /trusted HTTPS/);
+  assert.throws(() => validateMetadataUrl("https://attacker.example/meta", resource), /trusted/);
+  assert.equal(validateMetadataUrl("https://service.example/meta", resource), "https://service.example/meta");
+});
+
 test("remote MCP allowlist matches the server read-only contract", () => {
   assert.deepEqual([...REMOTE_READ_ONLY_TOOLS], ["minitok_status", "minitok_compact"]);
 });

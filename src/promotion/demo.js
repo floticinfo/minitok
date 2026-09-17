@@ -32,7 +32,7 @@ function demoPlan(repo) {
     version: minitokVersion,
     repository: repo,
     networkRequests: false,
-    providerCredentialsRequired: false,
+    providerCredentialsRequired: true,
     repositoryChanges: false,
     commands: [
       `minitok migrate "${repo}"`,
@@ -41,8 +41,8 @@ function demoPlan(repo) {
       `minitok status --workspace "${path.basename(repo)}"`,
     ],
     activation: [
-      "Configure a provider in the generated minitok.yml.",
-      "Run minitok doctor and resolve the entitlement check.",
+      "Configure a provider in the generated minitok.yml; dry-run still uses the configured model provider.",
+      "Run minitok doctor and resolve the entitlement check before the model-backed preview.",
       "Run the same task without --dry-run only after reviewing the proposed workflow.",
     ],
     trust: "This fixture demonstrates onboarding and command shape only; it is not model output, a benchmark, or deployment proof.",

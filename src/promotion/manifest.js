@@ -94,9 +94,10 @@ function buildPromotionBundle() {
     trial: {
       mode: "safe_dry_run",
       commands: ["npm install -g @flotic/minitok", "minitok doctor", "minitok migrate", "minitok run --dry-run \"Add a health-check endpoint and tests\"", "minitok status"],
-      requiresProviderCredentials: false,
+      requiresProviderCredentials: true,
       changesRepository: false,
-      note: "Dry-run demonstrates the workflow contract; it is not a model-backed performance trial.",
+      consumesTrialQuota: false,
+      note: "Dry-run is a model-backed preview: it requires entitlement and provider credentials, does not apply repository changes, and does not consume trial quota.",
     },
     propagation: {
       channels: ["github", "npm", "vscode", "mcp", "product-hunt", "hacker-news", "reddit", "linkedin"],

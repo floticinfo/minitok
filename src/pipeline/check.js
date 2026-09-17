@@ -96,25 +96,33 @@ function runVerification(repoRoot, options = {}) {
  * The script is repository-controlled code, so leaving the paid provider keys or
  * the MCP grant in its environment let a repository read the operator's
  * credentials (and the MCP token) from a process minitok started for it. Only
- * credentials are removed: PATH, HOME, proxy settings, and unrelated application
- * variables (a database URL, a CI flag) are kept.
+ * a small portable process allowlist is retained; application, CI, cloud,
+ * database, proxy, package-manager, credential-file and custom variables do not cross the gate.
  */
-const PROVIDER_CREDENTIAL_ENV = /^(?:ANTHROPIC|OPENAI|AZURE_OPENAI|GOOGLE|GEMINI|OPENROUTER|GROQ|MISTRAL|DEEPSEEK|XAI|TOGETHER|FIREWORKS|COHERE|PERPLEXITY|VOYAGE)_(?:API_KEY|TOKEN|SECRET|KEY)$/i;
-const MINITOK_SECRET_ENV = /^MINITOK_(?:MCP_AUTH_TOKEN|MCP_AUTH_TOKEN_FILE|MCP_AUTH_TOKEN_NEXT|MCP_AUTH_TOKEN_TTL_MS|MCP_AUTH_TOKEN_EXPIRES_AT|MCP_AUTH_TOKEN_REVOKED|MCP_RUNTIME_IDENTITY|TOKEN|CUSTOMER_TOKEN|ACTIVATION_KEY|SERVER_TOKEN)/i;
+const SAFE_VERIFICATION_ENV = new Set([
+  "PATH", "Path", "HOME", "USERPROFILE", "HOMEDRIVE", "HOMEPATH",
+  "TEMP", "TMP", "TMPDIR", "SystemRoot", "SYSTEMROOT", "ComSpec", "COMSPEC",
+  "PATHEXT", "LANG", "LC_ALL", "LC_CTYPE", "TZ", "CI", "TERM",
+  "TERM_PROGRAM", "TERM_PROGRAM_VERSION", "NO_COLOR",
+]);
 
-function verificationEnvironment(base = process.env) {
-  const env = { ...base };
-  for (const key of Object.keys(env)) {
-    if (/^MINITOK_(OFFLINE|DEFAULT_PROVIDER|SERVER_URL|PROJECT_|BUDGET_|EXECUTION_|VALIDATION_)/i.test(key)) delete env[key];
-    else if (MINITOK_SECRET_ENV.test(key) || PROVIDER_CREDENTIAL_ENV.test(key)) delete env[key];
+const SAFE_ENV_NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+const SECRET_ENV_NAME = /(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|PRIVATE|COOKIE|AUTH|CERT|PEM|JWT|DATABASE_URL|CONNECTION_STRING)/i;
+function verificationEnvironment(base = process.env, additionalNames = []) {
+  const env = {};
+  const names = new Set(SAFE_VERIFICATION_ENV);
+  for (const name of additionalNames || []) {
+    if (typeof name !== "string" || !SAFE_ENV_NAME.test(name) || SECRET_ENV_NAME.test(name)) throw new Error(`Unsafe verification environment variable: ${String(name)}`);
+    names.add(name);
   }
+  for (const key of names) if (typeof base[key] === "string") env[key] = base[key];
   return env;
 }
 
 function runProcess(command, args, repoRoot, options = {}) {
   const started = Date.now();
   try {
-    const output = execFileSync(command, args, { cwd: repoRoot, env: options.env || verificationEnvironment(), encoding: "utf-8", timeout: options.timeout_ms || 120000, stdio: ["ignore", "pipe", "pipe"] });
+    const output = execFileSync(command, args, { cwd: repoRoot, env: options.env || verificationEnvironment(process.env, options.environment_allowlist), encoding: "utf-8", timeout: options.timeout_ms || 120000, stdio: ["ignore", "pipe", "pipe"] });
     return { status: "passed", command: [command, ...args].join(" "), output: output.slice(-4000), duration_ms: Date.now() - started, exit_code: 0 };
   } catch (error) {
     return { status: "failed", command: [command, ...args].join(" "), output: `${error.stdout || ""}${error.stderr || ""}`.slice(-4000), duration_ms: Date.now() - started, exit_code: typeof error.status === "number" ? error.status : 1 };
@@ -153,7 +161,7 @@ function runProcessAsync(command, args, repoRoot, options = {}) {
   // even though Node forwards it to spawn; a hoisted object is not subject to the
   // excess-property check that a literal would trip. The sync twin above passes the
   // same stdio so both variants ignore repository stdin and capture both streams.
-  const spawnOptions = { cwd: repoRoot, env: options.env || verificationEnvironment(), encoding: "utf-8", timeout: options.timeout_ms || 120000, stdio: ["ignore", "pipe", "pipe"] };
+  const spawnOptions = { cwd: repoRoot, env: options.env || verificationEnvironment(process.env, options.environment_allowlist), encoding: "utf-8", timeout: options.timeout_ms || 120000, stdio: ["ignore", "pipe", "pipe"] };
   return new Promise(resolve => {
     let child;
     try {

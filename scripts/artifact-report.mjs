@@ -19,9 +19,31 @@ function inspectSourceState() {
   try {
     const status = execFileSync("git", ["status", "--short", "--untracked-files=all"], { cwd: root, encoding: "utf8" }).trim();
     const commit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8" }).trim();
-    const tags = execFileSync("git", ["tag", "--points-at", "HEAD"], { cwd: root, encoding: "utf8" }).trim().split(/\\r?\\n/).filter(Boolean);
-    const expectedTag = `v${readJson(path.join(root, "package.json")).version}`;
-    return { worktree: status ? "DIRTY" : "CLEAN", commit, tag: tags.includes(expectedTag) ? "PRESENT_AT_HEAD" : "ABSENT_AT_HEAD", expectedTag, changedFiles: status ? status.split(/\\r?\\n/) : [], provenance: "local git worktree" };
+    const tree = execFileSync("git", ["rev-parse", "HEAD^{tree}"], { cwd: root, encoding: "utf8" }).trim();
+    const tags = execFileSync("git", ["tag", "--points-at", "HEAD"], { cwd: root, encoding: "utf8" }).trim().split(/\r?\n/).filter(Boolean);
+    const packageJson = readJson(path.join(root, "package.json"));
+    const expectedTag = `v${packageJson.version}`;
+    const manifestPath = path.join(root, "release-manifest.json");
+    const release = existsSync(manifestPath) ? readJson(manifestPath).release || {} : {};
+    const manifestTagAtHead = release.tag && tags.includes(release.tag);
+    return {
+      worktree: status ? "DIRTY" : "CLEAN",
+      commit,
+      tree,
+      tag: tags.includes(expectedTag) ? "PRESENT_AT_HEAD" : "ABSENT_AT_HEAD",
+      expectedTag,
+      changedFiles: status ? status.split(/\r?\n/).filter(Boolean) : [],
+      manifest: {
+        path: "release-manifest.json",
+        commit: release.commit || null,
+        tree: release.tree || null,
+        tag: release.tag || null,
+        commitMatches: Boolean(release.commit && release.commit === commit),
+        treeMatches: Boolean(release.tree && release.tree === tree),
+        tagMatches: Boolean(manifestTagAtHead),
+      },
+      provenance: "local git worktree",
+    };
   } catch (error) {
     return { worktree: "UNKNOWN", tag: "UNKNOWN", provenance: "local git worktree", error: error.message };
   }

@@ -11,6 +11,9 @@ runtime/node_modules/**
 runtime/node_modules/undici/docs/**
 .vscode-test/
 *.vsix
+host-*.log
+host-*.err
+host-*.pid
 artifacts/
 rasterize-icon.cjs
 rasterize-representative.cjs

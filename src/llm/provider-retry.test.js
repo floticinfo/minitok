@@ -5,14 +5,16 @@ const assert = require("node:assert/strict");
 const { fetchWithTimeout, FallbackProvider, _estimateCost, LLMProvider } = require("./provider");
 
 function jsonResponse(status, body, headers = {}) {
-  return {
+  const response = {
     ok: status >= 200 && status < 300,
     status,
     headers: { get: (name) => headers[name.toLowerCase()] || null },
     arrayBuffer: async () => new ArrayBuffer(0),
     json: async () => body,
     text: async () => JSON.stringify(body),
+    clone: () => ({ text: async () => JSON.stringify(body) }),
   };
+  return response;
 }
 
 describe("fetchWithTimeout retry policy", () => {
@@ -25,6 +27,38 @@ describe("fetchWithTimeout retry policy", () => {
     };
     const originalFetch = global.fetch;
     global.fetch = fetchImpl;
+    try {
+      const res = await fetchWithTimeout("https://example.test/v1", {}, 1000, { maxRetries: 3, backoffMs: 250, maxBackoffMs: 250 });
+      assert.equal(res.status, 200);
+      assert.equal(calls, 2);
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("does not retry terminal quota 429 responses", async () => {
+    let calls = 0;
+    const originalFetch = global.fetch;
+    global.fetch = async () => {
+      calls++;
+      return jsonResponse(429, { error: { message: "You have no credits remaining. Add credits to continue." } }, { "retry-after": "90" });
+    };
+    try {
+      const res = await fetchWithTimeout("https://example.test/v1", {}, 1000, { maxRetries: 3, backoffMs: 250, maxBackoffMs: 250 });
+      assert.equal(res.status, 429);
+      assert.equal(calls, 1, "quota errors must fail fast instead of waiting through backoff retries");
+    } finally {
+      global.fetch = originalFetch;
+    }
+  });
+
+  it("keeps retrying transient rate-limit 429 responses", async () => {
+    let calls = 0;
+    const originalFetch = global.fetch;
+    global.fetch = async () => {
+      calls++;
+      return calls === 1 ? jsonResponse(429, { error: { message: "Rate limit exceeded; retry later" } }, { "retry-after": "0" }) : jsonResponse(200, { ok: true });
+    };
     try {
       const res = await fetchWithTimeout("https://example.test/v1", {}, 1000, { maxRetries: 3, backoffMs: 250, maxBackoffMs: 250 });
       assert.equal(res.status, 200);

@@ -631,31 +631,43 @@ class minitokSidebar {
         const home = os.homedir();
         let vscodeUser;
         let claudeRoot;
-        let cursorConfig;
+        let configHome;
         if (process.platform === "win32") {
             const appData = process.env.APPDATA || path.join(home, "AppData", "Roaming");
             vscodeUser = path.join(appData, "Code", "User");
             claudeRoot = path.join(appData, "Claude");
-            cursorConfig = path.join(home, ".cursor", "mcp.json");
+            configHome = path.join(home, ".config");
         }
         else if (process.platform === "darwin") {
             const support = path.join(home, "Library", "Application Support");
             vscodeUser = path.join(support, "Code", "User");
             claudeRoot = path.join(support, "Claude");
-            cursorConfig = path.join(home, ".cursor", "mcp.json");
+            configHome = path.join(home, ".config");
         }
         else {
-            const configHome = process.env.XDG_CONFIG_HOME || path.join(home, ".config");
+            configHome = process.env.XDG_CONFIG_HOME || path.join(home, ".config");
             vscodeUser = path.join(configHome, "Code", "User");
             claudeRoot = path.join(configHome, "Claude");
-            cursorConfig = path.join(home, ".cursor", "mcp.json");
         }
-        const cursorCandidates = [cursorConfig, path.join(vscodeUser, "globalStorage", "mcp.json")];
-        const cursor = cursorCandidates.find(candidate => this.safeConfigExists(candidate)) || cursorCandidates[0];
+        const firstExisting = (candidates) => candidates.find(candidate => this.safeConfigExists(candidate)) || candidates[0];
+        const cline = firstExisting([
+            path.join(home, ".cline", "data", "settings", "cline_mcp_settings.json"),
+            path.join(home, ".cline", "mcp.json"),
+            path.join(vscodeUser, "globalStorage", "saoudrizwan.claude-dev", "settings", "cline_mcp_settings.json"),
+        ]);
+        const cursor = firstExisting([
+            path.join(home, ".cursor", "mcp.json"),
+            path.join(vscodeUser, "globalStorage", "mcp.json"),
+        ]);
+        const windsurf = firstExisting([
+            path.join(home, ".codeium", "windsurf", "mcp_config.json"),
+            path.join(home, ".windsurf", "mcp_config.json"),
+        ]);
         return {
-            cline: path.join(vscodeUser, "globalStorage", "saoudrizwan.claude-dev", "settings", "cline_mcp_settings.json"),
+            cline,
             claude: path.join(claudeRoot, "claude_desktop_config.json"),
             cursor,
+            windsurf,
         };
     }
     async connectMcp(target) {
@@ -717,7 +729,7 @@ class minitokSidebar {
             const existingMinitok = existingServers.minitok;
             const existingEnv = existingMinitok && typeof existingMinitok === "object" && existingMinitok.env && typeof existingMinitok.env === "object" ? existingMinitok.env : {};
             const scopes = typeof existingEnv.MINITOK_MCP_SCOPES === "string" && existingEnv.MINITOK_MCP_SCOPES.trim() ? existingEnv.MINITOK_MCP_SCOPES : configuredEnv.MINITOK_MCP_SCOPES;
-            existingServers.minitok = { command: configuredMcp[0], args: configuredMcp.slice(1), env: { ...existingEnv, minitok_server_url: existingEnv.minitok_server_url || configuredEnv.minitok_server_url, MINITOK_MCP_AUTH_TOKEN_FILE: configuredEnv.MINITOK_MCP_AUTH_TOKEN_FILE, MINITOK_MCP_SCOPES: scopes }, disabled: false };
+            existingServers.minitok = { command: configuredMcp[0], args: configuredMcp.slice(1), env: { ...existingEnv, minitok_server_url: existingEnv.minitok_server_url || configuredEnv.minitok_server_url, MINITOK_MCP_AUTH_TOKEN_FILE: configuredEnv.MINITOK_MCP_AUTH_TOKEN_FILE, MINITOK_MCP_SCOPES: scopes, ...(configuredEnv.MINITOK_MCP_WORKSPACE_ROOT ? { MINITOK_MCP_WORKSPACE_ROOT: configuredEnv.MINITOK_MCP_WORKSPACE_ROOT } : {}) }, disabled: false };
             config[serversKey] = existingServers;
             const temp = `${configPath}.tmp-${process.pid}-${(0, node_crypto_1.randomUUID)()}`;
             try {

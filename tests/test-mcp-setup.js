@@ -25,6 +25,7 @@ for (const schema of ["mcpServers", "servers"]) {
         host: "cline",
         tokenFile: path.join(root, "runtime-token.json"),
         scopes: "read,write,verify_exec",
+        workspaceRoot: root,
       });
       assert.equal(plan.schema, schema);
       assert.equal(plan.data.userSetting.keep, true);
@@ -44,9 +45,23 @@ for (const schema of ["mcpServers", "servers"]) {
   });
 }
 
-test("setup defaults to the task-capable scopes while leaving auto_accept disabled", () => {
+test("MCP reconnect preserves an explicit workspace root unless changed", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-mcp-root-"));
+  const file = path.join(root, "mcp.json");
+  fs.writeFileSync(file, JSON.stringify({ mcpServers: { minitok: { env: { MINITOK_MCP_WORKSPACE_ROOT: path.join(root, "old") } } } }));
+  try {
+    const preserved = mcp.planChange(file, "connect", { tokenFile: path.join(root, "runtime-token.json") });
+    assert.equal(preserved.data.mcpServers.minitok.env.MINITOK_MCP_WORKSPACE_ROOT, path.join(root, "old"));
+    const changed = mcp.planChange(file, "connect", { tokenFile: path.join(root, "runtime-token.json"), workspaceRoot: root });
+    assert.equal(changed.data.mcpServers.minitok.env.MINITOK_MCP_WORKSPACE_ROOT, path.resolve(root));
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("setup requires explicit task scopes and keeps the default read-only", () => {
   const { root, file } = fixture({ mcpServers: {} });
   try {
+    const defaultPlan = mcp.planChange(file, "connect", { tokenFile: path.join(root, "runtime-token.json") });
+    assert.equal(defaultPlan.data.mcpServers.minitok.env.MINITOK_MCP_SCOPES, undefined);
     const plan = mcp.planChange(file, "connect", {
       tokenFile: path.join(root, "runtime-token.json"),
       scopes: "read,write,verify_exec",
@@ -77,15 +92,50 @@ test("Cline integration writes a bridge entry, preserves existing settings, and 
     const config = path.join(root, "settings", "cline_mcp_settings.json");
     fs.mkdirSync(path.dirname(config), { recursive: true });
     fs.writeFileSync(config, JSON.stringify({ mcpServers: { other: { command: "keep" } } }));
-    const first = clineIntegration.installMcpConfig({ packageRoot: root, tokenFile: path.join(root, "token.json") });
+    const first = clineIntegration.installMcpConfig({ packageRoot: root, tokenFile: path.join(root, "token.json"), workspaceRoot: root });
     const value = JSON.parse(fs.readFileSync(config, "utf8"));
     assert.equal(first.changed, true);
     assert.equal(value.mcpServers.other.command, "keep");
     assert.match(value.mcpServers.minitok.args[0], /cline-compat\.js$/);
+    assert.equal(value.mcpServers.minitok.env.MINITOK_MCP_WORKSPACE_ROOT, path.resolve(root));
     assert.equal(value.mcpServers.minitok.autoApprove.length, 0);
     assert.equal(fs.existsSync(`${config}.bak`), true);
     const second = clineIntegration.installMcpConfig({ packageRoot: root, tokenFile: path.join(root, "token.json") });
     assert.equal(second.changed, false);
+  } finally {
+    if (previous === undefined) delete process.env.CLINE_DATA_DIR;
+    else process.env.CLINE_DATA_DIR = previous;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Cline integration fails closed on malformed server container instead of replacing it", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-cline-container-"));
+  const previous = process.env.CLINE_DATA_DIR;
+  process.env.CLINE_DATA_DIR = root;
+  try {
+    const config = path.join(root, "settings", "cline_mcp_settings.json");
+    fs.mkdirSync(path.dirname(config), { recursive: true });
+    fs.writeFileSync(config, JSON.stringify({ mcpServers: [] }));
+    assert.throws(() => clineIntegration.installMcpConfig({ packageRoot: root, tokenFile: path.join(root, "token.json") }), /malformed/);
+    assert.deepEqual(JSON.parse(fs.readFileSync(config, "utf8")), { mcpServers: [] });
+  } finally {
+    if (previous === undefined) delete process.env.CLINE_DATA_DIR;
+    else process.env.CLINE_DATA_DIR = previous;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("Cline integration fails closed on malformed JSON instead of overwriting it", () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-cline-malformed-"));
+  const previous = process.env.CLINE_DATA_DIR;
+  process.env.CLINE_DATA_DIR = root;
+  try {
+    const config = path.join(root, "settings", "cline_mcp_settings.json");
+    fs.mkdirSync(path.dirname(config), { recursive: true });
+    fs.writeFileSync(config, "{ malformed");
+    assert.throws(() => clineIntegration.installMcpConfig({ packageRoot: root, tokenFile: path.join(root, "token.json") }), /malformed/);
+    assert.equal(fs.readFileSync(config, "utf8"), "{ malformed");
   } finally {
     if (previous === undefined) delete process.env.CLINE_DATA_DIR;
     else process.env.CLINE_DATA_DIR = previous;

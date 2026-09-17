@@ -31,7 +31,12 @@ const MAX_TRACKED_RUNS = 100;
 function runtimeBinding(options, authToken) {
   const explicit = options.runtimeIdentity || options.bindingId || process.env.MINITOK_MCP_RUNTIME_IDENTITY;
   if (typeof explicit === "string" && explicit) return explicit;
-  const installation = options.installationId || process.env.MINITOK_INSTALLATION_ID;
+  let fileInstallation;
+  const tokenFile = options.authTokenFile || process.env.MINITOK_MCP_AUTH_TOKEN_FILE;
+  if (typeof tokenFile === "string" && tokenFile) {
+    try { fileInstallation = readRuntimeToken(tokenFile)?.installation_id; } catch {}
+  }
+  const installation = options.installationId || process.env.MINITOK_INSTALLATION_ID || fileInstallation;
   if (typeof installation === "string" && installation) return installation;
   return authToken ? crypto.createHash("sha256").update(authToken).digest("hex") : null;
 }
@@ -130,7 +135,12 @@ class RuntimeStdio {
     // without the real pipeline (which performs paid calls and workspace writes).
     // Without this the option was accepted and then silently ignored.
     this._runPipeline = options.runPipeline || null;
-    this._workspaceRoot = options.workspaceRoot || process.cwd();
+    // MCP hosts commonly start stdio servers from an application directory,
+    // not from the repository they operate on. Allow setup to bind the server to
+    // an explicit workspace root while retaining the normal cwd fallback.
+    this._workspaceRoot = options.workspaceRoot || process.env.MINITOK_MCP_WORKSPACE_ROOT || process.cwd();
+    this._serverUrl = options.serverUrl || process.env.minitok_server_url || process.env.MINITOK_SERVER_URL;
+    this._entitlementDir = options.entitlementDir;
     if (options.authRequired === false || options.entitlementRequired === false) throw new Error("MCP authentication and entitlement are mandatory");
     // Scopes are opt-in: the default stays read-only (tests/test-mcp-remote.js
     // asserts `["read"]`), and write/auto_accept must be granted explicitly.
@@ -412,9 +422,10 @@ class RuntimeStdio {
           reply({ jsonrpc: "2.0", id, result: { protocolVersion, capabilities: { tools: { listChanged: false }, resources: { subscribe: false, listChanged: false }, prompts: { listChanged: false } }, serverInfo: { name: "minitok-runtime", version } } }); return;
     }
      if (method === "notifications/initialized") return;
+      let entitlementPolicy = null;
       if (this._entitlementRequired && ["resources/list", "resources/read", "prompts/list", "prompts/get", "tools/list", "tools/call"].includes(method)) {
-        const policy = await this._services.entitlement.status();
-        if (!policy?.allowed) return this._error(id, MCP_ERROR_CODES.PERMISSION_DENIED, policy?.message || "Paid entitlement required", "ENTITLEMENT_REQUIRED", correlationId, { state: policy?.state }, reply);
+        entitlementPolicy = await this._services.entitlement.status();
+        if (!entitlementPolicy?.allowed) return this._error(id, MCP_ERROR_CODES.PERMISSION_DENIED, entitlementPolicy?.message || "Paid entitlement required", "ENTITLEMENT_REQUIRED", correlationId, { state: entitlementPolicy?.state }, reply);
       }
      if (method === "notifications/cancelled") { const runId = params.run_id || this._requestToRun.get(params.requestId); const run = this._runs.get(runId); if (run) { run.state = "cancelled"; run.controller.abort(); run.persistence = this._saveRunState(); } return; }
     if (method === "resources/list") return reply({ jsonrpc: "2.0", id, result: { resources: [{ uri: "minitok://status", name: "minitok status", mimeType: "application/json" }, { uri: "minitok://runs", name: "minitok runs", mimeType: "application/json" }] } });
@@ -459,7 +470,10 @@ class RuntimeStdio {
       // null, so all four failed schema validation through the transport.
       const toolArguments = { ...(params.arguments || {}) };
       if (runId && isPipelineTool) toolArguments.run_id = runId;
-      const result = await getToolHandler(params.name, toolArguments, this._services, { safeResult: true, signal: controller.signal, runs: this._runs, runPipeline: this._runPipeline, recoveredRuns: this._recoveredRuns, persistence: this._persistence, workspaceRoot: this._workspaceRoot, permissions: this._permissions, writeApproval: (file, decision, binding) => { const stat = fs.lstatSync(file); if (!stat.isFile() || stat.isSymbolicLink() || fs.realpathSync.native(file) !== file) throw Object.assign(new Error("Approval request path is not a regular file"), { code: "APPROVAL_INVALID" }); let request; try { request = JSON.parse(fs.readFileSync(file, "utf8")); } catch { throw Object.assign(new Error("Approval request is malformed"), { code: "APPROVAL_INVALID" }); } if (request.type !== "approval_request" || (decision !== "approve" && decision !== "reject") || typeof request.nonce !== "string" || request.nonce !== binding.nonce || request.run_id !== binding.runId || !Number.isFinite(request.expires_at) || Date.now() >= request.expires_at) throw Object.assign(new Error("Approval request is stale or mismatched"), { code: "APPROVAL_INVALID" }); const target = `${file}.response`; try { const targetStat = fs.lstatSync(target); if (targetStat.isSymbolicLink() || !targetStat.isFile()) throw Object.assign(new Error("Approval response path is not a regular file"), { code: "APPROVAL_INVALID" }); } catch (error) { if (error.code !== "ENOENT") throw error; } const temp = `${target}.tmp.${process.pid}.${crypto.randomBytes(6).toString("hex")}`; const fd = fs.openSync(temp, "wx", 0o600); try { fs.writeFileSync(fd, `${JSON.stringify({ decision, nonce: binding.nonce, run_id: binding.runId })}\n`, { encoding: "utf8" }); fs.fsyncSync(fd); } finally { fs.closeSync(fd); } try { fs.renameSync(temp, target); } catch (error) { try { fs.rmSync(temp, { force: true }); } catch {} throw error; } }, onProgress: event => { if (runId && !isNotification) { const progress = Number.isFinite(event.progress) ? event.progress : ({ intel: 1, plan: 2, work: 3, verify: 4, review: 5 }[event.phase] || 0); this._respond({ jsonrpc: "2.0", method: "notifications/progress", params: { progressToken: params._meta?.progressToken ?? params.meta?.progressToken ?? null, progress, total: 5, message: JSON.stringify({ phase: event.phase, state: event.state, run_id: runId, correlation_id: correlationId }) } }); } } });
+      const operation = getToolHandler(params.name, toolArguments, this._services, { safeResult: true, signal: controller.signal, runs: this._runs, runPipeline: this._runPipeline, recoveredRuns: this._recoveredRuns, persistence: this._persistence, workspaceRoot: this._workspaceRoot, permissions: this._permissions, entitlementPolicy, serverUrl: this._serverUrl, entitlementDir: this._entitlementDir, writeApproval: (file, decision, binding) => { const stat = fs.lstatSync(file); if (!stat.isFile() || stat.isSymbolicLink() || fs.realpathSync.native(file) !== file) throw Object.assign(new Error("Approval request path is not a regular file"), { code: "APPROVAL_INVALID" }); let request; try { request = JSON.parse(fs.readFileSync(file, "utf8")); } catch { throw Object.assign(new Error("Approval request is malformed"), { code: "APPROVAL_INVALID" }); } if (request.type !== "approval_request" || (decision !== "approve" && decision !== "reject") || typeof request.nonce !== "string" || request.nonce !== binding.nonce || request.run_id !== binding.runId || !Number.isFinite(request.expires_at) || Date.now() >= request.expires_at) throw Object.assign(new Error("Approval request is stale or mismatched"), { code: "APPROVAL_INVALID" }); const target = `${file}.response`; try { const targetStat = fs.lstatSync(target); if (targetStat.isSymbolicLink() || !targetStat.isFile()) throw Object.assign(new Error("Approval response path is not a regular file"), { code: "APPROVAL_INVALID" }); } catch (error) { if (error.code !== "ENOENT") throw error; } const temp = `${target}.tmp.${process.pid}.${crypto.randomBytes(6).toString("hex")}`; const fd = fs.openSync(temp, "wx", 0o600); try { fs.writeFileSync(fd, `${JSON.stringify({ decision, nonce: binding.nonce, run_id: binding.runId })}\n`, { encoding: "utf8" }); fs.fsyncSync(fd); } finally { fs.closeSync(fd); } try { fs.renameSync(temp, target); } catch (error) { try { fs.rmSync(temp, { force: true }); } catch {} throw error; } }, onProgress: event => { if (runId && !isNotification) { const progress = Number.isFinite(event.progress) ? event.progress : ({ intel: 1, plan: 2, work: 3, verify: 4, review: 5 }[event.phase] || 0); this._respond({ jsonrpc: "2.0", method: "notifications/progress", params: { progressToken: params._meta?.progressToken ?? params.meta?.progressToken ?? null, progress, total: 5, message: JSON.stringify({ phase: event.phase, state: event.state, run_id: runId, correlation_id: correlationId }) } }); } } });
+      if (runId) { const pending = this._runs.get(runId); if (pending) pending.promise = operation; }
+      const result = await operation;
+
        // The tool handler runs with safeResult, so a failing pipeline returns
        // `isError: true` instead of throwing. Recording "completed" regardless
        // made every failed run look successful in run_get / run_list and in the
@@ -476,4 +490,4 @@ class RuntimeStdio {
   _errorCode(code) { return code === "INVALID_PARAMS" || code === "INVALID_PATH" || code === "PATH_OUTSIDE_WORKSPACE" ? -32602 : code === "RUN_NOT_FOUND" || code === "TOOL_NOT_FOUND" ? MCP_ERROR_CODES.NOT_FOUND : MCP_ERROR_CODES.TOOL_ERROR; }
   _respond(msg) { process.stdout.write(`${JSON.stringify(msg)}\n`); }
 }
-module.exports = { RuntimeStdio, SUPPORTED_PROTOCOLS, isValidJsonRpcRequest, loadAuthTokenFile, parseLocalMcpScopes, LOCAL_MCP_SCOPES, drainStdioLines, MAX_REQUEST_BYTES, MAX_TRACKED_RUNS };
+module.exports = { RuntimeStdio, SUPPORTED_PROTOCOLS, isValidJsonRpcRequest, loadAuthTokenFile, parseLocalMcpScopes, LOCAL_MCP_SCOPES, drainStdioLines, MAX_REQUEST_BYTES, MAX_TRACKED_RUNS, runtimeBinding };

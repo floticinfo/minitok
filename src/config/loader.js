@@ -52,7 +52,7 @@ const DEFAULTS = {
     retry_max_sec: 1800.0,
     research_enabled: true,
   },
-  validation: { enabled: true, script_path: "VERIFY_CMD.mjs", timeout_ms: 120000, confidence_threshold: 0.8, max_changed_files: 20 },
+  validation: { enabled: true, script_path: "VERIFY_CMD.mjs", timeout_ms: 120000, confidence_threshold: 0.8, max_changed_files: 20, environment_allowlist: [] },
   security: { blocked_extensions: [".env", ".pem", ".key", ".p12", ".pfx"] },
 };
 
@@ -232,6 +232,7 @@ function validateConfig(config) {
   if (config.default_provider !== undefined && config.default_provider !== null && typeof config.default_provider !== "string") throw new ConfigError("default_provider must be a string");
   assertSafeProviderName(config.default_provider, "default_provider");
   if (config.validation?.script_path !== undefined && typeof config.validation.script_path !== "string") throw new ConfigError("validation.script_path must be a string");
+  if (config.validation?.environment_allowlist !== undefined && (!Array.isArray(config.validation.environment_allowlist) || config.validation.environment_allowlist.some(name => typeof name !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || /(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|PRIVATE|COOKIE|AUTH|CERT|PEM|JWT|DATABASE_URL|CONNECTION_STRING)/i.test(name)))) throw new ConfigError("validation.environment_allowlist may contain only non-secret environment variable names");
   if (config.security?.blocked_extensions !== undefined && (!Array.isArray(config.security.blocked_extensions) || config.security.blocked_extensions.some(value => typeof value !== "string"))) throw new ConfigError("security.blocked_extensions must be an array of strings");
   return config;
 }

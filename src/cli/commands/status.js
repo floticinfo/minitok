@@ -23,6 +23,10 @@ async function cmdStatusHuman(options = {}) {
       if (payload.plan_id) console.log(`  Plan:       ${payload.plan_id}`);
       if (payload.expires_at) console.log(`  Expires:    ${payload.expires_at}`);
       if (payload.max_devices) console.log(`  Max Devices: ${payload.max_devices}`);
+      if (payload.plan_id === "trial") {
+        console.log(`  Trial:       ${Math.max(0, (payload.run_quota || 0) - (payload.runs_used || 0))} run(s) remaining`);
+        console.log(`  Telemetry:   OFF (trial policy)`);
+      }
     }
     if (gate.graceDaysRemaining) {
       console.log(`  Grace:      ${gate.graceDaysRemaining} day(s) remaining`);
@@ -49,12 +53,17 @@ async function cmdStatusHuman(options = {}) {
   }
 
   // --- Workspace section ---
-  const wm = new WorkspaceManager();
+  let wm;
   let ws;
   try {
+    // Registry parsing happens in the constructor, so construct the manager inside
+    // the same recovery boundary as workspace resolution. Human status should print
+    // a useful diagnostic instead of throwing before it can explain the failure.
+    wm = new WorkspaceManager(options.workspaceManagerHome);
     ws = options.repo ? { name: path.basename(path.resolve(options.repo)), repository_root: path.resolve(options.repo), project_type: "repository", last_used: null } : options.workspace ? wm.resolve(options.workspace) : wm.currentWorkspace();
   } catch (error) {
     console.error(`Workspace error: ${error.message}`);
+    console.error("Recovery: repair or remove ~/.minitok/workspaces.json, then run `minitok workspace add .`.");
     return 1;
   }
 
@@ -82,10 +91,17 @@ async function cmdStatusHuman(options = {}) {
     }
   }
 
-  const config = loadConfig(path.join(ws.repository_root, "minitok.yml"));
+  const configPath = path.join(ws.repository_root, "minitok.yml");
+  let config;
+  try {
+    config = loadConfig(configPath);
+  } catch (error) {
+    console.error(`Config error: ${error.message}`);
+    console.error(`Recovery: repair or remove ${configPath}, then run \`minitok migrate\`.`);
+    return 1;
+  }
   const providers = await detectAvailableProviders(config);
   console.log(`\nProviders: ${providers.length > 0 ? providers.join(", ") : "none detected"}`);
-  const configPath = path.join(ws.repository_root, "minitok.yml");
   console.log(`Config:    ${require("fs").existsSync(configPath) ? configPath : "missing — run: minitok migrate"}`);
   console.log(`Roles:`);
   for (const [role] of Object.entries(config.roles)) {
@@ -97,15 +113,23 @@ async function cmdStatusHuman(options = {}) {
 
 async function cmdStatus(options = {}) {
   if (options.json) {
-    const ws = new WorkspaceManager();
+    // Construct the manager inside the guarded section: a malformed registry is
+    // itself a diagnostic condition and must not prevent status --json from
+    // returning machine-readable output.
+    let ws = null;
     let workspace = null;
     let workspaceError = null;
+    try { ws = new WorkspaceManager(options.workspaceManagerHome); } catch (error) { workspaceError = error.message; }
     // The human path below reports an unreadable registry as a message and keeps
     // going; the JSON path used to re-throw, so a script asking for
     // machine-readable status got a stack trace (or empty stdout) exactly when the
     // diagnostic mattered. Every section now degrades to a reported value.
     try {
-      workspace = options.repo ? { name: path.basename(path.resolve(options.repo)), repository_root: path.resolve(options.repo), project_type: "repository", last_used: null } : options.workspace ? ws.resolve(options.workspace) : ws.currentWorkspace();
+      workspace = options.repo
+        ? { name: path.basename(path.resolve(options.repo)), repository_root: path.resolve(options.repo), project_type: "repository", last_used: null }
+        : ws
+          ? (options.workspace ? ws.resolve(options.workspace) : ws.currentWorkspace())
+          : null;
     } catch (error) {
       workspaceError = error.message;
     }

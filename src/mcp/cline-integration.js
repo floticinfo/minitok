@@ -9,14 +9,32 @@ function home() { return os.homedir(); }
 function clineDataDir() { return process.env.CLINE_DATA_DIR || path.join(home(), ".cline", "data"); }
 function configCandidates() { return [path.join(clineDataDir(), "settings", "cline_mcp_settings.json"), path.join(home(), ".cline", "mcp.json")]; }
 function configPath() { return configCandidates().find(file => fs.existsSync(file)) || configCandidates()[0]; }
-function readJson(file) { try { return JSON.parse(fs.readFileSync(file, "utf8")); } catch { return {}; } }
+function readJson(file) {
+  try {
+    const value = JSON.parse(fs.readFileSync(file, "utf8"));
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("root must be an object");
+    return value;
+  } catch (error) {
+    if (error.code === "ENOENT") return {};
+    throw new Error(`Cline MCP configuration is malformed: ${file}`, { cause: error });
+  }
+}
 function writeAtomic(file, value) {
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
-  if (fs.existsSync(file) && !fs.existsSync(`${file}.bak`)) fs.copyFileSync(file, `${file}.bak`);
-  const temp = `${file}.tmp.${process.pid}`;
-  fs.writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
-  fs.renameSync(temp, file);
-  try { fs.chmodSync(file, 0o600); } catch {}
+  const lock = `${file}.lock`;
+  let lockFd;
+  try {
+    try { lockFd = fs.openSync(lock, "wx", 0o600); }
+    catch (error) { throw new Error(`Cline MCP configuration is busy: ${file}`, { cause: error }); }
+    if (fs.existsSync(file) && !fs.existsSync(`${file}.bak`)) fs.copyFileSync(file, `${file}.bak`);
+    const temp = `${file}.tmp.${process.pid}.${Date.now()}`;
+    fs.writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600, flag: "wx" });
+    try { const fd = fs.openSync(temp, "r"); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); } } catch {}
+    fs.renameSync(temp, file);
+    try { fs.chmodSync(file, 0o600); } catch {}
+  } finally {
+    if (lockFd !== undefined) { try { fs.closeSync(lockFd); } catch {} try { fs.unlinkSync(lock); } catch {} }
+  }
 }
 function upsertFile(file, content) {
   if (fs.existsSync(file)) {
@@ -31,14 +49,17 @@ function upsertFile(file, content) {
   return true;
 }
 /**
- * @param {{ packageRoot: string, tokenFile: string, serverUrl?: string, scopes?: string }} options
+ * @param {{ packageRoot: string, tokenFile: string, serverUrl?: string, scopes?: string, workspaceRoot?: string }} options
  */
-function installMcpConfig({ packageRoot, tokenFile, serverUrl = "https://api.minitok.dev", scopes = "read" }) {
+function installMcpConfig({ packageRoot, tokenFile, serverUrl = "https://api.minitok.dev", scopes = "read", workspaceRoot }) {
   const file = configPath(); const data = readJson(file); const key = data.mcpServers ? "mcpServers" : data.servers ? "servers" : "mcpServers";
+  if (data[key] !== undefined && (typeof data[key] !== "object" || Array.isArray(data[key]))) throw new Error(`Cline MCP configuration is malformed: ${file}`);
   const servers = data[key] && typeof data[key] === "object" && !Array.isArray(data[key]) ? data[key] : {};
   const entry = path.join(packageRoot, "src", "mcp", "cline-compat.js"); const target = path.join(packageRoot, "src", "runtime", "stdio-entry.js");
   const current = servers.minitok && typeof servers.minitok === "object" ? servers.minitok : {};
-  const next = { ...current, command: process.execPath, args: [entry], env: { ...(current.env || {}), MINITOK_MCP_AUTH_TOKEN_FILE: tokenFile, minitok_server_url: serverUrl, MINITOK_MCP_SCOPES: scopes, MINITOK_MCP_TARGET_COMMAND: process.execPath, MINITOK_MCP_TARGET_ARGS: JSON.stringify([target]) }, disabled: false, autoApprove: [] };
+  const env = { ...(current.env || {}), MINITOK_MCP_AUTH_TOKEN_FILE: tokenFile, minitok_server_url: serverUrl, MINITOK_MCP_SCOPES: scopes, MINITOK_MCP_TARGET_COMMAND: process.execPath, MINITOK_MCP_TARGET_ARGS: JSON.stringify([target]) };
+  if (typeof workspaceRoot === "string" && workspaceRoot.trim()) env.MINITOK_MCP_WORKSPACE_ROOT = path.resolve(workspaceRoot);
+  const next = { ...current, command: process.execPath, args: [entry], env, disabled: false, autoApprove: [] };
   const changed = JSON.stringify(current) !== JSON.stringify(next);
   if (changed) { servers.minitok = next; writeAtomic(file, { ...data, [key]: servers }); }
   return { changed, file, reason: changed ? undefined : "already_configured" };

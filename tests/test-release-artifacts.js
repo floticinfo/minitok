@@ -6,6 +6,7 @@ const path = require("node:path");
 
 const root = path.join(__dirname, "..");
 const script = fs.readFileSync(path.join(root, "scripts", "release-artifact-check.mjs"), "utf8");
+const releaseVerify = fs.readFileSync(path.join(root, "scripts", "release-verify.mjs"), "utf8");
 const packer = fs.readFileSync(path.join(root, "scripts", "package-extension.mjs"), "utf8");
 const reporter = fs.readFileSync(path.join(root, "scripts", "artifact-report.mjs"), "utf8");
 const manifest = fs.readFileSync(path.join(root, "scripts", "release-manifest.mjs"), "utf8");
@@ -31,6 +32,8 @@ test("release artifact checks define one authoritative extension output", () => 
 test("release diagnostics distinguish dirty candidates", () => {
   assert.match(script, /DIRTY CANDIDATE \(not releasable source\)/);
   assert.match(script, /CLEAN SOURCE \(artifact checks still required\)/);
+  assert.match(releaseVerify, /HEAD does not match release manifest commit/);
+  assert.match(releaseVerify, /HEAD tree does not match release manifest tree/);
   assert.match(script, /sha256/);
 });
 
@@ -75,6 +78,9 @@ test("release safeguards are fail-closed and integrity based", () => {
   assert.match(manifest, /sha512/);
   assert.match(registry, /MINITOK_ALLOW_LIVE_REGISTRY/);
   assert.match(registry, /validateRegistryMetadata/);
+  assert.match(registry, /inspectRegistryMetadata/);
+  assert.match(registry, /exactPublished/);
+  assert.match(registry, /latestMatches/);
   assert.match(installer, /verify-package\.mjs/);
   assert.match(installer, /npm pack/);
 });
@@ -101,4 +107,9 @@ test("cross-artifact report separates provenance from external states", () => {
   assert.match(reporter, /tarballHash/);
   assert.match(reporter, /authoritativeEvidence/);
   assert.match(reporter, /stdio-entry\.js/);
+  assert.match(reporter, /HEAD\^\{tree\}/);
+  assert.match(reporter, /changedFiles: status \? status\.split/);
+  assert.match(reporter, /commitMatches/);
+  assert.match(reporter, /treeMatches/);
+  assert.match(reporter, /tagMatches/);
 });

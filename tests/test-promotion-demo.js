@@ -13,7 +13,7 @@ test("demo fixture creates a disposable repository without credentials or networ
     const plan = createDemo(path.join(directory, "repo"));
     assert.equal(plan.status, "fixture_created");
     assert.equal(plan.networkRequests, false);
-    assert.equal(plan.providerCredentialsRequired, false);
+    assert.equal(plan.providerCredentialsRequired, true);
     assert.equal(plan.repositoryChanges, false);
     assert.ok(fs.existsSync(path.join(plan.repository, "README.md")));
     assert.ok(fs.existsSync(path.join(plan.repository, "health.js")));

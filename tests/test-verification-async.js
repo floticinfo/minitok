@@ -74,7 +74,7 @@ test("a gate that never exits is cut off by validation.timeout_ms", async () => 
 test("the pipeline awaits the asynchronous gate instead of the blocking one", () => {
   const loopSource = fs.readFileSync(path.join(ROOT, "src", "pipeline", "loop.js"), "utf8");
   assert.match(loopSource, /const \{ verifyCommandAsync \} = require\("\.\/check"\);/);
-  assert.match(loopSource, /await verifyCommandAsync\(repoRoot, \{ script_path: config\.validation\?\.script_path, timeout_ms: config\.validation\?\.timeout_ms \}\)/);
+  assert.match(loopSource, /await verifyCommandAsync\(repoRoot, \{ script_path: config\.validation\?\.script_path, timeout_ms: config\.validation\?\.timeout_ms, environment_allowlist: config\.validation\?\.environment_allowlist \}\)/);
   assert.doesNotMatch(loopSource, /verifyCommand\(repoRoot/, "the blocking gate must not be reachable from the pipeline");
   assert.doesNotMatch(loopSource, /execFileSync\(|execSync\(|spawnSync\(/, "the pipeline must not run repository code synchronously");
   assert.doesNotMatch(loopSource, /require\("(?:node:)?child_process"\)/, "no synchronous child-process module is imported");

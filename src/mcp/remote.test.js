@@ -1,7 +1,16 @@
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { RemoteMcpClient } = require("./remote");
+const { RemoteMcpClient, extractResourceMetadata } = require("./remote");
+
+test("remote MCP extracts resource metadata from common challenge formats", () => {
+  const url = "https://service.example/.well-known/oauth-protected-resource/mcp";
+  assert.equal(extractResourceMetadata(`Bearer resource_metadata = "${url}"`), url);
+  assert.equal(extractResourceMetadata(`Bearer scope="read", resource_metadata='${url}'`), url);
+  assert.equal(extractResourceMetadata(`Bearer resource_metadata=${url}, scope="read"`), url);
+  assert.equal(extractResourceMetadata(`Bearer realm="service", RESOURCE_METADATA = "${url}"`), url);
+  assert.equal(extractResourceMetadata("Bearer realm=\"service\""), null);
+});
 const { OAuthFlow } = require("../auth/oauth");
 
 test("remote MCP discovers OAuth metadata when bearer is absent", async () => {

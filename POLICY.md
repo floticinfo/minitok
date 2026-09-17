@@ -64,9 +64,13 @@ minitok evolution disable
 
 ## 5. Entitlement Model
 
-### 5.1 Current paid plans
+### 5.1 Current plans and trial
 
-The current commercial contract has three canonical plan IDs: `open`, `select`, and `private`; there is no free plan. `open` permits consent-required per-run evolution uploads when the signed capability allows it, `select` permits consent-required aggregate-only telemetry, and `private` never uploads or stores telemetry. Entitlement is required for all plan-gated execution.
+The current commercial contract has three paid plan IDs: `open` ($3.99/month), `select` ($4.99/month), and `private` ($6.99/month); there is no free plan. The product and Extension are free to install, but a paid or server-issued trial entitlement is required before a real run.
+
+A proposed constrained trial is represented by the signed `trial` plan ID and is not a free plan: one installation, up to 14 days, up to 5 real runs, server-authoritative quota consumption, and telemetry permanently off (telemetry OFF). The current client accepts and validates this contract, but it does not create trial entitlements locally. The licensing server must issue and consume the quota before the trial can be offered publicly. Expiry, quota exhaustion, invalid signatures, and unavailable server authorization fail closed.
+
+`open` permits consent-required per-run evolution uploads when the signed capability allows it, `select` permits consent-required aggregate-only telemetry, and `private` never uploads or stores telemetry. Entitlement is required for all plan-gated execution. LLM provider credentials and provider API charges are separate from the minitok subscription or trial and remain the customer's responsibility.
 
 ### 5.2 Feature flags
 

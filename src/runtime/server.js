@@ -9,7 +9,7 @@ const { createRuntimeServices } = require("./index");
 const { createRoutes } = require("./routes");
 const { RuntimeStdio, isValidJsonRpcRequest } = require("./stdio");
 const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
-const { runtimeTokenPath, readRuntimeToken } = require("../mcp/runtime-token");
+const { runtimeTokenPath } = require("../mcp/runtime-token");
 
 const DEFAULT_PORT = 4578;
 const IDLE_TIMEOUT_MS = 30 * 60 * 1000;
@@ -40,9 +40,20 @@ class RuntimeServer {
     this._tokenFile = options.tokenFile || (runtimeDir && path.join(runtimeDir, "runtime.token")) || TOKEN_FILE;
     this._mcpTokenFile = options.mcpTokenFile || runtimeTokenPath(options.entitlementDir);
     if (options.authRequired === false || options.entitlementRequired === false) throw new Error("MCP authentication and entitlement are mandatory");
-    const mcpToken = options.mcpToken || readRuntimeToken(this._mcpTokenFile);
-    this._runtimeToken = options.runtimeToken || this._loadRuntimeToken() || mcpToken?.token || crypto.randomBytes(32).toString("hex");
-    this._mcpOptions = { ...options, services: this._services, workspaceRoot: options.workspaceRoot || process.cwd(), authToken: this._runtimeToken, authExpiresAt: mcpToken?.expires_at || 0, authTokenFile: this._mcpTokenFile };
+    // HTTP runtime.token and the rotating stdio MCP credential have independent
+    // lifecycles. HTTP /mcp authenticates the bearer supplied by this server's
+    // HTTP transport; it must not inherit the MCP token's short TTL or file
+    // rotation state. The MCP token file is consumed by direct stdio hosts.
+    const explicitRuntimeToken = options.runtimeToken || this._loadRuntimeToken();
+    this._runtimeToken = explicitRuntimeToken || crypto.randomBytes(32).toString("hex");
+    this._mcpOptions = {
+      ...options,
+      services: this._services,
+      workspaceRoot: options.workspaceRoot || process.env.MINITOK_MCP_WORKSPACE_ROOT || process.cwd(),
+      authToken: this._runtimeToken,
+      authExpiresAt: 0,
+      authTokenFile: null,
+    };
     this._mcpSessions = new Map();
     this._mcpSocketSessions = new WeakMap();
     this._mcp = new RuntimeStdio(this._mcpOptions);
@@ -88,6 +99,17 @@ class RuntimeServer {
   async stop() {
     if (this._idleTimer) clearTimeout(this._idleTimer);
     this._ready = false;
+    // Abort and await every in-flight MCP pipeline before releasing the runtime
+    // lock. Otherwise stop() can report success while a provider still writes
+    // state or consumes the run slot after the process has begun shutting down.
+    const runtimes = [this._mcp, ...this._mcpSessions.values()];
+    const activeRuns = runtimes.flatMap(runtime => runtime?._runs ? [...runtime._runs.values()] : []);
+    for (const run of activeRuns) {
+      if (run.state === "running") { run.state = "cancelled"; run.controller?.abort(); }
+    }
+    for (const runtime of runtimes) if (runtime?._runs?.size && runtime._saveRunState) runtime._saveRunState();
+    const pending = activeRuns.map(run => run.promise).filter(value => value && typeof value.then === "function");
+    if (pending.length) await Promise.allSettled(pending);
     this._mcpSessions.clear();
     this._removePid();
     if (this._server && this._started) return new Promise(resolve => { this._server.close(() => { this._started = false; this._releaseLock(); resolve(); }); });

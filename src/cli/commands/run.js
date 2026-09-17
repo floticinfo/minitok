@@ -5,6 +5,14 @@ const { runPipeline } = require("../../pipeline/loop");
 const { normalizeProvider } = require("../../auth/aliases");
 const { PREAUTHORIZED } = require("../../pipeline/authorization");
 const path = require("path");
+const crypto = require("crypto");
+const { resolveServerUrl } = require("./server-config");
+
+function ensureRunId(opts) {
+  if (typeof opts.runId === "string" && opts.runId.trim()) return opts.runId.trim();
+  opts.runId = crypto.randomUUID();
+  return opts.runId;
+}
 
 function classifyProviderHealth(name, available, health) {
   if (!available.includes(name)) return "absent";
@@ -15,6 +23,11 @@ function classifyProviderHealth(name, available, health) {
 }
 
 async function cmdRun(task, opts) {
+  opts = opts || {};
+  // One identifier binds provider preflight, trial consumption, pipeline state,
+  // evidence, and retries. Never let a real run reach the quota endpoint without
+  // an idempotency key.
+  ensureRunId(opts);
   if (!task) {
     console.error("Error: Task description required.\n\nUsage: minitok run \"Fix authentication bug\"");
     return 1;
@@ -43,6 +56,8 @@ async function cmdRun(task, opts) {
   if (!preflightAuthorized) try {
     const { loadConfig, resolveProviderName } = require("../../config/loader");
     const { authorizeEntitlement } = require("../../entitlement/policy");
+    const { consumeTrialRun } = require("../../entitlement/online");
+    const { EntitlementStore } = require("../../entitlement/store");
     const { detectAvailableProviders, verifyCredentials } = require("../../llm/provider");
     let preflightConfig;
     try {
@@ -58,13 +73,14 @@ async function cmdRun(task, opts) {
     // fail before detectAvailableProviders or verifyCredentials can contact an API.
     if (opts.authorization !== PREAUTHORIZED) {
       let gate;
-      try { gate = await authorizeEntitlement({ serverUrl: opts.serverUrl }); }
+      try { gate = await authorizeEntitlement({ serverUrl: opts.serverUrl || resolveServerUrl(), entitlementDir: opts.entitlementDir }); }
       catch (error) { console.error(`Error: Entitlement check failed: ${error instanceof Error ? error.message : String(error)}`); return 1; }
       if (!gate.allowed) {
         console.error(`Error: Entitlement ${gate.state}: ${gate.message}`);
         return 1;
       }
       preflightAuthorized = true;
+      opts.trialEntitlement = gate.trial === true;
     }
     const available = await detectAvailableProviders(preflightConfig);
     if (available.length === 0) {
@@ -134,9 +150,24 @@ async function cmdRun(task, opts) {
     }
 
 
+    // A dry-run performs the model-backed preview but does not consume a
+    // server-side trial quota because it does not apply repository changes.
+    if (!opts.dryRun && opts.trialEntitlement && !opts.trialRunConsumed) {
+      const trialResult = await consumeTrialRun({
+        serverUrl: opts.serverUrl || resolveServerUrl(),
+        entitlementDir: opts.entitlementDir,
+        _loadArtifact: () => new EntitlementStore(opts.entitlementDir).load(),
+        idempotencyKey: opts.runId,
+      });
+      if (!trialResult.consumed) {
+        console.error(`Error: Trial run unavailable: ${trialResult.message}`);
+        return 1;
+      }
+      opts.trialRunConsumed = true;
+    }
   } catch (preflightError) {
-    if (preflightError && preflightError.code) throw preflightError;
-    // Config load failure surfaces below with full context; do not mask it.
+    console.error(`Error: Provider preflight failed${preflightError?.code ? ` [${preflightError.code}]` : ""}: ${preflightError instanceof Error ? preflightError.message : String(preflightError)}`);
+    return 1;
   }
 
   try {
@@ -146,7 +177,9 @@ async function cmdRun(task, opts) {
       // internal authorization marker so runPipeline does not perform a second
       // network validation after the provider checks.
       authorization: preflightAuthorized ? PREAUTHORIZED : opts.authorization,
-      serverUrl: opts.serverUrl,
+      trialEntitlement: opts.trialEntitlement === true,
+      trialRunConsumed: opts.trialRunConsumed === true,
+      serverUrl: opts.serverUrl || resolveServerUrl(),
       dryRun: opts.dryRun,
       // Approval and cancellation options must reach the pipeline. They were
       // parsed by the CLI and then dropped here, so the documented
@@ -156,7 +189,7 @@ async function cmdRun(task, opts) {
       approvalFile: opts.approvalFile,
       approvalTimeoutMs: Number.isFinite(Number(opts.approvalTimeoutMs)) ? Number(opts.approvalTimeoutMs) : undefined,
       evidencePath: typeof opts.evidencePath === "string" ? opts.evidencePath : undefined,
-      runId: typeof opts.runId === "string" ? opts.runId : undefined,
+      runId: ensureRunId(opts),
       signal: opts.signal,
       autoAccept: opts.autoAccept,
       providerOverride: opts.providerOverride,

@@ -4,6 +4,7 @@
 
 ### Added
 
+- Added server-issued trial entitlement validation and online quota consumption. The product is free to install, while trial runs are limited to one installation, 14 days, 5 real runs, and telemetry OFF; the client fails closed when the quota server is unavailable.
 - Added the focused `minitok_task` MCP facade for ordinary repository coding tasks. It delegates to the existing pipeline so approval, verification, review, repair, evidence, cancellation, and failure reporting remain unchanged; `auto_accept` is intentionally not exposed by the convenience schema.
 - Added a shorter `/minitok <task>` workflow and updated Cline guidance to prefer `minitok_task` while retaining `minitok_run` for advanced controls.
 - Added VS Code commands for `Run Selection through minitok` and `Run Problems through minitok`, with trusted-workspace, entitlement, consent, cancellation, and repository targeting safeguards.
@@ -45,7 +46,7 @@
 ### Added
 
 - Added the enforced `minitok agent --mode on|off` host, which exposes only `minitok_*` tools through the Cline SDK and refuses execution before MCP/provider startup when disabled.
-- Added `minitok mcp setup <host>` for Cline, Cursor, Claude Desktop, and Windsurf with platform-aware paths, task-capable scopes by default, and empty `autoApprove` settings.
+- Added `minitok mcp setup <host>` for Cline, Cursor, Claude Desktop, and Windsurf with platform-aware paths, read-only scopes by default, and empty `autoApprove` settings. Broader `write` and `verify_exec` scopes require explicit configuration.
 - Bumped the npm CLI candidate to `1.4.7-rc.0` and the VS Code Extension candidate to `0.3.3`.
 
 ## 1.4.2 - 2026-09-15

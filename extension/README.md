@@ -17,6 +17,8 @@ A repository-aware workflow for changes you can review. minitok brings the workf
 - First-activation `Connect MCP Hosts` onboarding with read-only defaults
 - Local-first execution with consent-controlled telemetry policies
 
+The Extension lint gate runs `tsc -p extension/tsconfig.json` over all Extension TypeScript source and tests, then ESLint over the JavaScript unit-test files. TypeScript source is therefore typechecked, while a TypeScript-aware ESLint rule set is not currently enabled.
+
 ## Getting started
 
 1. Install `@flotic/minitok` globally:
@@ -32,13 +34,14 @@ A repository-aware workflow for changes you can review. minitok brings the workf
 
 You can also use **minitok: Run Selection through minitok** from the editor context menu, or **minitok: Run Problems through minitok** from the Command Palette. Both commands preserve workspace trust, entitlement, consent, cancellation, and verification safeguards.
 
-An active paid plan and a valid installation entitlement are required before a real run. Provider credentials remain configured through the minitok CLI configuration.
+The Extension is free to install, but a paid plan and valid installation entitlement are required before a real run. When enabled by the licensing server, a constrained trial can provide one installation, up to 14 days, up to 5 real runs, and telemetry OFF; trial quota is consumed online and cannot be extended offline. Provider credentials and provider API charges remain separate from minitok and are configured through the CLI.
 
 ## Plans
 
-- **Open**: consented per-run telemetry under the 30-day client policy.
-- **Select**: consented aggregate-only telemetry under the 14-day client policy.
-- **Private**: no telemetry upload or storage.
+- **Open ($3.99/month)**: consented per-run telemetry under the 30-day client policy.
+- **Select ($4.99/month)**: consented aggregate-only telemetry under the 14-day client policy.
+- **Private ($6.99/month)**: no telemetry upload or storage.
+- **Trial (server-issued only)**: up to 14 days, up to 5 real runs, one installation, telemetry OFF; not a free plan.
 
 Each plan provides one installation per plan. LLM provider usage is separate from the minitok plan.
 

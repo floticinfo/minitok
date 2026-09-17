@@ -49,6 +49,25 @@ describe("runtime PID cleanup", () => {
     assert.equal(fs.existsSync(files.tokenFile), true);
   });
 
+  it("keeps HTTP runtime credentials separate from rotating MCP credentials", async () => {
+    files = runtimeFiles();
+    const mcpTokenFile = path.join(files.root, "mcp-runtime-token.json");
+    fs.writeFileSync(mcpTokenFile, JSON.stringify({ token: "mcp-token-a", installation_id: "11111111-1111-4111-8111-111111111111", session_id: "session-a", expires_at: Date.now() + 60000 }));
+    const server = new RuntimeServer({ ...files, port: 0, entitlementRequired: false, runtimeToken: "http-runtime-token", mcpTokenFile });
+    assert.equal(server._mcp._authToken, "http-runtime-token");
+    assert.equal(server._mcp._authExpiresAt, 0, "MCP token expiry must not become the HTTP session expiry");
+    assert.equal(server._mcp._runtimeAuthFile, null, "HTTP runtime sessions must not follow the MCP token file");
+    await server.start();
+    try {
+      fs.writeFileSync(mcpTokenFile, JSON.stringify({ token: "mcp-token-b", installation_id: "11111111-1111-4111-8111-111111111111", session_id: "session-b", expires_at: Date.now() + 60000 }));
+      const body = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05" } });
+      const httpToken = await request(server._port, { method: "POST", path: "/mcp", headers: { Authorization: "Bearer http-runtime-token", "Content-Type": "application/json" } }, body);
+      const mcpToken = await request(server._port, { method: "POST", path: "/mcp", headers: { Authorization: "Bearer mcp-token-b", "Content-Type": "application/json" } }, body);
+      assert.equal(httpToken.status, 200, "HTTP runtime.token remains authoritative for the HTTP runtime");
+      assert.equal(mcpToken.status, 401, "rotating MCP token does not silently replace HTTP runtime.token");
+    } finally { await server.stop(); }
+  });
+
   it("requires bearer auth for HTTP initialize before MCP processing", async () => {
     files = runtimeFiles();
     const server = new RuntimeServer({ ...files, port: 0, entitlementRequired: false, runtimeToken: "http-secret" });

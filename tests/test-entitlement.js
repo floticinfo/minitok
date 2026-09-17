@@ -81,10 +81,31 @@ describe("Entitlement Model", () => {
   it("rejects empty key_id", () => {
     assert.equal(validatePayload(makePayload({ key_id: "" })).valid, false);
   });
-  it("accepts all valid plan_ids", () => {
-    for (const plan of VALID_PLAN_IDS) {
+  it("accepts all valid paid plan_ids", () => {
+    for (const plan of VALID_PLAN_IDS.filter((plan) => plan !== "trial")) {
       assert.equal(validatePayload(makePayload({ plan_id: plan })).valid, true);
     }
+  });
+  it("accepts a complete server-issued trial payload", () => {
+    const payload = makePayload({
+      plan_id: "trial",
+      telemetry_mode: "off",
+      run_quota: 5,
+      runs_used: 0,
+      installation_id: "aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa",
+      expires_at: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+    });
+    assert.equal(validatePayload(payload).valid, true);
+  });
+  it("rejects a trial that grants telemetry", () => {
+    const payload = makePayload({
+      plan_id: "trial",
+      telemetry_mode: "off",
+      run_quota: 5,
+      runs_used: 0,
+      features: ["autonomous_run", "evolution_upload"],
+    });
+    assert.equal(validatePayload(payload).valid, false);
   });
   it("accepts empty features", () => {
     assert.equal(validatePayload(makePayload({ features: [] })).valid, true);

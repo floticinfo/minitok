@@ -13,7 +13,29 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { drainStdioLines, MAX_REQUEST_BYTES, MAX_TRACKED_RUNS, RuntimeStdio } = require("./stdio");
+const { drainStdioLines, MAX_REQUEST_BYTES, MAX_TRACKED_RUNS, RuntimeStdio, runtimeBinding } = require("./stdio");
+
+describe("runtime binding", () => {
+  it("uses the installation binding across runtime token rotation", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mt-binding-"));
+    const mcp = path.join(root, "mcp");
+    const entitlement = path.join(root, "entitlement");
+    const tokenFile = path.join(mcp, "runtime-token.json");
+    fs.mkdirSync(mcp, { recursive: true });
+    fs.mkdirSync(entitlement, { recursive: true });
+    const installationId = "11111111-1111-4111-8111-111111111111";
+    fs.writeFileSync(path.join(entitlement, "installation-token.json"), JSON.stringify({ installation_id: installationId, token: "installation-token" }));
+    fs.writeFileSync(tokenFile, JSON.stringify({ token: "token-a", installation_id: installationId, session_id: "session-a", expires_at: Date.now() + 60000 }));
+    try {
+      const first = runtimeBinding({ authTokenFile: tokenFile }, "token-a");
+      fs.writeFileSync(tokenFile, JSON.stringify({ token: "token-b", installation_id: installationId, session_id: "session-b", expires_at: Date.now() + 60000 }));
+      const second = runtimeBinding({ authTokenFile: tokenFile }, "token-b");
+      assert.equal(first, installationId);
+      assert.equal(second, installationId);
+      assert.equal(first, second);
+    } finally { fs.rmSync(root, { recursive: true, force: true }); }
+  });
+});
 
 describe("stdio framing", () => {
   it("returns complete lines and keeps the incomplete remainder", () => {

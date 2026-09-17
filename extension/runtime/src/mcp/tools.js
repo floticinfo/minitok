@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const { runPipeline } = require("../pipeline/loop");
 
 const MCP_ERROR_CODES = Object.freeze({ INVALID_PARAMS: -32602, AUTH_REQUIRED: -32001, PERMISSION_DENIED: -32003, NOT_FOUND: -32004, RUN_LIMIT_REACHED: -32005, TOOL_ERROR: -32000 });
@@ -183,7 +184,8 @@ async function _getToolHandler(name, args, services, runtimeOptions = {}) {
       acquireStdoutGuard();
       let result;
       try {
-        result = await pipelineRunner(args.task, { runId: args.run_id, repoRoot, dryRun: args.dry_run === true, autoAccept: args.auto_accept === true && runtimeOptions.permissions?.has?.("auto_accept"), providerOverride: args.provider_override, approvalFile, approvalTimeoutMs: args.approval_timeout_ms, signal: runtimeOptions.signal, onProgress: runtimeOptions.onProgress });
+        const entitlement = runtimeOptions.entitlementPolicy || null;
+        result = await pipelineRunner(args.task, { runId: args.run_id || crypto.randomUUID(), repoRoot, dryRun: args.dry_run === true, autoAccept: args.auto_accept === true && runtimeOptions.permissions?.has?.("auto_accept"), providerOverride: args.provider_override, approvalFile, approvalTimeoutMs: args.approval_timeout_ms, signal: runtimeOptions.signal, onProgress: runtimeOptions.onProgress, authorization: entitlement ? require("../pipeline/authorization").PREAUTHORIZED : undefined, entitlementResult: entitlement || undefined, trialEntitlement: entitlement?.trial === true, trialRunConsumed: false, serverUrl: runtimeOptions.serverUrl, entitlementDir: runtimeOptions.entitlementDir });
       } finally {
         releaseStdoutGuard();
       }

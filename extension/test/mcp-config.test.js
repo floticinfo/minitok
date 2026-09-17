@@ -4,12 +4,32 @@ const fs = require("node:fs");
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const source = fs.readFileSync(path.join(__dirname, "..", "src", "workspace.ts"), "utf8");
+const sidebarSource = fs.readFileSync(path.join(__dirname, "..", "src", "sidebar.ts"), "utf8");
 const mcp = fs.readFileSync(path.join(__dirname, "..", "src", "mcp.ts"), "utf8");
+
+test("host diagnostics are excluded from packaged Extension payloads", () => {
+  const ignore = fs.readFileSync(path.join(__dirname, "..", ".vscodeignore"), "utf8");
+  assert.match(ignore, /host-\*\.log/);
+  assert.match(ignore, /host-\*\.err/);
+  assert.match(ignore, /host-\*\.pid/);
+});
 
 test("packaged MCP runtime is resolved below the extension directory", () => {
   assert.match(source, /packagedMcpCommand/);
   assert.match(mcp, /runtime", "src", "runtime", "stdio-entry\.js/);
   assert.doesNotMatch(source, /\.\.\/\.\.\/src\/runtime\/stdio-entry/);
+});
+
+test("MCP subprocess environment is allowlisted and does not inherit arbitrary secrets", () => {
+  assert.match(source, /MCP_ENV_ALLOWLIST/);
+  assert.match(source, /inheritedMcpEnvironment/);
+  assert.doesNotMatch(source, /return \{\.\.\.process\.env,\s*minitok_server_url/);
+});
+
+test("MCP command configuration propagates and persists the trusted workspace root", () => {
+  assert.match(source, /MINITOK_MCP_WORKSPACE_ROOT/);
+  assert.match(sidebarSource, /configuredEnv\.MINITOK_MCP_WORKSPACE_ROOT/);
+  assert.match(fs.readFileSync(path.join(__dirname, "..", "src", "extension.ts"), "utf8"), /--workspace-root/);
 });
 
 test("MCP command configuration supports quoted Windows paths and arrays", () => {

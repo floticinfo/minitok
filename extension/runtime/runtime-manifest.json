@@ -22,6 +22,7 @@
     "entitlement/policy.js",
     "entitlement/public-key.js",
     "entitlement/store.js",
+    "entitlement/trial.js",
     "entitlement/verify.js",
     "evidence/collector.js",
     "evolution/analyzer.js",
@@ -93,8 +94,8 @@
       "embedded": "0f86e6c56aa35589b35c7940696ee2b819fad071e46e280cb136b8e006656fe9"
     },
     "config/loader.js": {
-      "source": "4feefa771b315a1ce45faaf0a5ce57faa32c8b6d9f29500d932186af850e0732",
-      "embedded": "4feefa771b315a1ce45faaf0a5ce57faa32c8b6d9f29500d932186af850e0732"
+      "source": "2bc3ab752caf38ccc3ad4c8dc7504eecdc25a48f0479ca0de0486444aaefb63f",
+      "embedded": "2bc3ab752caf38ccc3ad4c8dc7504eecdc25a48f0479ca0de0486444aaefb63f"
     },
     "context/compaction.js": {
       "source": "0475f4c5ed57462603366a047689064c136cf596822394fff72f0c456bb27cdf",
@@ -121,16 +122,16 @@
       "embedded": "804857f8b52c62853aea965d05981c28bf2b0ec5b9efa4fda982ac86e1d8666b"
     },
     "entitlement/model.js": {
-      "source": "8e29a43e04b30e5e05f141ea7b8349c421d652c00414299f9c65dd58e8ba4c92",
-      "embedded": "8e29a43e04b30e5e05f141ea7b8349c421d652c00414299f9c65dd58e8ba4c92"
+      "source": "6fd1854e21bde7294904a610fa22e4f24655366163faa7a0cdaa42a8108aadd8",
+      "embedded": "6fd1854e21bde7294904a610fa22e4f24655366163faa7a0cdaa42a8108aadd8"
     },
     "entitlement/online.js": {
-      "source": "823ac7a885f655096022a698492d6888fc5d2667b29a3a00a5769dbab72bcb04",
-      "embedded": "823ac7a885f655096022a698492d6888fc5d2667b29a3a00a5769dbab72bcb04"
+      "source": "a796aa2e3dd48255dcb2c64bbd0950a963916850aef2e652691d62e581e8c064",
+      "embedded": "a796aa2e3dd48255dcb2c64bbd0950a963916850aef2e652691d62e581e8c064"
     },
     "entitlement/policy.js": {
-      "source": "f9c4b4b23846f099ffa8ba5bbe043d00bf7e1b9bf3997130ddff7a5eac7e6917",
-      "embedded": "f9c4b4b23846f099ffa8ba5bbe043d00bf7e1b9bf3997130ddff7a5eac7e6917"
+      "source": "a29b442fdfdbf75c009fe94d85acc5821f68b86fe07659eb15b946ce881c1582",
+      "embedded": "a29b442fdfdbf75c009fe94d85acc5821f68b86fe07659eb15b946ce881c1582"
     },
     "entitlement/public-key.js": {
       "source": "1f5052a5de285358f7583c3e5b85b14e37d35a55eedfc7cd234bbbdaeaaccaef",
@@ -139,6 +140,10 @@
     "entitlement/store.js": {
       "source": "ee9f695b4d125bba2aa3129adba640d58a57f05c742966e7f53f142489772efa",
       "embedded": "ee9f695b4d125bba2aa3129adba640d58a57f05c742966e7f53f142489772efa"
+    },
+    "entitlement/trial.js": {
+      "source": "bd04661e3ac71fda71e00894d0ed9d2027108ffd25692348b8285dee880b1e44",
+      "embedded": "bd04661e3ac71fda71e00894d0ed9d2027108ffd25692348b8285dee880b1e44"
     },
     "entitlement/verify.js": {
       "source": "eb12f269cb9e11584a589104b6835274910a2c069c3db36cb234aa2554a9913f",
@@ -185,24 +190,24 @@
       "embedded": "ed51e13d2df28376c4257a5203db3f915039d79dc908d7c00d0936b141c3cbd0"
     },
     "llm/provider.js": {
-      "source": "57c2d171d131f56b7227fae0417a0412ce713d5280bcd6da5298c289ca3c013e",
-      "embedded": "57c2d171d131f56b7227fae0417a0412ce713d5280bcd6da5298c289ca3c013e"
+      "source": "0816b9ad7ce0cfe23941435800fa65e604dc9523f9cbaf0a2fc62006b8820af9",
+      "embedded": "0816b9ad7ce0cfe23941435800fa65e604dc9523f9cbaf0a2fc62006b8820af9"
     },
     "mcp/runtime-token.js": {
       "source": "d07663e879ad91f12b327101f7b747e8bfc527bed6abc8aa2018ee393f4382d4",
       "embedded": "d07663e879ad91f12b327101f7b747e8bfc527bed6abc8aa2018ee393f4382d4"
     },
     "mcp/tools.js": {
-      "source": "d2c4a6bbf705f15bd8719d10ba64f970da5c94a5c6d37762eacb00ff783e8ba2",
-      "embedded": "d2c4a6bbf705f15bd8719d10ba64f970da5c94a5c6d37762eacb00ff783e8ba2"
+      "source": "b2b4694ce712dbb532a1fbc291b96cc5bfe24b2068149de702ca3282576f7569",
+      "embedded": "b2b4694ce712dbb532a1fbc291b96cc5bfe24b2068149de702ca3282576f7569"
     },
     "pipeline/authorization.js": {
       "source": "b6b7eb34e7a4d9790820d8a4b9828bf4ee965af1476b5d5c4522768b1d4aae4e",
       "embedded": "b6b7eb34e7a4d9790820d8a4b9828bf4ee965af1476b5d5c4522768b1d4aae4e"
     },
     "pipeline/check.js": {
-      "source": "f89d579eb1ae31b38a74fd336abeed1cd7e815f9cbd4a48c9f843faf19dc3c04",
-      "embedded": "f89d579eb1ae31b38a74fd336abeed1cd7e815f9cbd4a48c9f843faf19dc3c04"
+      "source": "7f75a014ac851debe77b210138b13156b676347fa7c449874828dc67cacf412e",
+      "embedded": "7f75a014ac851debe77b210138b13156b676347fa7c449874828dc67cacf412e"
     },
     "pipeline/implementer.js": {
       "source": "a0aa55503a17fa44bc09ec5f509fba0e06bb94e348d4debc6c2460914fc973a6",
@@ -217,8 +222,8 @@
       "embedded": "d139507183711739b0829b47ff81b475b8f78f0d985ddc26e1d1ab187133976f"
     },
     "pipeline/loop.js": {
-      "source": "d8be8d52ab80e96ebbf11b52c9fbe9ec7ca2191428c7eab19604ab0de40a8aa0",
-      "embedded": "d8be8d52ab80e96ebbf11b52c9fbe9ec7ca2191428c7eab19604ab0de40a8aa0"
+      "source": "4b3286d13994c8f387eb6c92fb33e2c830cbada691a3554d0ee95e8f5f24bd45",
+      "embedded": "4b3286d13994c8f387eb6c92fb33e2c830cbada691a3554d0ee95e8f5f24bd45"
     },
     "pipeline/next_task.js": {
       "source": "d319a3b34dc5d80f4ce9e74e3e0805d2d4ee79aa4cfda8bc9be3dcaf8d9ce583",
@@ -277,16 +282,16 @@
       "embedded": "4af7b96185ee48e397a768d4cbff53a6dfc925f3019d655646959c8a56e676c3"
     },
     "runtime/server.js": {
-      "source": "976337bfb998c0ece2ec3bf1770cb180baac08d03030860737d90f1a1570c2e5",
-      "embedded": "976337bfb998c0ece2ec3bf1770cb180baac08d03030860737d90f1a1570c2e5"
+      "source": "cdd83d9bb9406e0321648f1aac2df73076e37cadbd4b3b88106d037171531585",
+      "embedded": "cdd83d9bb9406e0321648f1aac2df73076e37cadbd4b3b88106d037171531585"
     },
     "runtime/stdio-entry.js": {
       "source": "4023e87bc6dd66a33cd8bbaaab20cc07af46584ced03e6093aaa762e097fef02",
       "embedded": "4023e87bc6dd66a33cd8bbaaab20cc07af46584ced03e6093aaa762e097fef02"
     },
     "runtime/stdio.js": {
-      "source": "e40b937cd1c9cf68670cd45d1177ac3643507ea6917a18a2ffe97da1fa9c5224",
-      "embedded": "e40b937cd1c9cf68670cd45d1177ac3643507ea6917a18a2ffe97da1fa9c5224"
+      "source": "376fce9528f1024aeb2b68099e908a7a845c58b6ebed3fb58b97bbb4c22f5144",
+      "embedded": "376fce9528f1024aeb2b68099e908a7a845c58b6ebed3fb58b97bbb4c22f5144"
     },
     "runtime/workspace.js": {
       "source": "1ccbe48769fd72363230d4a914849ce6b5fc52f5db6496e0b35ce8ac655ff220",

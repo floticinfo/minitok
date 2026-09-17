@@ -88,7 +88,14 @@ describe("Pipeline stages", () => {
     const env = verificationEnvironment({ MINITOK_BUDGET_MAX_CYCLES: "3", MINITOK_BUDGET_STAGNATION_LIMIT: "4", CUSTOMER_FLAG: "keep" });
     assert.equal(env.MINITOK_BUDGET_MAX_CYCLES, undefined);
     assert.equal(env.MINITOK_BUDGET_STAGNATION_LIMIT, undefined);
-    assert.equal(env.CUSTOMER_FLAG, "keep");
+    assert.equal(env.CUSTOMER_FLAG, undefined);
+  });
+
+  it("allows explicitly named non-secret verification variables and rejects secret-like names", () => {
+    const { verificationEnvironment } = require("./check");
+    const env = verificationEnvironment({ BUILD_MODE: "release", BUILD_TOKEN: "secret" }, ["BUILD_MODE"]);
+    assert.equal(env.BUILD_MODE, "release");
+    assert.throws(() => verificationEnvironment({ BUILD_TOKEN: "secret" }, ["BUILD_TOKEN"]), /Unsafe verification environment variable/);
   });
 
   it("withholds provider credentials and the MCP grant from a repository verification script", () => {
@@ -109,10 +116,11 @@ describe("Pipeline stages", () => {
     for (const key of ["ANTHROPIC_API_KEY", "OPENAI_API_KEY", "GEMINI_API_KEY", "OPENROUTER_API_KEY", "MINITOK_MCP_AUTH_TOKEN", "MINITOK_MCP_AUTH_TOKEN_FILE", "MINITOK_CUSTOMER_TOKEN"]) {
       assert.equal(env[key], undefined, `${key} must not reach repository code`);
     }
-    // Only credentials are removed: a gate that needs its build environment keeps it.
+    // The allowlist preserves portable execution variables but excludes database
+    // credentials and every other application-controlled variable.
     assert.equal(env.PATH, "/usr/bin");
     assert.equal(env.HOME, "/home/user");
-    assert.equal(env.DATABASE_URL, "postgres://user:pass@localhost/db");
+    assert.equal(env.DATABASE_URL, undefined);
     assert.equal(env.CI, "true");
   });
 

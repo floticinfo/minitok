@@ -24,6 +24,19 @@ test("registry metadata rejects malformed response", async () => {
   assert.deepEqual(validateRegistryMetadata(null, expected), ["registry metadata is not an object"]);
 });
 
+test("registry metadata distinguishes exact publication from latest tag", async () => {
+  const { inspectRegistryMetadata } = await registryModule;
+  const report = inspectRegistryMetadata({
+    name: expected.name,
+    "dist-tags": { latest: "1.3.4" },
+    versions: { "1.3.5": { version: "1.3.5", dist } },
+  }, expected);
+  assert.equal(report.exactPublished, true);
+  assert.equal(report.exactVersion, expected.version);
+  assert.equal(report.latestMatches, false);
+  assert.deepEqual(report.exactErrors, []);
+});
+
 test("registry fetch parses mocked current metadata shape", async () => {
   const { fetchRegistryMetadata } = await registryModule;
   const originalFetch = global.fetch;

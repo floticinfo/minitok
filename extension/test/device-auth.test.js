@@ -7,6 +7,7 @@ const root = path.join(__dirname, "..");
 const sidebar = fs.readFileSync(path.join(root, "src", "sidebar.ts"), "utf8");
 const html = fs.readFileSync(path.join(root, "src", "sidebar.html"), "utf8");
 const auth = fs.readFileSync(path.join(root, "src", "device-auth.ts"), "utf8");
+const workspace = fs.readFileSync(path.join(root, "src", "workspace.ts"), "utf8");
 
 test("browser device auth contract", () => {
   assert.match(html, /Sign in with browser/);
@@ -17,9 +18,12 @@ test("browser device auth contract", () => {
   assert.match(auth, /normalizeCustomerSession/);
   assert.match(auth, /token_type: string/);
   assert.match(auth, /openExternal/);
-  assert.match(auth, /url\.protocol !== "https:"/);
-  assert.match(auth, /api\.minitok\.dev/);
-  assert.match(auth, /url\.username \|\| url\.password/);
+  // Server-origin validation is shared by device auth and every Extension-owned
+  // subprocess through workspace.configuredServerUrl(). Keep this contract on the
+  // shared validator rather than duplicating its implementation in device-auth.
+  assert.match(workspace, /url\.protocol !== "https:"/);
+  assert.match(workspace, /api\.minitok\.dev/);
+  assert.match(workspace, /url\.username \|\| url\.password/);
   assert.doesNotMatch(auth, /MINITOK_CUSTOMER_PASSWORD/);
   assert.doesNotMatch(auth, /console\.log\(.*access_token/);
 });

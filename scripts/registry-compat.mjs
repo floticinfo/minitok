@@ -25,6 +25,22 @@ export function validateRegistryMetadata(metadata, expected = packageJson, { req
   return errors;
 }
 
+export function inspectRegistryMetadata(metadata, expected = packageJson) {
+  const latest = metadata?.["dist-tags"]?.latest || null;
+  const published = metadata?.versions?.[expected.version];
+  const exact = published ? { ...metadata, version: expected.version, dist: published.dist } : null;
+  return {
+    package: expected.name,
+    localVersion: expected.version,
+    latest,
+    latestMatches: latest === expected.version,
+    exactVersion: published ? expected.version : null,
+    exactPublished: Boolean(published),
+    exactErrors: validateRegistryMetadata(exact, expected, { requireLatest: false }),
+    dist: published?.dist || null,
+  };
+}
+
 export async function fetchRegistryMetadata(url, { timeoutMs = REGISTRY_TIMEOUT_MS, maxBytes = MAX_RESPONSE_BYTES } = {}) {
   let response;
   try {
@@ -53,10 +69,12 @@ if (process.argv[1] && process.argv[1].endsWith("registry-compat.mjs")) {
   } else {
     try {
       const metadata = await fetchRegistryMetadata(`https://registry.npmjs.org/${encodeURIComponent(packageJson.name)}`);
-       const latest = metadata["dist-tags"]?.latest;
-       const errors = validateRegistryMetadata(latest ? { ...metadata, version: latest, dist: metadata.versions?.[latest]?.dist } : metadata, packageJson, { requireLatest: process.env.MINITOK_REGISTRY_REQUIRE_LATEST === "1" });
-       if (errors.length) throw new Error(errors.join("\n"));
-       console.log(`registry metadata valid for ${packageJson.name}; latest=${latest || "unknown"}; local=${packageJson.version}`);
+      const report = inspectRegistryMetadata(metadata, packageJson);
+      const errors = [...report.exactErrors];
+      if (!report.exactPublished) errors.push(`registry does not publish exact local version ${packageJson.version}`);
+      if (process.env.MINITOK_REGISTRY_REQUIRE_LATEST === "1" && !report.latestMatches) errors.push(`registry latest ${report.latest || "unknown"} does not match ${packageJson.version}`);
+      if (errors.length) throw new Error(errors.join("\n"));
+      console.log(JSON.stringify({ status: "valid", verificationStatus: "read-only", ...report }));
     } catch (error) { console.error(`registry compatibility failed: ${error.message}`); process.exitCode = 1; }
   }
 }

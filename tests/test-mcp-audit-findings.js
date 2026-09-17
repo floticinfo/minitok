@@ -7,6 +7,12 @@ const path = require("path");
 const { RuntimeStdio } = require("../src/runtime/test-seam");
 const { requireApprovalPath, getToolHandler, getToolDefinitions, requiredScopeFor } = require("../src/mcp/tools");
 const { writeConfig, planChange, configuredScopes } = require("../src/cli/commands/mcp");
+const { verificationEnvironment } = require("../src/pipeline/check");
+
+test("verification environment is an explicit safe allowlist", () => {
+  const env = verificationEnvironment({ PATH: "path", HOME: "home", CI: "1", AWS_SECRET_ACCESS_KEY: "aws", GH_TOKEN: "github", NPM_TOKEN: "npm", GOOGLE_APPLICATION_CREDENTIALS: "gcp.json", DATABASE_URL: "postgres://secret", CUSTOM_SECRET: "custom", MINITOK_MCP_AUTH_TOKEN: "mcp", HTTP_PROXY: "http://proxy" });
+  assert.deepEqual(env, { PATH: "path", HOME: "home", CI: "1" });
+});
 
 test("stdio auth accepts bearer and rotated tokens with expiry and revoke", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-mcp-"));
@@ -53,6 +59,20 @@ test("MCP config writes remove stale locks and leave owner-only config", () => {
     assert.equal(fs.existsSync(`${file}.lock`), false);
     if (process.platform !== "win32") assert.equal(fs.statSync(file).mode & 0o777, 0o600);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("stdio uses the configured MCP workspace root when hosts launch from another cwd", () => {
+  const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "minitok-mcp-workspace-env-")));
+  const previous = process.env.MINITOK_MCP_WORKSPACE_ROOT;
+  process.env.MINITOK_MCP_WORKSPACE_ROOT = root;
+  try {
+    const runtime = new RuntimeStdio({ runStatePath: path.join(root, "runs.json") });
+    assert.equal(runtime._workspaceRoot, root);
+  } finally {
+    if (previous === undefined) delete process.env.MINITOK_MCP_WORKSPACE_ROOT;
+    else process.env.MINITOK_MCP_WORKSPACE_ROOT = previous;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("MCP host scope diagnostics report valid and invalid grants", () => {
@@ -105,6 +125,39 @@ test("stdio authenticates a session from the installation token file", async () 
     assert.equal(init.result.protocolVersion, "2024-11-05");
     assert.equal(tools.result.tools.length, getToolDefinitions().filter(tool => requiredScopeFor(tool.name) === "read").length, "an unconfigured grant is read-only, and tools/list must say so");
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("MCP minitok_run passes the authorized trial state to the central pipeline", async () => {
+  const calls = [];
+  const result = await getToolHandler("minitok_run", { task: "trial", repo: process.cwd(), dry_run: false, run_id: "trial-run-id" }, {}, {
+    runPipeline: async (_task, options) => { calls.push(options); return { success: true }; },
+    workspaceRoot: process.cwd(),
+    permissions: new Set(["write", "verify_exec"]),
+    entitlementPolicy: { allowed: true, trial: true, state: "ALLOWED" },
+    serverUrl: "https://api.example.test",
+    entitlementDir: "C:\\\\entitlement",
+    safeResult: true,
+  });
+  assert.equal(result.isError, false);
+  assert.equal(calls[0].authorization, require("../src/pipeline/authorization").PREAUTHORIZED);
+  assert.equal(calls[0].trialEntitlement, true);
+  assert.equal(calls[0].trialRunConsumed, false);
+  assert.equal(calls[0].dryRun, false);
+  assert.equal(calls[0].runId, "trial-run-id");
+});
+
+test("MCP dry-run remains non-consuming even for a trial", async () => {
+  const calls = [];
+  await getToolHandler("minitok_run", { task: "trial preview", repo: process.cwd(), dry_run: true, run_id: "trial-preview-id" }, {}, {
+    runPipeline: async (_task, options) => { calls.push(options); return { success: true }; },
+    workspaceRoot: process.cwd(),
+    permissions: new Set(["write", "verify_exec"]),
+    entitlementPolicy: { allowed: true, trial: true, state: "ALLOWED" },
+    safeResult: true,
+  });
+  assert.equal(calls[0].dryRun, true);
+  assert.equal(calls[0].trialEntitlement, true);
+  assert.equal(calls[0].trialRunConsumed, false);
 });
 
 test("minitok_run keeps pipeline logs off stdout", async () => {

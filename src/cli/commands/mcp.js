@@ -281,15 +281,19 @@ function planChange(file, action, options = {}) {
   const servers = validateServers(container.value);
   const before = JSON.stringify(data);
 
+  let removedTokenFile;
   if (action === "connect") {
     const tokenFile = options.tokenFile || runtimeTokenPath();
     const existingEntry = container.value?.minitok;
     const existingServer = existingEntry && typeof existingEntry === "object" ? existingEntry.env?.minitok_server_url : undefined;
+    const existingWorkspaceRoot = existingEntry && typeof existingEntry === "object" ? existingEntry.env?.MINITOK_MCP_WORKSPACE_ROOT : undefined;
     const serverUrl = options.serverUrl || (typeof existingServer === "string" && existingServer.trim() ? existingServer : resolveServerUrl());
     const useClineBridge = options.host === "cline";
     const bridge = path.resolve(__dirname, "../../mcp/cline-compat.js");
     const runtimeEntry = path.resolve(__dirname, "../../runtime/stdio-entry.js");
     const env = { MINITOK_MCP_AUTH_TOKEN_FILE: tokenFile, minitok_server_url: serverUrl };
+    if (typeof options.workspaceRoot === "string" && options.workspaceRoot.trim()) env.MINITOK_MCP_WORKSPACE_ROOT = path.resolve(options.workspaceRoot);
+    else if (typeof existingWorkspaceRoot === "string" && existingWorkspaceRoot.trim()) env.MINITOK_MCP_WORKSPACE_ROOT = existingWorkspaceRoot;
     if (useClineBridge) {
       env.MINITOK_MCP_TARGET_COMMAND = process.execPath;
       env.MINITOK_MCP_TARGET_ARGS = JSON.stringify([runtimeEntry]);
@@ -311,11 +315,13 @@ function planChange(file, action, options = {}) {
       autoApprove: [],
     };
   } else {
+    const existing = container.value?.minitok;
+    removedTokenFile = existing && typeof existing === "object" ? existing.env?.MINITOK_MCP_AUTH_TOKEN_FILE : undefined;
     delete servers.minitok;
   }
 
   data[container.key] = servers;
-  return { file, data, changed: before !== JSON.stringify(data), schema: container.key, backup: `${file}.bak` };
+  return { file, data, changed: before !== JSON.stringify(data), schema: container.key, backup: `${file}.bak`, removedTokenFile };
 }
 /**
  * Token files still referenced by any other host configuration.
@@ -465,6 +471,7 @@ function register(program) {
       .option("--no-backup", "skip the crash-recovery copy taken during the write")
       .option("--keep-backup", "keep <config>.bak after a successful write as a restore point")
       .option("--host-file <path>", "write this host configuration file instead of the detected one")
+      .option("--workspace-root <path>", "repository root allowed to the stdio MCP server")
       .option("--rollback", "restore the previous configuration on failure")
       .option("--scopes <scopes>", "local MCP scopes to grant (read,write,auto_accept,verify_exec)")
       .option("--server <url>", "minitok server URL")
@@ -491,7 +498,7 @@ function register(program) {
           tokenFile = ensureRuntimeToken({});
         }
 
-        const plan = planChange(file, action, { host, tokenFile: tokenFile?.path || runtimeTokenPath(), scopes, serverUrl: opts.server ? effectiveServerUrl : undefined });
+        const plan = planChange(file, action, { host, tokenFile: tokenFile?.path || runtimeTokenPath(), scopes, workspaceRoot: opts.workspaceRoot, serverUrl: opts.server ? effectiveServerUrl : undefined });
         if (!plan.changed && !opts.force) {
           console.log(`${action === "connect" ? "Already connected" : "Already disconnected"} ${host}`);
           return;
@@ -507,7 +514,9 @@ function register(program) {
           // Only the last host holding the record revokes it: the token file is
           // shared, so disconnecting one editor must not sign out the others.
           const { revokeRuntimeToken } = require("../../mcp/runtime-token");
-          const tokenFile = process.env.MINITOK_MCP_AUTH_TOKEN_FILE || runtimeTokenPath();
+          // Revoke the exact credential referenced by the host entry that was
+          // removed, not a process-global override from another host/session.
+          const tokenFile = plan.removedTokenFile || process.env.MINITOK_MCP_AUTH_TOKEN_FILE || runtimeTokenPath();
           if (!configuredTokenFiles(file).has(tokenFile) && revokeRuntimeToken(tokenFile)) {
             console.log(`MCP auth token revoked (${tokenFile}). Run "minitok mcp token" before connecting a host again.`);
           }
@@ -526,8 +535,9 @@ function register(program) {
     .option("--no-backup", "skip the crash-recovery copy taken during the write")
     .option("--keep-backup", "keep <config>.bak after a successful write")
     .option("--host-file <path>", "write this host configuration file instead of the detected one")
+    .option("--workspace-root <path>", "repository root allowed to the stdio MCP server")
     .option("--rollback", "restore the previous configuration on failure")
-    .option("--scopes <scopes>", "local MCP scopes to grant (read,write,auto_accept,verify_exec)", "read,write,verify_exec")
+    .option("--scopes <scopes>", "local MCP scopes to grant (read,write,auto_accept,verify_exec)", "read")
     .option("--server <url>", "minitok server URL")
     .option("--only-unconfigured", "configure only hosts without an existing minitok entry")
     .action(async (host, opts) => {
@@ -548,7 +558,7 @@ function register(program) {
       }
       for (const targetHost of targets) {
         const target = resolveHost(targetHost, targets.length === 1 ? opts.hostFile : undefined);
-        const plan = planChange(target.file, "connect", { host: targetHost, tokenFile: tokenFile?.path || runtimeTokenPath(), scopes, serverUrl: opts.server ? resolveServerUrl({ cliServer: opts.server }) : undefined });
+        const plan = planChange(target.file, "connect", { host: targetHost, tokenFile: tokenFile?.path || runtimeTokenPath(), scopes, workspaceRoot: opts.workspaceRoot, serverUrl: opts.server ? resolveServerUrl({ cliServer: opts.server }) : undefined });
         if (opts.dryRun || opts.preview) { console.log(JSON.stringify({ action: "setup", host: targetHost, file: target.file, schema: plan.schema, changed: plan.changed, scopes })); continue; }
         if (!plan.changed && !opts.force) { console.log(`Already configured minitok for ${targetHost} (${target.file})`); continue; }
         writeConfig(target.file, plan.data, { backup: opts.backup !== false, keepBackup: opts.keepBackup === true, rollback: opts.rollback === true });

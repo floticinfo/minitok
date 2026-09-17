@@ -5,6 +5,22 @@ const { loadCustomerToken } = require("../auth/customer-token");
 const { OAuthFlow } = require("../auth/oauth");
 const { TokenStore } = require("../auth/token-store");
 const TRUSTED_MCP_AUTH_HOSTS = new Set(["api.minitok.dev"]);
+const PRIVATE_HOSTNAMES = new Set(["localhost", "localhost.localdomain", "ip6-localhost", "ip6-loopback"]);
+function isPrivateOrLoopbackHost(hostname) {
+  const host = String(hostname || "").replace(/^\[|\]$/g, "").toLowerCase();
+  if (PRIVATE_HOSTNAMES.has(host) || host === "::1" || host === "0.0.0.0" || host === "::") return true;
+  const parts = host.split(".").map(Number);
+  if (parts.length !== 4 || parts.some(value => !Number.isInteger(value) || value < 0 || value > 255)) return false;
+  const n = parts[0] * 0x1000000 + parts[1] * 0x10000 + parts[2] * 0x100 + parts[3];
+  return (parts[0] === 10) || (parts[0] === 127) || (parts[0] === 169 && parts[1] === 254) || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) || (parts[0] === 192 && parts[1] === 168) || n === 0;
+}
+function validateMetadataUrl(value, resourceUrl) {
+  let url;
+  try { url = new URL(value); } catch { throw remoteError("OAuth metadata URL is invalid", "auth", { code: "REMOTE_OAUTH_UNTRUSTED_METADATA" }); }
+  if (url.protocol !== "https:" || url.username || url.password || isPrivateOrLoopbackHost(url.hostname)) throw remoteError("OAuth metadata URL is not a trusted HTTPS endpoint", "auth", { code: "REMOTE_OAUTH_UNTRUSTED_METADATA" });
+  if (url.hostname !== resourceUrl.hostname && !TRUSTED_MCP_AUTH_HOSTS.has(url.hostname)) throw remoteError("OAuth metadata URL is not trusted", "auth", { code: "REMOTE_OAUTH_UNTRUSTED_METADATA" });
+  return url.toString();
+}
 const REMOTE_MCP_TOOLS = Object.freeze(new Set(["minitok_status", "minitok_compact"]));
 
 const MCP_PROTOCOL_VERSION = "2024-11-05";
@@ -45,6 +61,14 @@ function classifyRemoteError(error) {
 
 function remoteError(message, classification, details = {}) {
   return Object.assign(new Error(message), { code: "REMOTE_MCP_ERROR", classification, ...details });
+}
+
+/** Extract RFC 6750 resource_metadata from common WWW-Authenticate forms. */
+function extractResourceMetadata(challenge) {
+  const value = String(challenge || "");
+  const match = value.match(/resource_metadata\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s,]+))/i);
+  if (!match) return null;
+  return (match[1] ?? match[2] ?? match[3]).replace(/\\(["'])/g, "$1");
 }
 
 class RemoteMcpClient {
@@ -96,13 +120,13 @@ class RemoteMcpClient {
     if (response.status >= 400) {
       const errorType = body?.error?.data?.type;
       const challenge = response.headers.get("www-authenticate") || "";
-      const metadataMatch = challenge.match(/resource_metadata="([^"]+)"/);
-      if (response.status === 401 && this.allowOAuth && !retried && metadataMatch && errorType !== "ENTITLEMENT_REQUIRED") {
+      const metadataUrl = extractResourceMetadata(challenge);
+      if (response.status === 401 && this.allowOAuth && !retried && metadataUrl && errorType !== "ENTITLEMENT_REQUIRED") {
         // Discard the unusable credential first: `retried` bounds the loop, and
         // without this the client kept presenting the same expired token.
         try { this.tokenStore.remove(this.resourceKey); } catch {}
         this._cachedTokenExpired = false;
-        await this.authorizeFromMetadata(metadataMatch[1]);
+        await this.authorizeFromMetadata(metadataUrl);
         return this.request(method, params, true);
       }
       const classification = ["SESSION_REQUIRED", "SESSION_BINDING_MISMATCH"].includes(errorType) ? errorType : ["RATE_LIMITED", "RATE_LIMIT_DEGRADED"].includes(errorType) || response.status === 429 ? "rate_limit" : response.status === 401 || response.status === 403 ? "auth" : "protocol";
@@ -117,17 +141,20 @@ class RemoteMcpClient {
   async authorizeFromMetadata(metadataUrl) {
     let metadata;
     try {
-      const response = await fetchWithTimeout(metadataUrl, { headers: { Accept: "application/json" } }, this.timeoutMs);
+      const resourceUrl = new URL(this.url);
+      const trustedMetadataUrl = validateMetadataUrl(metadataUrl, resourceUrl);
+      const response = await fetchWithTimeout(trustedMetadataUrl, { headers: { Accept: "application/json" }, redirect: "error" }, this.timeoutMs);
       metadata = await response.json();
       if (!response.ok || !metadata?.authorization_servers?.[0]) throw new Error("Protected-resource metadata is invalid");
       const serverUrl = new URL(metadata.authorization_servers[0]);
-      const resourceUrl = new URL(this.url);
-      if (serverUrl.protocol !== "https:" || (serverUrl.hostname !== resourceUrl.hostname && !TRUSTED_MCP_AUTH_HOSTS.has(serverUrl.hostname))) throw remoteError("Remote MCP authorization server is not trusted", "auth", { code: "REMOTE_OAUTH_UNTRUSTED_AUTHORITY" });
-      const serverMetadataUrl = serverUrl.pathname.includes('/.well-known/') ? serverUrl.toString() : `${serverUrl.toString().replace(/\/$/, "")}/.well-known/oauth-authorization-server`;
-      const serverResponse = await fetchWithTimeout(serverMetadataUrl, { headers: { Accept: "application/json" } }, this.timeoutMs);
+      if (serverUrl.protocol !== "https:" || serverUrl.username || serverUrl.password || isPrivateOrLoopbackHost(serverUrl.hostname) || (serverUrl.hostname !== resourceUrl.hostname && !TRUSTED_MCP_AUTH_HOSTS.has(serverUrl.hostname))) throw remoteError("Remote MCP authorization server is not trusted", "auth", { code: "REMOTE_OAUTH_UNTRUSTED_AUTHORITY" });
+      const serverMetadataUrl = validateMetadataUrl(serverUrl.pathname.includes("/.well-known/") ? serverUrl.toString() : `${serverUrl.toString().replace(/\/$/, "")}/.well-known/oauth-authorization-server`, resourceUrl);
+      const serverResponse = await fetchWithTimeout(serverMetadataUrl, { headers: { Accept: "application/json" }, redirect: "error" }, this.timeoutMs);
       const serverMetadata = await serverResponse.json();
       if (!serverResponse.ok || !serverMetadata.authorization_endpoint || !serverMetadata.token_endpoint) throw new Error("Authorization-server metadata is invalid");
-      const token = await new OAuthFlow({ openBrowser: this.accountOptions.openBrowser, port: this.accountOptions.port }).authorize("mcp", { authorize_url: serverMetadata.authorization_endpoint, token_url: serverMetadata.token_endpoint, client_id: this.clientId, scope: metadata.scopes_supported?.[0] || "read" });
+      const authorizationEndpoint = validateMetadataUrl(serverMetadata.authorization_endpoint, resourceUrl);
+      const tokenEndpoint = validateMetadataUrl(serverMetadata.token_endpoint, resourceUrl);
+      const token = await new OAuthFlow({ openBrowser: this.accountOptions.openBrowser, port: this.accountOptions.port }).authorize("mcp", { authorize_url: authorizationEndpoint, token_url: tokenEndpoint, client_id: this.clientId, scope: metadata.scopes_supported?.[0] || "read" });
       this.token = token.access_token;
       this.tokenStore.save(this.resourceKey, { resource: this.url, ...token, expires_at: token.expires_at || new Date(Date.now() + 2592000000).toISOString() });
       return this.token;
@@ -169,4 +196,4 @@ async function executeRemoteWithLocalFallback({ remote, local, allowFallback = f
   }
 }
 
-module.exports = { RemoteMcpClient, remoteHealth, validateRemoteUrl, classifyRemoteError, canFallbackToLocal, executeRemoteWithLocalFallback, REMOTE_READ_ONLY_TOOLS, LOCAL_ONLY_TOOLS, REMOTE_PATH };
+module.exports = { RemoteMcpClient, remoteHealth, validateRemoteUrl, validateMetadataUrl, classifyRemoteError, canFallbackToLocal, executeRemoteWithLocalFallback, extractResourceMetadata, REMOTE_READ_ONLY_TOOLS, LOCAL_ONLY_TOOLS, REMOTE_PATH };

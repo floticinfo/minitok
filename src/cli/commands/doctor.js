@@ -84,8 +84,17 @@ async function cmdDoctor(opts = {}) {
     : entitlement.message;
   allOk = check("Entitlement", entitlement.allowed, `${entitlement.state}: ${entitlementDetail}`) && allOk;
 
-  // Config
-  const config = loadConfig();
+  // Config. A malformed customer config is itself a doctor finding; do not let
+  // YAML/parser exceptions turn diagnostics into an uncaught stack trace.
+  let config;
+  try {
+    config = loadConfig();
+  } catch (error) {
+    check("Configuration", false, error instanceof Error ? error.message : String(error));
+    console.log("\n[error] Cannot inspect providers or roles until minitok.yml is repaired.");
+    console.log("Recovery: run `minitok migrate` or fix the reported YAML/configuration error.");
+    return 1;
+  }
   const providers = await detectAvailableProviders(config);
 
   // LLM providers — informational per-provider; the overall check requires

@@ -34,6 +34,8 @@ try {
   try { taggedReleaseCommit = git("rev-parse", `${expectedTags[0]}^{commit}`); } catch {}
   const releaseTagMatches = tags.some(tag => expectedTags.includes(tag)) || (taggedReleaseCommit && taggedReleaseCommit === releaseManifest.release?.commit);
   if (!releaseTagMatches) errors.push(`release tag does not point at the manifest release commit; HEAD=${head || "(unknown)"}; tagTarget=${taggedReleaseCommit || "(none)"}`);
+  if (releaseManifest.release?.commit && head !== releaseManifest.release.commit) errors.push(`HEAD does not match release manifest commit; HEAD=${head || "(unknown)"}; manifest=${releaseManifest.release.commit}`);
+  if (releaseManifest.release?.tree && tree !== releaseManifest.release.tree) errors.push(`HEAD tree does not match release manifest tree; HEAD=${tree || "(unknown)"}; manifest=${releaseManifest.release.tree}`);
   if (releaseTag && !expectedTags.includes(releaseTag)) errors.push(`release ref ${releaseTag} does not match package version ${packageJson.version}`);
   if (lockJson.packages?.[""]?.version !== packageJson.version) errors.push("package-lock version does not match package version");
   const output = run(process.platform === "win32" ? process.env.ComSpec || "cmd.exe" : "npm", process.platform === "win32" ? ["/d", "/s", "/c", "npm pack --json"] : ["pack", "--json"]);

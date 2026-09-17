@@ -200,6 +200,10 @@ test("sidebar process lifecycle contract", () => {
   assert.match(sidebar, /evidencePath/);
   assert.match(sidebar, /MCP authentication token could not be prepared/);
   assert.match(extension, /minitok MCP authentication token could not be prepared/);
+  assert.match(sidebar, /path\.join\(home, "\.cline", "data", "settings", "cline_mcp_settings\.json"\)/);
+  assert.match(sidebar, /path\.join\(home, "\.cline", "mcp\.json"\)/);
+  assert.match(sidebar, /path\.join\(home, "\.codeium", "windsurf", "mcp_config\.json"\)/);
+  assert.match(sidebar, /path\.join\(home, "\.windsurf", "mcp_config\.json"\)/);
   assert.match(extension, /redactExtensionOutput/);
   assert.match(sidebar, /Signed out locally and from the server/);
   assert.match(panel, /server session could not be revoked/);
@@ -225,6 +229,21 @@ test("sidebar process lifecycle contract", () => {
   assert.match(sidebar, /Repository evidence, checkpoints, and patches were preserved/);
   assert.match(sidebar, /storeTaskText/);
   assert.match(sidebar, /Unsupported command/);
+});
+
+test("host integration is bounded and supports an explicit VS Code executable", () => {
+  const host = fs.readFileSync(path.join(root, "test", "run-host.ts"), "utf8");
+  assert.match(host, /MINITOK_VSCODE_EXECUTABLE/);
+  assert.match(host, /MINITOK_HOST_TEST_SKIP_DOWNLOAD/);
+  assert.match(host, /MINITOK_HOST_TEST_TIMEOUT_MS/);
+  assert.match(host, /MINITOK_HOST_DOWNLOAD_TIMEOUT_MS/);
+  assert.match(host, /process\.exit\(2\)/);
+  assert.match(host, /terminateProcessTree/);
+  assert.match(host, /product\.json/);
+  assert.match(host, /applicationName === "code"/);
+  assert.match(host, /extensionTestsEnv/);
+  assert.match(host, /ELECTRON_RUN_AS_NODE: undefined/);
+  assert.match(host, /VSCODE_PID: undefined/);
 });
 
 test("Extension subprocesses inherit the configured server URL and disable update checks", () => {

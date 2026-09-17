@@ -21,8 +21,29 @@ function loadInstallationRecord(entitlementDir) {
 }
 
 // Proxy-aware JSON POST (HTTPS_PROXY/NO_PROXY honored via core/http).
-function postValidation(urlString, body, timeoutMs = 10000) {
-  return postJson(urlString, JSON.stringify(body), timeoutMs);
+function postValidation(urlString, body, timeoutMs = 10000, extraHeaders = {}) {
+  return postJson(urlString, JSON.stringify(body), timeoutMs, extraHeaders);
+}
+
+async function consumeTrialRun(options = {}) {
+  const serverUrl = options.serverUrl;
+  const record = loadInstallationRecord(options.entitlementDir);
+  const artifact = options._loadArtifact ? options._loadArtifact() : null;
+  if (!serverUrl || !record?.token || !artifact?.payload || artifact.payload.plan_id !== "trial") {
+    return { consumed: false, state: GateState.SERVER_REJECTED, message: "Trial runs require online server authorization." };
+  }
+  try {
+    const idempotencyKey = typeof options.idempotencyKey === "string" && options.idempotencyKey.trim() ? options.idempotencyKey.trim() : null;
+    const body = { token: record.token, entitlement: artifact, ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}) };
+    const consume = options._consume || postValidation;
+    const response = await consume(`${serverUrl.replace(/\/$/, "")}/v1/trial/consume`, body, 10000, idempotencyKey ? { "Idempotency-Key": idempotencyKey } : {});
+    if (!response.ok || !response.body || response.body.success !== true) {
+      return { consumed: false, state: GateState.SERVER_REJECTED, message: response.body?.error || "The trial run quota could not be consumed." };
+    }
+    return { consumed: true, remainingRuns: response.body.remaining_runs, runsUsed: response.body.runs_used, runQuota: response.body.run_quota };
+  } catch (error) {
+    return { consumed: false, state: GateState.SERVER_UNREACHABLE, message: `The trial run quota could not be consumed: ${error?.message || "server unavailable"}.` };
+  }
 }
 
 async function checkEntitlementOnline(options = {}) {
@@ -81,4 +102,4 @@ async function checkEntitlementOnline(options = {}) {
   }
 }
 
-module.exports = { checkEntitlementOnline, loadInstallationRecord, postValidation };
+module.exports = { checkEntitlementOnline, consumeTrialRun, loadInstallationRecord, postValidation };

@@ -7,6 +7,7 @@ const files = ["README.md", "POLICY.md", "DATA_CLASSIFICATION.md"];
 const errors = [];
 const commercialDocs = ["README.md", "POLICY.md", "CHANGELOG.md"];
 const paidPlans = ["open", "select", "private"];
+const trialContract = ["free to install", "14 days", "5 real runs", "telemetry off"];
 const commercialContract = "There is no free plan";
 const readme = fs.readFileSync(path.join(root, "README.md"), "utf8");
 const changelog = fs.readFileSync(path.join(root, "CHANGELOG.md"), "utf8");
@@ -24,6 +25,9 @@ for (const file of commercialDocs) {
   if (!text.toLowerCase().includes(commercialContract.toLowerCase())) errors.push(`${file}: missing no-free-plan contract`);
   for (const plan of paidPlans) {
     if (!text.toLowerCase().includes(plan)) errors.push(`${file}: missing paid plan ${plan}`);
+  }
+  for (const term of trialContract) {
+    if (!text.toLowerCase().includes(term.toLowerCase())) errors.push(`${file}: missing trial/install contract '${term}'`);
   }
   if (/checkout --plan pro|current plan.*pro|purchasable-plan.*pro/i.test(text)) errors.push(`${file}: stale pro plan contract`);
 }

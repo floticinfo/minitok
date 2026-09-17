@@ -193,6 +193,21 @@ function configureRetries(policy = {}) {
   };
 }
 
+async function _isTerminalRateLimit(res) {
+  if (res.status !== 429) return false;
+  // A quota/billing rejection will not improve after waiting. Inspect a clone so
+  // the original response remains available to providerErrorDetail() for the
+  // actionable message returned to the caller.
+  try {
+    const copy = typeof res.clone === "function" ? res.clone() : null;
+    if (!copy || typeof copy.text !== "function") return false;
+    const text = (await copy.text()).toLowerCase();
+    return /no credits?|insufficient credits?|quota|billing|payment required|exceeded.*(?:limit|quota)|credit balance/.test(text);
+  } catch {
+    return false;
+  }
+}
+
 function _isRetryableStatus(status) {
   return status === 429 || status >= 500;
 }
@@ -288,7 +303,7 @@ async function fetchWithTimeout(url, opts = {}, timeoutMs = FETCH_TIMEOUT_MS, re
       const contentLength = parseInt(res.headers.get("content-length") || "0", 10);
       if (contentLength > MAX_RESPONSE_BYTES) throw new Error(`Response too large: ${contentLength} bytes (max ${MAX_RESPONSE_BYTES})`);
       const cappedRes = await readCappedResponse(res);
-      if (_isRetryableStatus(res.status) && attempt < attempts) {
+      if (_isRetryableStatus(res.status) && attempt < attempts && !(await _isTerminalRateLimit(res))) {
         const serverDelay = _retryAfterMs(res);
         const backoffDelay = Math.min(policy.backoffMs * Math.pow(2, attempt - 1), policy.maxBackoffMs);
         // Retry-After is advisory; never let a provider response suspend a

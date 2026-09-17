@@ -31,6 +31,24 @@ describe("Regression: doctor async provider detection", () => {
   });
 });
 
+describe("Regression: doctor reports malformed configuration", () => {
+  it("cmdDoctor returns diagnostics instead of throwing for invalid YAML", async () => {
+    const fs = require("node:fs");
+    const path = require("node:path");
+    const originalCwd = process.cwd();
+    const root = fs.mkdtempSync(path.join(require("node:os").tmpdir(), "minitok-doctor-config-"));
+    process.chdir(root);
+    fs.writeFileSync(path.join(root, "minitok.yml"), "roles: [broken");
+    try {
+      const { cmdDoctor } = require("../src/cli/commands/doctor");
+      assert.equal(await cmdDoctor(), 1);
+    } finally {
+      process.chdir(originalCwd);
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+});
+
 describe("Regression: cmdDoctor does not crash", () => {
   it("cmdDoctor returns exit code without throwing", async () => {
     const { cmdDoctor } = require("../src/cli/commands/doctor");

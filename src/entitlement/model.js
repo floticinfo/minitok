@@ -17,6 +17,7 @@
  *   issued_at,        // ISO 8601 UTC
  *   expires_at,       // ISO 8601 UTC
  *   key_id            // string
+ *   // trial-only signed limits: telemetry_mode, run_quota, runs_used
  * }
  *
  * LEGACY ARTIFACTS:
@@ -25,7 +26,8 @@
  * Installation binding is required for runtime authorization.
  */
 
-const VALID_PLAN_IDS = ["open", "select", "private"];
+// `trial` is a server-issued, quota-bound entitlement; it is not a free plan.
+const VALID_PLAN_IDS = ["open", "select", "private", "trial"];
 
 /**
  * Check whether a value is a valid ISO 8601 instant.
@@ -74,7 +76,7 @@ function validatePayload(payload) {
   }
 
   // Check for unexpected fields
-  const allowed = new Set([...required, "installation_id"]);
+  const allowed = new Set([...required, "installation_id", "telemetry_mode", "run_quota", "runs_used"]);
   for (const key of Object.keys(payload)) {
     if (!allowed.has(key)) {
       return { valid: false, reason: `Unexpected field: ${key}` };
@@ -113,6 +115,16 @@ function validatePayload(payload) {
 
   if (typeof payload.key_id !== "string" || payload.key_id.length === 0) {
     return { valid: false, reason: "key_id must be a non-empty string" };
+  }
+
+  const trialFields = ["telemetry_mode", "run_quota", "runs_used"];
+  if (payload.plan_id !== "trial" && trialFields.some((field) => field in payload)) {
+    return { valid: false, reason: "Trial-only fields are not valid on paid entitlements" };
+  }
+  if (payload.plan_id === "trial") {
+    const { validateTrialEntitlement } = require("./trial");
+    const trialResult = validateTrialEntitlement(payload);
+    if (!trialResult.valid) return { valid: false, reason: trialResult.reason };
   }
 
   // PHASE 13: Validate installation_id if present (new format)

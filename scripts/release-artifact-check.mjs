@@ -12,6 +12,7 @@ const artifactsRoot = path.join(extensionRoot, "artifacts");
 const packageJson = JSON.parse(readFileSync(path.join(root, "package.json"), "utf8"));
 const extensionJson = JSON.parse(readFileSync(path.join(extensionRoot, "package.json"), "utf8"));
 const runtimeJson = JSON.parse(readFileSync(path.join(extensionRoot, "runtime", "package.json"), "utf8"));
+const runtimeManifest = JSON.parse(readFileSync(path.join(extensionRoot, "runtime", "runtime-manifest.json"), "utf8"));
 const canonicalArtifact = `minitok-extension-${extensionJson.version}.vsix`;
 const relative = file => path.relative(root, file).replaceAll(path.sep, "/");
 const sha256 = file => createHash("sha256").update(readFileSync(file)).digest("hex");
@@ -24,7 +25,34 @@ async function readVsixManifest(file) {
   const extensionEntry = archive.file("extension/package.json");
   const runtimeEntry = archive.file("extension/runtime/package.json");
   if (!extensionEntry || !runtimeEntry) throw new Error(`VSIX release manifests are incomplete: ${relative(file)}`);
-  return { extension: JSON.parse(await extensionEntry.async("string")), runtime: JSON.parse(await runtimeEntry.async("string")) };
+  return { archive, extension: JSON.parse(await extensionEntry.async("string")), runtime: JSON.parse(await runtimeEntry.async("string")) };
+}
+
+async function assertVsixPayloadMatchesSource(archive, errors) {
+  const critical = [extensionJson.main.replace(/^\.\//, "extension/"), "extension/dist/src/sidebar.js"];
+  for (const relativePath of critical) {
+    const sourcePath = path.join(root, relativePath.replace(/^extension\//, "extension/"));
+    const archivePath = relativePath;
+    const entry = archive.file(archivePath);
+    if (!entry || !existsSync(sourcePath)) {
+      errors.push(`VSIX payload/source file is missing: ${relativePath}`);
+      continue;
+    }
+    const payloadHash = createHash("sha256").update(await entry.async("nodebuffer")).digest("hex");
+    const sourceHash = sha256(sourcePath);
+    if (payloadHash !== sourceHash) errors.push(`VSIX payload differs from current source: ${relativePath}`);
+  }
+  for (const relativePath of runtimeManifest.files || []) {
+    const sourcePath = path.join(root, "src", relativePath);
+    const archivePath = `extension/runtime/src/${relativePath}`;
+    const entry = archive.file(archivePath);
+    if (!entry || !existsSync(sourcePath)) {
+      errors.push(`VSIX embedded runtime file is missing: ${relativePath}`);
+      continue;
+    }
+    const payloadHash = createHash("sha256").update(await entry.async("nodebuffer")).digest("hex");
+    if (payloadHash !== sha256(sourcePath)) errors.push(`VSIX embedded runtime differs from canonical source: ${relativePath}`);
+  }
 }
 
 export async function inspectArtifacts() {
@@ -49,10 +77,11 @@ export async function inspectArtifacts() {
   if (!existsSync(path.join(extensionRoot, "LICENSE"))) errors.push("extension LICENSE is missing");
   if (authoritative.status !== "missing") {
     try {
-      const archive = await JSZip.loadAsync(readFileSync(authoritativePath));
       const vsixManifest = await readVsixManifest(authoritativePath);
+      const archive = vsixManifest.archive;
       if (!archive.file("extension/runtime/node_modules/undici/lib/mock/mock-client.js")) errors.push("packaged VSIX omits undici mock runtime modules");
       if (vsixManifest.extension.name !== extensionJson.name || vsixManifest.extension.version !== extensionJson.version || vsixManifest.extension.publisher !== extensionJson.publisher || vsixManifest.extension.minitok?.cliPackage !== packageJson.name || vsixManifest.extension.minitok?.cliVersion !== packageJson.version || vsixManifest.runtime.name !== runtimeJson.name || vsixManifest.runtime.version !== runtimeJson.version) errors.push("packaged VSIX manifest does not match canonical release versions");
+      await assertVsixPayloadMatchesSource(archive, errors);
     } catch (error) { errors.push(error.message); }
   }
   return { errors, status: errors.length ? "missing" : authoritative.status, metadata: { source: "git worktree", npm: { name: packageJson.name, version: packageJson.version }, runtime: { name: runtimeJson.name, version: runtimeJson.version }, extension: { name: extensionJson.name, version: extensionJson.version }, authoritative, stale } };

@@ -190,9 +190,11 @@
     "package": "vsce package",
     "compile": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json",
+    "lint": "npm run typecheck && npm run lint:tests",
+    "lint:tests": "eslint --config ../eslint.config.js --max-warnings=0 --rule no-useless-escape:off \"test/*.test.js\"",
     "test:host": "npm run compile && node dist/test/run-host.js",
-    "test:unit": "npm run compile && node --test test/process-contract.test.js test/mcp-config.test.js test/version.test.js test/spawn.test.js test/auth-ui.test.js",
-    "test": "npm run compile && node --test test/process-contract.test.js test/mcp-config.test.js test/version.test.js test/spawn.test.js test/auth-ui.test.js && node dist/test/run-host.js"
+    "test:unit": "npm run compile && node --test test/process-contract.test.js test/mcp-config.test.js test/version.test.js test/spawn.test.js test/auth-ui.test.js test/device-auth.test.js",
+    "test": "npm run compile && node --test test/process-contract.test.js test/mcp-config.test.js test/version.test.js test/spawn.test.js test/auth-ui.test.js test/device-auth.test.js && node dist/test/run-host.js"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",
