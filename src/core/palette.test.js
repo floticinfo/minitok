@@ -112,6 +112,7 @@ test("the shipped brand assets carry the primary colour", () => {
   const allowed = [BRAND.primary.toUpperCase(), BRAND.onPrimary.toUpperCase()];
   for (const [name, source] of Object.entries(assets)) {
     assert.equal(source.includes(`fill="${BRAND.primary}"`), true, `${name} must paint the tile in ${BRAND.primary}`);
+    if (name !== "extension/media/minitok.svg") assert.match(source, /omitBackground:\s*true/, `${name} must preserve the transparent icon background`);
     assert.equal(source.includes("src/core/palette.js"), true, `${name} must name the palette as its source`);
     for (const literal of [...new Set([...source.matchAll(/#[0-9a-fA-F]{6}/g)].map(match => match[0].toUpperCase()))]) {
       assert.equal(allowed.includes(literal), true, `${name} hardcodes ${literal}, which is not a palette colour`);
