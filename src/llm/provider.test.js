@@ -2,11 +2,39 @@
 
 const { describe, it } = require("node:test");
 const assert = require("node:assert/strict");
-const { createProvider, CustomProvider } = require("./provider");
+const { createProvider, CustomProvider, verifyCredentials, resetVerifyCache, customModelsEndpoint } = require("./provider");
 const { discoverModels } = require("./models");
 const dns = require("dns").promises;
 
 describe("generic custom provider", () => {
+  it("normalizes custom models endpoints without duplicating /v1", () => {
+    assert.equal(customModelsEndpoint("https://stream.camelai.com/v1/"), "https://stream.camelai.com/v1/models");
+    assert.equal(customModelsEndpoint("https://stream.camelai.com"), "https://stream.camelai.com/v1/models");
+  });
+
+  it("probes custom providers at the normalized models endpoint", async () => {
+    const originalFetch = global.fetch;
+    const urls = [];
+    global.fetch = async url => {
+      urls.push(String(url));
+      return new Response("{}", { status: 200, headers: { "content-type": "application/json" } });
+    };
+    try {
+      for (const baseUrl of ["http://localhost:11434/v1/", "http://localhost:11434"]) {
+        resetVerifyCache();
+        const result = await verifyCredentials("custom", { base_url: baseUrl, api_key: "test-key", allow_insecure_local_endpoint: true });
+        assert.equal(result.status, "ok");
+      }
+      assert.deepEqual(urls, [
+        "http://localhost:11434/v1/models",
+        "http://localhost:11434/v1/models",
+      ]);
+    } finally {
+      global.fetch = originalFetch;
+      resetVerifyCache();
+    }
+  });
+
   it("supports arbitrary provider names and endpoint aliases", async () => {
     const provider = createProvider("any-provider", { endpoint: "https://example.test/v1", auth: { type: "api_key", key: "key", scheme: "raw", header: "X-Token" }, models: [{ id: "model" }] });
     assert.equal(provider.name, "any-provider");
