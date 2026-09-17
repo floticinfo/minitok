@@ -116,6 +116,7 @@ test("the shipped brand assets carry the primary colour", () => {
   assert.match(svg, /fill:#ffffff/i, "the supplied SVG must retain its white glyph");
   for (const [name, source] of Object.entries(assets).filter(([name]) => name !== "extension/media/minitok.svg")) {
     assert.equal(source.includes("media/minitok.svg"), true, `${name} must render the supplied SVG asset`);
+    assert.match(source, /omitBackground:\s*true/, `${name} must preserve the transparent icon background`);
   }
   const manifest = JSON.parse(read("extension", "package.json"));
   assert.equal(manifest.icon, "media/minitok.png", "the Marketplace icon is the rasterized tile");
