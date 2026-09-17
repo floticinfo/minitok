@@ -48,8 +48,19 @@ export function validateManifest(manifest, { packageData = packageJson, gitData 
   return errors;
 }
 
+function contentStatus() {
+  const changed = [];
+  for (const args of [["diff", "--name-only"], ["diff", "--cached", "--name-only"]]) {
+    const files = git(...args).split(/\r?\n/).filter(Boolean);
+    changed.push(...files);
+  }
+  const untracked = git("ls-files", "--others", "--exclude-standard").split(/\r?\n/).filter(Boolean);
+  changed.push(...untracked);
+  return [...new Set(changed)].filter(file => file !== "release-manifest.json").sort().join("\n");
+}
+
 export function readGitData() {
-  const status = git("status", "--short", "--untracked-files=all").split(/\r?\n/).filter(Boolean).filter(line => !line.endsWith(" release-manifest.json"));
+  const status = contentStatus();
   const commit = git("rev-parse", "HEAD");
   const tree = git("rev-parse", "HEAD^{tree}");
   const tags = git("tag", "--points-at", "HEAD").split(/\r?\n/).filter(Boolean);
@@ -60,7 +71,7 @@ export function readGitData() {
     tagCommit = git("rev-parse", `${releaseTag}^{commit}`);
     tagTree = git("rev-parse", `${releaseTag}^{commit}^{tree}`);
   } catch {}
-  return { commit, tree, tagCommit, tagTree, status: status.join("\n"), tags };
+  return { commit, tree, tagCommit, tagTree, status, tags };
 }
 
 export function generateManifest() {

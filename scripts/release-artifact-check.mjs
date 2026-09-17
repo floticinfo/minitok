@@ -98,7 +98,11 @@ export function verifyPackageParity() {
 if (path.resolve(process.argv[1] || "") === path.resolve(fileURLToPath(import.meta.url))) {
   const report = await inspectArtifacts();
   const errors = [...verifyPackageParity(), ...report.errors];
-  const status = existsSync(path.join(root, ".git")) ? run("git", ["status", "--short", "--untracked-files=all"]) : "";
+  const status = existsSync(path.join(root, ".git")) ? [
+    run("git", ["diff", "--name-only"]),
+    run("git", ["diff", "--cached", "--name-only"]),
+    run("git", ["ls-files", "--others", "--exclude-standard"]),
+  ].join("\n").split(/\r?\n/).filter(Boolean).filter(file => file !== "release-manifest.json").filter((file, index, files) => files.indexOf(file) === index).sort().join("\n") : "";
   const candidate = status ? "DIRTY CANDIDATE (not releasable source)" : "CLEAN SOURCE (artifact checks still required)";
   console.error(`release diagnostics: ${candidate}`);
   if (status) console.error(status);
