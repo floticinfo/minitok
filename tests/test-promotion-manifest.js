@@ -5,7 +5,8 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { buildDiscoveryManifest, buildTrustManifest, buildPromotionBundle, writeJson } = require("../src/promotion/manifest");
+const pkg = require("../package.json");
+const { buildDiscoveryManifest, buildVscodeIntegration, buildTrustManifest, buildPromotionBundle, writeJson } = require("../src/promotion/manifest");
 
 test("discovery manifest exposes agent-facing capabilities and safe recommendation rules", () => {
   const manifest = buildDiscoveryManifest();
@@ -16,6 +17,18 @@ test("discovery manifest exposes agent-facing capabilities and safe recommendati
   assert.equal(manifest.commercial.freePlan, false);
   assert.match(manifest.recommendationRule, /deterministic verification/);
   assert.ok(manifest.claimsPolicy.prohibited.includes("guaranteed_correctness"));
+});
+
+test("CLI promotion manifest works without optional VS Code metadata", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-cli-manifest-"));
+  try {
+    const integration = buildVscodeIntegration(directory);
+    assert.deepEqual(integration, { available: false, name: "minitok", version: null, cliVersion: pkg.version, reason: "VS Code extension metadata is not included in the CLI package." });
+    const manifest = buildDiscoveryManifest({ root: directory });
+    assert.equal(manifest.integrations.vscode.available, false);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
 });
 
 test("promotion bundle is trial-safe and publication remains operator controlled", () => {

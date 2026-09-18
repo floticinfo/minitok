@@ -49,8 +49,8 @@ try {
   const packOutput = runNpm("npm pack", ["pack", "--pack-destination", prefix, "--json", ...npmNetworkFlags]);
   const packResult = JSON.parse(packOutput)[0];
   const packedFiles = new Set((packResult.files || []).map(file => file.path));
-  const requiredFiles = ["package.json", "bin/minitok.js", "src/index.js"];
-  const forbiddenFiles = ["VERIFY_CMD.mjs", "VERIFY_CMD.sh", "scripts/verify.mjs", "scripts/release-verify.mjs", "scripts/secret-scan.mjs", "scripts/documentation-consistency.mjs", "scripts/packed-install-smoke.mjs"];
+  const requiredFiles = ["package.json", "bin/minitok.js", "src/index.js", "src/promotion/demo.js", "src/promotion/manifest.js", "scripts/promotion-demo.mjs"];
+  const forbiddenFiles = ["VERIFY_CMD.mjs", "VERIFY_CMD.sh", "scripts/verify.mjs", "scripts/release-verify.mjs", "scripts/secret-scan.mjs", "scripts/documentation-consistency.mjs", "scripts/packed-install-smoke.mjs", "extension/package.json"];
   for (const file of requiredFiles) if (!packedFiles.has(file)) throw new Error(`final package omits runtime file: ${file}`);
   for (const file of forbiddenFiles) if (packedFiles.has(file)) throw new Error(`final package includes development-only file: ${file}`);
   const archiveName = readdirSync(prefix).find(name => name.endsWith(".tgz"));
@@ -64,6 +64,12 @@ try {
   const cli = path.join(packageRoot, "bin", "minitok.js");
   if (!existsSync(cli)) throw new Error(`packed install did not resolve the package bin: ${cli}`);
   for (const args of [["--help"], ["status"], ["auth", "status"]]) runCli(cli, consumer, args);
+  const cliDemo = path.join(consumer, "cli-demo");
+  const cliDemoOutput = runCli(cli, consumer, ["promote", "demo", "--directory", cliDemo]);
+  if (!/Demo fixture created:/.test(cliDemoOutput) || !existsSync(path.join(cliDemo, "minitok-demo-plan.json"))) throw new Error("packed CLI promote demo did not create a fixture");
+  const scriptDemo = path.join(consumer, "script-demo");
+  runNpm("packed promotion script", ["run", "--prefix", packageRoot, "promotion:demo", "--", "--directory", scriptDemo]);
+  if (!existsSync(path.join(scriptDemo, "minitok-demo-plan.json"))) throw new Error("packed promotion:demo script did not create a fixture");
 } finally {
   rmSync(prefix, { recursive: true, force: true });
 }
