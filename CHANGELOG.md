@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.4.7 - 2026-09-18
+
+### Fixed
+
+- Made the packed promotion demo independent of the optional VS Code extension and included its npm script in the published CLI artifact.
+- Aligned the shipped extension icon with the canonical brand palette and removed non-palette editor metadata.
+
+### Verified
+
+- Packed CLI and npm-script promotion demos pass against the release artifact.
+- Full client test suite passes with 1176 passing tests and no failures.
+
 ## 1.4.7-rc.4 - 2026-09-16
 
 ### Added
