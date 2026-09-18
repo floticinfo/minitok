@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<!-- Created with Inkscape (http://www.inkscape.org/) -->
+<!-- Created with Inkscape (http://www.inkscape.org/); palette source: src/core/palette.js -->
 
 <svg
    width="72.105095mm"
@@ -17,13 +17,10 @@
    color-interpolation="sRGB">
   <sodipodi:namedview
      id="namedview1"
-     pagecolor="#ffffff"
-     bordercolor="#000000"
      borderopacity="0.25"
      inkscape:showpageshadow="2"
      inkscape:pageopacity="0.0"
      inkscape:pagecheckerboard="0"
-     inkscape:deskcolor="#d1d1d1"
      inkscape:document-units="mm"
      inkscape:zoom="0.99528652"
      inkscape:cx="-51.743894"
@@ -55,13 +52,13 @@
        inkscape:label="g1">
       <path
          id="rect1"
-         fill="#013dcf"
+         fill="#013DCF"
          fill-opacity="1"
-         stroke="#013dcf"
+         stroke="#013DCF"
          stroke-opacity="1"
          stroke-width="0.45"
          stroke-linejoin="round"
-         style="fill:#013dcf;fill-opacity:1;fill-rule:evenodd;stroke:#013dcf;stroke-opacity:1;stroke-width:0.45;stroke-linejoin:round;paint-order:stroke fill markers"
+         style="fill:#013DCF;fill-opacity:1;fill-rule:evenodd;stroke:#013DCF;stroke-opacity:1;stroke-width:0.45;stroke-linejoin:round;paint-order:stroke fill markers"
          transform="rotate(45)"
          d="m 162.25157,1.7591448 h 34 c 6.648,0 12,5.352 12,12.0000002 v 34 c 0,6.648 -5.352,12 -12,12 h -34 c -6.648,0 -12,-5.352 -12,-12 v -34 c 0,-6.6480002 5.352,-12.0000002 12,-12.0000002 z" />
       <path
