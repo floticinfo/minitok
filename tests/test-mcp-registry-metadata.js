@@ -19,7 +19,7 @@ test("official MCP Registry metadata passes local commercial validation", () => 
 test("server.json is standard metadata and marketplace extensions stay separate", () => {
   const server = JSON.parse(fs.readFileSync(path.join(root, "server.json"), "utf8"));
   const marketplace = JSON.parse(fs.readFileSync(path.join(root, "mcp-marketplace.json"), "utf8"));
-  assert.equal(server.name, "io.github.floticinfo/minitok");
+  assert.equal(server.name, "dev.minitok/minitok");
   assert.equal(server.packages[0].registryType, "npm");
   assert.equal(server.packages[0].transport.type, "stdio");
   assert.deepEqual(server.packages[0].packageArguments.map(argument => argument.value), ["mcp", "serve"]);
@@ -29,7 +29,7 @@ test("server.json is standard metadata and marketplace extensions stay separate"
 
 test("npm package metadata exposes the Registry ownership marker", () => {
   const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
-  assert.equal(pkg.mcpName, "io.github.floticinfo/minitok");
+  assert.equal(pkg.mcpName, "dev.minitok/minitok");
   assert.equal(pkg.files.includes("server.json"), true);
   assert.equal(pkg.files.includes("mcp-marketplace.json"), true);
 });

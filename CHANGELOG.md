@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.4.6 - 2026-09-15
+
+### Added
+
+- Added `minitok mcp setup cline` for first-time MCP onboarding. It checks entitlement, guides users to account creation and paid-plan setup when needed, activates an account-backed installation without printing the one-time activation key, refreshes the local runtime token, writes the Cline configuration, and reports the next restart step.
+- Added validated `GoalSpec` compilation and validation, including repository path, verifier, dangerous-field, execution-policy, and Repository ODD constraints. Model completion claims are metadata only; they do not establish goal completion.
+- Added `GoalEvaluator` evidence collection and completion gates, persistent Goal Sessions with atomic state, checkpoints, locks, pause/resume, migration, and corruption handling, plus `GoalController` cycle limits, recovery, escalation, and capability-based model routing.
+- Added the six persistent MCP Goal tools (`minitok_goal_start`, `minitok_goal_status`, `minitok_goal_continue`, `minitok_goal_pause`, `minitok_goal_resume`, and `minitok_goal_cancel`), with explicit scope checks and source/runtime parity for the bundled Extension runtime.
+- Added mock-first local application observation with allowlisted localhost HTTP, process, API, browser-driver, and read-only database adapters; external access and deployment remain disabled by default.
+- Added deterministic benchmark raw artifacts and validation for baseline/minitok records, including evidence and negative/security-case metrics. Mock benchmark output is not a live-provider measurement or a product-superiority claim.
+- The executed local verification set passed: Goal unit tests 114/114, Goal E2E tests 9/9, MCP Goal and transport tests 21/21, discovery/CLI/Phase 0/local fixture tests 14/14, Registry metadata tests 4/4, release artifact tests 10/10, and version metadata tests 2/2; lint, typecheck, documentation consistency, version metadata, MCP Registry metadata, package dry-run, and runtime parity checks also passed. Real provider/live E2E, external Registry publication, and production validation were not run.
+
+## 1.4.5 - 2026-09-15
+
+### Changed
+
+- Switched official MCP Registry ownership from the GitHub organization namespace to the verified `minitok.dev` domain namespace `dev.minitok/minitok`, so Registry publication does not require exposing a personal GitHub account as an organization member. The npm package remains `@flotic/minitok`; only `mcpName`, server metadata, and Registry ownership proof changed.
+
 ## 1.4.4 - 2026-09-15
 
 ### Added

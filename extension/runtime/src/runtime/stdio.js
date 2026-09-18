@@ -182,6 +182,7 @@ class RuntimeStdio {
     // Without this the option was accepted and then silently ignored.
     this._runPipeline = options.runPipeline || null;
     this._workspaceRoot = options.workspaceRoot || process.cwd();
+    this._model = options.model || null;
     if (options.authRequired === false || options.entitlementRequired === false) throw new Error("MCP authentication and entitlement are mandatory");
     // Scopes are opt-in: the default stays read-only (tests/test-mcp-remote.js
     // asserts `["read"]`), and write/auto_accept must be granted explicitly.
@@ -223,6 +224,7 @@ class RuntimeStdio {
     this._requestToRun = new Map();
     this._maxConcurrentRuns = Math.max(1, Number(options.maxConcurrentRuns || process.env.MINITOK_MCP_MAX_CONCURRENT_RUNS || 1));
     this._clientInfo = null;
+    this._selections = new Map();
     this._sessionToken = null;
     // Whether the session authenticates with the process credential (the file
     // below). A standard host has no per-request token, so only such a session
@@ -511,7 +513,21 @@ class RuntimeStdio {
       // null, so all four failed schema validation through the transport.
       const toolArguments = { ...(params.arguments || {}) };
       if (runId) toolArguments.run_id = runId;
-      const result = await getToolHandler(params.name, toolArguments, this._services, { safeResult: true, signal: controller.signal, runs: this._runs, runPipeline: this._runPipeline, recoveredRuns: this._recoveredRuns, persistence: this._persistence, workspaceRoot: this._workspaceRoot, permissions: this._permissions, writeApproval: (file, decision, binding) => { const stat = fs.lstatSync(file); if (!stat.isFile() || stat.isSymbolicLink() || fs.realpathSync.native(file) !== file) throw Object.assign(new Error("Approval request path is not a regular file"), { code: "APPROVAL_INVALID" }); let request; try { request = JSON.parse(fs.readFileSync(file, "utf8")); } catch { throw Object.assign(new Error("Approval request is malformed"), { code: "APPROVAL_INVALID" }); } if (request.type !== "approval_request" || (decision !== "approve" && decision !== "reject") || typeof request.nonce !== "string" || request.nonce !== binding.nonce || request.run_id !== binding.runId || !Number.isFinite(request.expires_at) || Date.now() >= request.expires_at) throw Object.assign(new Error("Approval request is stale or mismatched"), { code: "APPROVAL_INVALID" }); const target = `${file}.response`; try { const targetStat = fs.lstatSync(target); if (targetStat.isSymbolicLink() || !targetStat.isFile()) throw Object.assign(new Error("Approval response path is not a regular file"), { code: "APPROVAL_INVALID" }); } catch (error) { if (error.code !== "ENOENT") throw error; } const temp = `${target}.tmp.${process.pid}.${crypto.randomBytes(6).toString("hex")}`; const fd = fs.openSync(temp, "wx", 0o600); try { fs.writeFileSync(fd, `${JSON.stringify({ decision, nonce: binding.nonce, run_id: binding.runId })}\n`, { encoding: "utf8" }); fs.fsyncSync(fd); } finally { fs.closeSync(fd); } try { fs.renameSync(temp, target); } catch (error) { try { fs.rmSync(temp, { force: true }); } catch {} throw error; } }, onProgress: event => { if (runId && !isNotification) { const progress = Number.isFinite(event.progress) ? event.progress : ({ intel: 1, plan: 2, work: 3, verify: 4, review: 5 }[event.phase] || 0); this._respond({ jsonrpc: "2.0", method: "notifications/progress", params: { progressToken: params._meta?.progressToken ?? params.meta?.progressToken ?? null, progress, total: 5, message: JSON.stringify({ phase: event.phase, state: event.state, run_id: runId, correlation_id: correlationId }) } }); } } });
+      const result = await getToolHandler(params.name, toolArguments, this._services, { safeResult: true, signal: controller.signal, model: this._model, runs: this._runs, runPipeline: this._runPipeline, recoveredRuns: this._recoveredRuns, persistence: this._persistence, workspaceRoot: this._workspaceRoot, permissions: this._permissions, createSelection: selection => {
+         const selectionId = crypto.randomBytes(16).toString("hex");
+         const record = { schema_version: 1, workspace_root: path.resolve(selection.workspace_root || this._workspaceRoot), provider: selection.provider || null, status: selection.status, candidates: [...new Set(selection.candidates || [])], selected_at: selection.provider ? new Date().toISOString() : null };
+         this._selections.set(selectionId, record);
+         return { selection_id: selectionId, schema_version: 1, workspace_root: record.workspace_root, provider: record.provider || undefined, status: record.status, candidates: record.candidates, ...(record.selected_at ? { selected_at: record.selected_at } : {}) };
+       }, resolveSelection: (selectionId, providerOverride, promote = false) => {
+         const selection = this._selections.get(selectionId);
+         if (!selection || selection.workspace_root !== path.resolve(this._workspaceRoot)) return null;
+         if (promote && providerOverride && selection.candidates.includes(providerOverride)) {
+           selection.provider = providerOverride;
+           selection.status = "selected";
+           selection.selected_at = new Date().toISOString();
+         }
+         return selection;
+       }, writeApproval: (file, decision, binding) => { const stat = fs.lstatSync(file); if (!stat.isFile() || stat.isSymbolicLink() || fs.realpathSync.native(file) !== file) throw Object.assign(new Error("Approval request path is not a regular file"), { code: "APPROVAL_INVALID" }); let request; try { request = JSON.parse(fs.readFileSync(file, "utf8")); } catch { throw Object.assign(new Error("Approval request is malformed"), { code: "APPROVAL_INVALID" }); } if (request.type !== "approval_request" || (decision !== "approve" && decision !== "reject") || typeof request.nonce !== "string" || request.nonce !== binding.nonce || request.run_id !== binding.runId || !Number.isFinite(request.expires_at) || Date.now() >= request.expires_at) throw Object.assign(new Error("Approval request is stale or mismatched"), { code: "APPROVAL_INVALID" }); const target = `${file}.response`; try { const targetStat = fs.lstatSync(target); if (targetStat.isSymbolicLink() || !targetStat.isFile()) throw Object.assign(new Error("Approval response path is not a regular file"), { code: "APPROVAL_INVALID" }); } catch (error) { if (error.code !== "ENOENT") throw error; } const temp = `${target}.tmp.${process.pid}.${crypto.randomBytes(6).toString("hex")}`; const fd = fs.openSync(temp, "wx", 0o600); try { fs.writeFileSync(fd, `${JSON.stringify({ decision, nonce: binding.nonce, run_id: binding.runId })}\n`, { encoding: "utf8" }); fs.fsyncSync(fd); } finally { fs.closeSync(fd); } try { fs.renameSync(temp, target); } catch (error) { try { fs.rmSync(temp, { force: true }); } catch {} throw error; } }, onProgress: event => { if (runId && !isNotification) { const progress = Number.isFinite(event.progress) ? event.progress : ({ intel: 1, plan: 2, work: 3, verify: 4, review: 5 }[event.phase] || 0); this._respond({ jsonrpc: "2.0", method: "notifications/progress", params: { progressToken: params._meta?.progressToken ?? params.meta?.progressToken ?? null, progress, total: 5, message: JSON.stringify({ phase: event.phase, state: event.state, run_id: runId, correlation_id: correlationId }) } }); } } });
        // The tool handler runs with safeResult, so a failing pipeline returns
        // `isError: true` instead of throwing. Recording "completed" regardless
        // made every failed run look successful in run_get / run_list and in the

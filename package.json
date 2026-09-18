@@ -1,7 +1,7 @@
 {
   "name": "@flotic/minitok",
-  "version": "1.4.4",
-  "mcpName": "io.github.floticinfo/minitok",
+  "version": "1.4.6",
+  "mcpName": "dev.minitok/minitok",
   "description": "Verified repository-aware coding workflow CLI for AI agents",
   "main": "src/index.js",
   "bin": {
@@ -29,6 +29,7 @@
     "promotion:discovery": "node scripts/promotion-preview.mjs discovery",
     "promotion:trust": "node scripts/promotion-preview.mjs trust",
     "promotion:demo": "node scripts/promotion-demo.mjs",
+    "benchmark:goal": "node scripts/goal-benchmark.mjs",
     "benchmark:validate": "node scripts/real-benchmark-validate.mjs",
     "video:kit": "node scripts/video-kit.mjs",
     "pretest": "node scripts/sweep-temp.mjs --older-than 2h --max-entries 500 --max-scan 50000 --time-budget 3s --quiet",
@@ -57,6 +58,8 @@
     "extension:commercial:check": "npm run typecheck:extension && node scripts/extension-commercial-check.mjs",
     "test:release-artifacts": "node --test tests/test-release-artifacts.js",
     "test:packed-install": "node scripts/packed-install-smoke.mjs",
+    "test:e2e:goal": "node scripts/goal-e2e.mjs --mode mock",
+    "test:e2e:goal:live": "node scripts/goal-e2e.mjs --mode live --allow-live",
     "start": "node bin/minitok.js"
   },
   "keywords": [
@@ -102,6 +105,9 @@
     "!src/runtime/test-seam.js",
     "!src/runtime/**/*.test-seam.js",
     "!extension/",
+    "scripts/goal-benchmark.mjs",
+    "scripts/goal-e2e.mjs",
+    "scripts/promotion-demo.mjs",
     "LICENSE",
     "README.md",
     "server.json",

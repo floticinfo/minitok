@@ -1,13 +1,15 @@
 {
   "$schemaVersion": 1,
-  "server": "io.github.floticinfo/minitok",
+  "server": "dev.minitok/minitok",
   "package": "@flotic/minitok",
-  "version": "1.4.4",
+  "version": "1.4.6",
   "registry": {
     "officialMcpRegistry": "server.json",
     "npmPackage": "https://www.npmjs.com/package/@flotic/minitok",
     "submissionCommand": "mcp-publisher publish",
-    "authenticationCommand": "mcp-publisher login github"
+    "authenticationCommand": "mcp-publisher login github",
+    "firstTimeSetupCommand": "minitok mcp setup cline --scopes read",
+    "firstTimeSetupUrl": "https://minitok.dev/signup"
   },
   "display": {
     "title": "minitok",
@@ -25,6 +27,7 @@
         "mcp",
         "serve"
       ],
+      "firstTimeSetup": "minitok mcp setup cline --scopes read",
       "protocolVersions": [
         "2025-11-25",
         "2025-06-18",

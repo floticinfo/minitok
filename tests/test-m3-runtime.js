@@ -347,10 +347,11 @@ describe("M3 HTTP Server", () => {
 });
 
 describe("M3 MCP Tools", () => {
-  it("defines 14 tools", () => {
+  it("defines the current MCP tool surface", () => {
     const tools = getToolDefinitions();
-    assert.equal(tools.length, 14);
+    assert.equal(tools.length, 21);
     const names = tools.map(t => t.name);
+    for (const name of ["minitok_discover", "minitok_goal_start", "minitok_goal_status", "minitok_goal_continue", "minitok_goal_pause", "minitok_goal_resume", "minitok_goal_cancel"]) assert.ok(names.includes(name));
     assert.ok(names.includes("minitok_knowledge_query"));
     assert.ok(names.includes("minitok_knowledge_record"));
     assert.ok(names.includes("minitok_analyze_failures"));

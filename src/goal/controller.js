@@ -1,0 +1,252 @@
+"use strict";
+
+const { assertValidGoalSpec } = require("./validator");
+const { evaluateGoal: defaultEvaluator, evaluationIsComplete } = require("./evaluator");
+const { runTask: defaultTaskExecutor } = require("./task_executor");
+const { classifyFailure, failureSignature, patchSignature, detectStagnation } = require("./failure");
+const { routeRole } = require("./capabilities");
+const { recoveryFor, buildRecoveryTask } = require("./recovery");
+
+function currentTime(options) { return (options.now || (() => new Date().toISOString()))(); }
+function elapsedMs(startedAt, now) { return Math.max(0, new Date(now).getTime() - new Date(startedAt).getTime()); }
+function tokenTotal(tokens = {}) { return (Number(tokens.input) || 0) + (Number(tokens.output) || 0); }
+function normalizedPath(value) { return typeof value === "string" ? value.replace(/\\/g, "/").replace(/^\.\//, "") : ""; }
+function pathAllowed(file, constraints) {
+  const candidate = normalizedPath(file);
+  if (!candidate || candidate.split("/").includes("..") || candidate.startsWith("/")) return false;
+  const blocked = (constraints.blocked_paths || []).map(normalizedPath);
+  const allowed = (constraints.allowed_paths || []).map(normalizedPath);
+  if (blocked.some(prefix => candidate === prefix || candidate.startsWith(`${prefix}/`))) return false;
+  return allowed.length === 0 || allowed.some(prefix => candidate === prefix || candidate.startsWith(`${prefix}/`));
+}
+function selectRemaining(spec, evaluation) {
+  const remaining = new Set([...(evaluation?.remaining_criteria || []), ...(evaluation?.unknown_criteria || [])]);
+  return spec.success_criteria.filter(criterion => remaining.has(criterion.id));
+}
+function safeTaskProposal(proposal, remaining) {
+  const value = typeof proposal === "string" ? { next_task: proposal } : proposal && typeof proposal === "object" ? proposal : {};
+  const task = typeof value.next_task === "string" ? value.next_task.trim() : "";
+  const target = Array.isArray(value.target_criteria) ? value.target_criteria.filter(id => typeof id === "string") : [];
+  const remainingIds = new Set(remaining.map(criterion => criterion.id));
+  if (!task) return { valid: false, reason: "Task proposal is empty" };
+  if (target.length > 0 && !target.some(id => remainingIds.has(id))) return { valid: false, reason: "Task proposal does not target a remaining criterion" };
+  return { valid: true, task, target_criteria: target, rationale: value.rationale, expected_verification: Array.isArray(value.expected_verification) ? value.expected_verification : [], done: value.done === true };
+}
+function progressFromEvaluation(evaluation) {
+  return evaluation?.criteria ? evaluation.criteria.filter(item => item.status === "passed").length : 0;
+}
+function failureRecordFromHistory(item = {}) {
+  const result = item.result && typeof item.result === "object" ? item.result : item;
+  const failureCategory = item.failure_category || classifyFailure({ ...result, task: item.task });
+  const record = {
+    task: item.task,
+    status: item.status || result.status || "failure",
+    failure_category: failureCategory,
+    verifier_id: item.verifier_id,
+    error: item.error || result.error || result.verification?.error || result.verification?.output,
+    patch_signature: item.patch_signature || patchSignature(result),
+    evidence_ids: Array.isArray(item.evidence_ids) ? item.evidence_ids : (Array.isArray(result.evidence) ? result.evidence.map(evidence => evidence.evidence_id).filter(Boolean) : []),
+  };
+  return { ...record, signature: item.signature || failureSignature(record) };
+}
+
+class GoalController {
+  constructor(goalSpec, options = {}) {
+    assertValidGoalSpec(goalSpec);
+    this.goal = goalSpec;
+    this.options = options;
+    this.session = options.session || null;
+    this.evaluator = options.evaluator || defaultEvaluator;
+    this.taskExecutor = options.taskExecutor || defaultTaskExecutor;
+    this.taskProposer = options.taskProposer || defaultTaskProposer;
+    this.startedAt = currentTime(options);
+    const initial = options.initialState || null;
+    const progressState = initial?.progress_state && typeof initial.progress_state === "object" ? initial.progress_state : {};
+    // A persisted completed state must be revalidated by the evaluator on the next run.
+    this.state = initial?.status && initial.status !== "paused" && initial.status !== "completed" ? initial.status : "created";
+    this.cycleCount = Number(initial?.cycle_count) || 0;
+    this.tokenUsage = { input: Number(initial?.token_usage?.input) || 0, output: Number(initial?.token_usage?.output) || 0 };
+    this.currentTask = initial?.current_task || null;
+    this.evaluation = initial?.evaluator_results?.at(-1) || null;
+    this.taskHistory = (Array.isArray(initial?.task_history) ? initial.task_history : []).map(item => item && typeof item === "object" ? { ...item, patch_signature: item.patch_signature || (item.result ? patchSignature(item.result) : "") } : item);
+    this.actionHistory = Array.isArray(initial?.action_history) ? initial.action_history : [];
+    this.evaluatorResults = Array.isArray(initial?.evaluator_results) ? initial.evaluator_results : [];
+    this.evidence = Array.isArray(initial?.evidence) ? initial.evidence : [];
+    this.taskCounts = new Map();
+    for (const item of this.taskHistory) if (typeof item?.task === "string") this.taskCounts.set(item.task, (this.taskCounts.get(item.task) || 0) + 1);
+    this.failureCounts = new Map();
+    this.failureCategoryCounts = new Map();
+    this.failureHistory = (Array.isArray(initial?.failure_history) && initial.failure_history.length > 0 ? initial.failure_history : this.taskHistory.filter(item => item?.success !== true && item?.status !== "success")).map(failureRecordFromHistory);
+    for (const failure of this.failureHistory) {
+      const key = failure.signature || failureSignature(failure);
+      this.failureCounts.set(key, (this.failureCounts.get(key) || 0) + 1);
+      if (failure.failure_category) this.failureCategoryCounts.set(failure.failure_category, (this.failureCategoryCounts.get(failure.failure_category) || 0) + 1);
+    }
+    this.recoveryHistory = Array.isArray(initial?.recovery_history) ? initial.recovery_history : [];
+    this.modelRouting = Array.isArray(initial?.model_routing) ? initial.model_routing : [];
+    this.currentProgress = Number.isFinite(progressState.current_progress) ? progressState.current_progress : progressFromEvaluation(this.evaluation);
+    this.previousProgress = Number.isFinite(progressState.previous_progress) ? progressState.previous_progress : this.currentProgress;
+    const lastTask = this.taskHistory.at(-1);
+    const lastPatch = lastTask?.patch_signature || (lastTask?.result ? patchSignature(lastTask.result) : "");
+    const fallbackFingerprint = lastTask ? JSON.stringify({ evaluation: this.evaluation?.criteria, task: lastTask.task, result: lastTask.status, success: lastTask.success === true, patch: lastPatch }) : "";
+    this.lastFingerprint = typeof progressState.last_fingerprint === "string" ? progressState.last_fingerprint : fallbackFingerprint;
+    this.stagnantCycles = Number.isSafeInteger(progressState.stagnant_cycles) && progressState.stagnant_cycles >= 0 ? progressState.stagnant_cycles : 0;
+    if (!progressState.last_fingerprint && this.taskHistory.length > 0) {
+      const recent = this.taskHistory.slice(-2);
+      if (recent.length === 2 && JSON.stringify(recent[0]) === JSON.stringify(recent[1])) this.stagnantCycles = Math.max(this.stagnantCycles, 1);
+    }
+    this.forcedTask = null;
+  }
+
+  limits() {
+    const c = this.goal.constraints;
+    return { maxCycles: c.max_cycles, maxTokens: c.max_tokens || 0, timeoutMs: c.timeout_ms || 0, stagnationLimit: c.stagnation_limit || 3, sameTaskLimit: c.same_task_limit || 2, sameFailureLimit: c.same_failure_limit || 2, maxChangedFiles: c.max_changed_files || 20, maxRetries: (this.options.maxRetries ?? this.options.execution?.max_retries ?? c.same_failure_limit ?? 2) };
+  }
+
+  persistSession(eventType = "state_updated") {
+    if (!this.session) return;
+    const { saveGoalSession, appendGoalEvent } = require("./session");
+    this.session.state.status = this.state === "created" ? "running" : this.state;
+    this.session.state.current_task = this.currentTask;
+    this.session.state.cycle_count = this.cycleCount;
+    this.session.state.task_history = this.taskHistory;
+    this.session.state.action_history = this.actionHistory;
+    this.session.state.evaluator_results = this.evaluatorResults;
+    this.session.state.evidence_refs = this.evidence.map(item => item.evidence_id).filter(Boolean);
+    this.session.state.failure_history = this.failureHistory;
+    this.session.state.recovery_history = this.recoveryHistory;
+    this.session.state.model_routing = this.modelRouting;
+    this.session.state.progress_state = { last_fingerprint: this.lastFingerprint, stagnant_cycles: this.stagnantCycles, current_progress: this.currentProgress || 0, previous_progress: this.previousProgress || 0 };
+    this.session.state.token_usage = this.tokenUsage;
+    this.session.state.model = this.options.model || this.session.state.model;
+    this.session.state.provider = this.options.provider || this.session.state.provider;
+    saveGoalSession(this.session);
+    appendGoalEvent(this.session, { type: eventType, state: this.session.state.status, cycle: this.cycleCount, current_task: this.currentTask });
+  }
+
+  async observe() {
+    const now = currentTime(this.options);
+    const limit = this.limits();
+    if (limit.timeoutMs > 0 && elapsedMs(this.startedAt, now) >= limit.timeoutMs) { this.state = "timeout"; return null; }
+    this.evaluation = await this.evaluator(this.goal, { ...this.options, currentTask: this.currentTask, cycle: this.cycleCount });
+    this.evaluatorResults.push(this.evaluation);
+    this.evidence.push(...(Array.isArray(this.evaluation.evidence) ? this.evaluation.evidence : []));
+    const progress = this.evaluation?.criteria ? this.evaluation.criteria.filter(item => item.status === "passed").length : 0;
+    this.currentProgress = progress;
+    this.persistSession("evaluation_recorded");
+    return this.evaluation;
+  }
+
+  checkEvaluation(evaluation) {
+    if (evaluationIsComplete(this.goal, evaluation)) { this.state = "completed"; return true; }
+    return false;
+  }
+
+  checkLimits() {
+    const limit = this.limits();
+    if (limit.timeoutMs > 0 && elapsedMs(this.startedAt, currentTime(this.options)) >= limit.timeoutMs) { this.state = "timeout"; return true; }
+    if (limit.maxTokens > 0 && tokenTotal(this.tokenUsage) >= limit.maxTokens) { this.state = "token_limit"; return true; }
+    if (this.cycleCount >= limit.maxCycles) { this.state = "max_cycles"; return true; }
+    if (this.stagnantCycles >= limit.stagnationLimit) { this.state = "stagnation"; return true; }
+    return false;
+  }
+
+  async propose(remaining) {
+    if (this.forcedTask) {
+      const forced = this.forcedTask;
+      this.forcedTask = null;
+      const safeForced = safeTaskProposal({ next_task: forced.task, target_criteria: forced.target_criteria, rationale: forced.rationale, expected_verification: forced.expected_verification }, remaining);
+      this.actionHistory.push({ cycle: this.cycleCount + 1, action: "recovery_task", recovery_action: forced.action, target_criteria: forced.target_criteria });
+      return safeForced;
+    }
+    const proposal = await this.taskProposer(this.goal, remaining, this.evaluation, { cycle: this.cycleCount, history: this.taskHistory });
+    const safe = safeTaskProposal(proposal, remaining);
+    this.actionHistory.push({ cycle: this.cycleCount + 1, action: "propose_task", proposal: { ...safe, model_done: proposal?.done === true } });
+    return safe;
+  }
+
+
+  async execute(task, proposal) {
+    const count = (this.taskCounts.get(task) || 0) + 1;
+    this.taskCounts.set(task, count);
+    if (count > this.limits().sameTaskLimit) { this.state = "repetition"; return null; }
+    this.currentTask = task;
+    this.cycleCount += 1;
+    const result = await this.taskExecutor(task, { ...this.options, cycle: this.cycleCount, target_criteria: proposal.target_criteria });
+    const tokens = result?.tokens || {};
+    this.tokenUsage.input += Number(tokens.input) || 0;
+    this.tokenUsage.output += Number(tokens.output) || 0;
+    const failureCategory = result?.success ? null : classifyFailure({ ...result, task });
+    const failureRecord = { task, status: result?.status || "failure", failure_category: failureCategory, verifier_id: proposal.expected_verification?.[0], error: result?.error || result?.verification?.error || result?.verification?.output, patch_signature: patchSignature(result), evidence_ids: result?.evidence?.map(item => item.evidence_id).filter(Boolean) || [] };
+    const failureKey = failureSignature(failureRecord);
+    if (!result?.success) { this.failureCounts.set(failureKey, (this.failureCounts.get(failureKey) || 0) + 1); this.failureCategoryCounts.set(failureCategory, (this.failureCategoryCounts.get(failureCategory) || 0) + 1); this.failureHistory.push({ ...failureRecord, signature: failureKey }); }
+    const recovery = failureCategory ? recoveryFor(failureCategory) : null;
+    if (result?.success && Array.isArray(result.changes?.changed_files)) {
+      const changedFiles = result.changes.changed_files;
+      if (changedFiles.length > this.limits().maxChangedFiles) { this.state = "blocked"; result.status = "blocked"; result.error = "Changed file limit exceeded"; }
+      else if (changedFiles.some(file => !pathAllowed(file, this.goal.constraints))) { this.state = "blocked"; result.status = "blocked"; result.error = "Changed file path violates GoalSpec constraints"; }
+    }
+    this.taskHistory.push({ cycle: this.cycleCount, task, target_criteria: proposal.target_criteria, status: result?.status || "failure", success: result?.success === true, patch_signature: failureRecord.patch_signature, result });
+    this.actionHistory.push({ cycle: this.cycleCount, action: "execute_task", task, target_criteria: proposal.target_criteria, failure_category: failureCategory, recovery_action: recovery?.action || null });
+    const fingerprint = JSON.stringify({ evaluation: this.evaluation?.criteria, task, result: result?.status, success: result?.success, patch: failureRecord.patch_signature });
+    this.stagnantCycles = fingerprint === this.lastFingerprint ? this.stagnantCycles + 1 : 0;
+    this.lastFingerprint = fingerprint;
+    const stagnation = detectStagnation({ taskHistory: [...this.taskHistory, failureRecord], currentProgress: this.currentProgress || 0, previousProgress: this.previousProgress || 0, limit: this.limits().stagnationLimit });
+    this.previousProgress = this.currentProgress || 0;
+    if (stagnation.stagnant) this.stagnantCycles += 1;
+    const repeated = [...this.failureCounts.values()].some(countValue => countValue >= this.limits().sameFailureLimit) || this.stagnantCycles >= this.limits().stagnationLimit;
+    const effectiveRecovery = repeated ? recoveryFor("repeated_failure") : recovery;
+    if (this.options.recoveryEnabled !== false && !result?.success && effectiveRecovery && this.cycleCount < this.limits().maxCycles) {
+      let selectedModel = null;
+      if (effectiveRecovery.action === "switch_model") {
+        try {
+          selectedModel = routeRole(this.options.models || [], effectiveRecovery.role, { exclude: [this.options.model], minimum: { error_recovery: "medium" } });
+          this.options.model = selectedModel.model;
+          this.options.provider = selectedModel.provider;
+          this.modelRouting.push({ role: effectiveRecovery.role, provider: selectedModel.provider, model: selectedModel.model, reason: failureCategory });
+        } catch (error) { this.state = "escalate"; this.recoveryHistory.push({ action: effectiveRecovery.action, failure_category: failureCategory, status: "escalated", error: error.message }); }
+      }
+      if (this.state !== "escalate" && (repeated || this.failureCounts.get(failureKey) <= this.limits().maxRetries)) {
+        const recoveryTask = buildRecoveryTask(failureRecord, { previous_tasks: this.taskHistory.map(item => item.task), previous_patch_signatures: this.taskHistory.map(item => item.patch_signature).filter(Boolean) });
+        this.forcedTask = { task: recoveryTask, target_criteria: proposal.target_criteria, expected_verification: proposal.expected_verification, rationale: effectiveRecovery.detail, action: effectiveRecovery.action };
+        this.recoveryHistory.push({ action: effectiveRecovery.action, failure_category: failureCategory, task: recoveryTask, model: selectedModel?.model || this.options.model || null, status: "scheduled" });
+        this.state = "running";
+      }
+    }
+    if (!this.forcedTask && ["created", "running", "repeated_failure"].includes(this.state)) this.state = repeated ? (this.stagnantCycles >= this.limits().stagnationLimit ? "stagnation" : "repeated_failure") : this.state;
+    this.persistSession("task_recorded");
+    return result;
+  }
+
+  async run() {
+    while (this.state !== "completed") {
+      const evaluation = await this.observe();
+      if (this.state === "timeout") break;
+      if (this.checkEvaluation(evaluation)) break;
+      if (this.checkLimits()) break;
+      const remaining = selectRemaining(this.goal, evaluation || {});
+      if (!remaining.length) { this.state = "blocked"; break; }
+      let proposal;
+      try { proposal = await this.propose(remaining); } catch (error) { this.state = "escalate"; this.actionHistory.push({ action: "propose_error", error: error.message }); break; }
+      if (!proposal.valid) { this.state = "blocked"; this.actionHistory.push({ action: "blocked_proposal", reason: proposal.reason }); break; }
+      if (this.checkLimits()) break;
+      try { await this.execute(proposal.task, proposal); } catch (error) { this.taskHistory.push({ cycle: this.cycleCount + 1, task: proposal.task, status: "failure", success: false, error: error.message }); this.state = "recover"; }
+      if (["repetition", "repeated_failure", "blocked", "recover", "escalate"].includes(this.state)) break;
+    }
+    this.persistSession("controller_terminal");
+    return this.result();
+  }
+
+  result() {
+    return { goal_id: this.goal.goal_id, completed: this.state === "completed", state: this.state, state_version: 4, cycle_count: this.cycleCount, current_task: this.currentTask, task_history: this.taskHistory, action_history: this.actionHistory, evaluator_results: this.evaluatorResults, evaluation: this.evaluation, evidence: this.evidence, failure_history: this.failureHistory, recovery_history: this.recoveryHistory, model_routing: this.modelRouting, token_usage: this.tokenUsage, started_at: this.startedAt, evaluated_at: currentTime(this.options), approval_state: this.options.approvalState || "not_requested" };
+  }
+}
+
+async function defaultTaskProposer(_goal, remaining) {
+  const criterion = remaining[0];
+  return { next_task: `Address criterion: ${criterion.description}`, target_criteria: [criterion.id], expected_verification: [criterion.verifier.id], rationale: "Work on the first remaining criterion" };
+}
+
+async function runGoal(goalSpec, options = {}) { return new GoalController(goalSpec, options).run(); }
+
+module.exports = { GoalController, runGoal, selectRemaining, safeTaskProposal };

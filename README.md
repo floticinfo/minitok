@@ -268,7 +268,7 @@ The npm package, the official MCP Registry, and downstream MCP directories are s
 - `npm run check:mcp-registry` validates the local commercial metadata contract without network access.
 - `npm run community:preview -- --platforms mcp-directory` creates a side-effect-free submission preview.
 
-The official Registry uses a verified namespace. This release uses `io.github.floticinfo/minitok`, which requires GitHub ownership of the `floticinfo` namespace. The package must be published publicly to npm before Registry publication.
+The official Registry uses a verified namespace. This release uses the domain namespace `dev.minitok/minitok`, which requires ownership proof for `minitok.dev`; it does not require exposing a personal GitHub organization membership. The package must be published publicly to npm before Registry publication.
 
 Local dry-run validation:
 

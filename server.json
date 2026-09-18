@@ -1,14 +1,14 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
-  "name": "io.github.floticinfo/minitok",
+  "name": "dev.minitok/minitok",
   "title": "minitok",
-  "description": "Repository-aware autonomous coding workflows for MCP clients with planning, implementation, deterministic verification, review, bounded retries, evidence, and local evolution controls.",
+  "description": "Verified coding workflows with planning, verification, bounded retries, evidence, and evolution.",
   "websiteUrl": "https://minitok.dev/docs",
   "repository": {
     "url": "https://github.com/floticinfo/minitok",
     "source": "github"
   },
-  "version": "1.4.4",
+  "version": "1.4.6",
   "icons": [
     {
       "src": "https://minitok.dev/assets/minitok-harlekin-mark.png",
@@ -22,7 +22,7 @@
     {
       "registryType": "npm",
       "identifier": "@flotic/minitok",
-      "version": "1.4.4",
+      "version": "1.4.6",
       "packageArguments": [
         {
           "type": "positional",
