@@ -102,6 +102,7 @@
     "!src/runtime/test-seam.js",
     "!src/runtime/**/*.test-seam.js",
     "!extension/",
+    "scripts/promotion-demo.mjs",
     "LICENSE",
     "README.md",
     "server.json",

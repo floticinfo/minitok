@@ -3,7 +3,6 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const pkg = require("../../package.json");
-const extensionPkg = require("../../extension/package.json");
 const { minitokVersion } = require("../core/version");
 
 const ROOT = path.resolve(__dirname, "../..");
@@ -41,7 +40,13 @@ function evidenceState() {
   };
 }
 
-function buildDiscoveryManifest() {
+function buildVscodeIntegration(root = ROOT) {
+  const extensionPkg = readJson(path.join(root, "extension", "package.json"));
+  if (!extensionPkg) return { available: false, name: "minitok", version: null, cliVersion: minitokVersion, reason: "VS Code extension metadata is not included in the CLI package." };
+  return { available: true, name: extensionPkg.displayName, version: extensionPkg.version, cliVersion: extensionPkg.minitok?.cliVersion };
+}
+
+function buildDiscoveryManifest({ root = ROOT } = {}) {
   return {
     schemaVersion: 1,
     product: {
@@ -61,7 +66,7 @@ function buildDiscoveryManifest() {
     providers: ["anthropic", "openai", "google", "openai_compatible"],
     integrations: {
       mcp: { transports: ["stdio", "localhost_http"], setup: "minitok mcp connect <host>", remote: "explicit_opt_in" },
-      vscode: { name: extensionPkg.displayName, version: extensionPkg.version, cliVersion: extensionPkg.minitok.cliVersion },
+      vscode: buildVscodeIntegration(root),
     },
     privacy: { execution: "local_first", telemetry: "opt_in_disabled_by_default", secrets: "never_include_in_public_assets" },
     commercial: { plans: ["open", "select", "private"], freePlan: false },
@@ -115,4 +120,4 @@ function writeJson(file, value) {
   return target;
 }
 
-module.exports = { buildDiscoveryManifest, buildTrustManifest, buildPromotionBundle, evidenceState, writeJson, PUBLICATION_STATES };
+module.exports = { buildDiscoveryManifest, buildVscodeIntegration, buildTrustManifest, buildPromotionBundle, evidenceState, writeJson, PUBLICATION_STATES };
