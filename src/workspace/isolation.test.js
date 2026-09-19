@@ -6,6 +6,17 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { execFileSync } = require("child_process");
+// Git background maintenance can create/remove .git/objects/maintenance.lock
+// while the isolation safety walk inspects the temporary fixture. Keep the test
+// repository deterministic on hosted Linux runners without changing runtime policy.
+Object.assign(process.env, {
+  GIT_OPTIONAL_LOCKS: "0",
+  GIT_CONFIG_COUNT: "2",
+  GIT_CONFIG_KEY_0: "maintenance.auto",
+  GIT_CONFIG_VALUE_0: "false",
+  GIT_CONFIG_KEY_1: "gc.auto",
+  GIT_CONFIG_VALUE_1: "0",
+});
 const { createIsolatedWorkspace, applyWorkspaceDiff, removeIsolatedWorkspace } = require("./isolation");
 
 function git(repo, args) {
