@@ -68,7 +68,15 @@ function sameWorkspacePath(left, right) {
  * perfectly safe workspaces with "Unsafe workspace path".
  */
 function sameResolvedPath(left, right) {
-  return process.platform === "win32" ? left.toLowerCase() === right.toLowerCase() : left === right;
+  if (process.platform !== "win32") return left === right;
+  const normalize = value => {
+    let normalized = String(value);
+    for (const prefix of ["\\\\?\\", "\\\\.\\"]) {
+      if (normalized.startsWith(prefix)) { normalized = normalized.slice(prefix.length); break; }
+    }
+    return normalized.replace(/[\\/]+$/, "").toLowerCase();
+  };
+  return normalize(left) === normalize(right);
 }
 
 function assertNoLinks(root) {
