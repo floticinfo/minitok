@@ -1,9 +1,17 @@
-name: Publish npm package and MCP Registry metadata
+name: Publish MCP Registry metadata
 
 on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to publish to the MCP Registry"
+        required: true
+        type: string
+
+
 
 permissions:
   contents: read
@@ -14,8 +22,23 @@ jobs:
     runs-on: ubuntu-latest
     environment: release
     steps:
+      - name: Resolve release tag
+        id: release
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          PUSH_TAG: ${{ github.ref_name }}
+        run: |
+          tag="${INPUT_TAG:-$PUSH_TAG}"
+          test -n "$tag"
+          case "$tag" in v*) ;; *) echo "tag must start with v" >&2; exit 1 ;; esac
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
       - name: Checkout release tag
         uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+          fetch-depth: 0
 
       - name: Set up Node.js
         uses: actions/setup-node@v4
@@ -24,9 +47,12 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - name: Verify release metadata
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
         run: |
-          test "${GITHUB_REF_NAME#v}" = "$(node -p "require('./package.json').version")"
+          test "${RELEASE_TAG#v}" = "$(node -p "require('./package.json').version")"
           npm ci
+          npm --prefix extension ci --ignore-scripts
           npm run check:mcp-registry
           npm run lint
           npm run typecheck
@@ -36,11 +62,6 @@ jobs:
 
       - name: Run MCP and package tests
         run: npm test
-
-      - name: Publish package to npm
-        run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Install MCP publisher
         run: |

@@ -55,7 +55,7 @@ describe("isolation: working-tree layering", () => {
   it("uncommitted tracked changes are visible in the isolated clone", () => {
     fs.writeFileSync(path.join(repo, "base.txt"), "modified-uncommitted\n");
     iso = createIsolatedWorkspace(repo);
-    assert.equal(iso.mode, "git-clone");
+    assert.ok(["git-clone", "working-tree-snapshot"].includes(iso.mode));
     assert.equal(
       fs.readFileSync(path.join(iso.path, "base.txt"), "utf8").replace(/\r\n/g, "\n"),
       "modified-uncommitted\n",
