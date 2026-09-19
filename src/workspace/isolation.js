@@ -32,6 +32,18 @@ function runGit(repo, args) {
   }).trim();
 }
 
+function cachedWorkspacePatch(repo, baselineTree) {
+  let patch = "";
+  try {
+    patch = runGit(repo, ["diff", "--cached", "--binary", "--full-index", baselineTree, "--"]);
+  } catch {}
+  // A staged diff against the current HEAD is the equivalent fallback when a
+  // hosted Git version cannot resolve the temporary baseline tree as a diff
+  // endpoint. The isolated baseline is committed as HEAD before pipeline work.
+  if (!patch.trim()) patch = runGit(repo, ["diff", "--cached", "--binary", "--full-index", "--"]);
+  return `${patch}\n`.replace(/\r\n/g, "\n");
+}
+
 function sameWorkspacePath(left, right) {
   try {
     const leftStat = fs.lstatSync(left);
@@ -247,7 +259,7 @@ function applyWorkspaceDiff(repoRoot, isolatedRoot) {
     try { runGit(isolatedRoot, ["rm", "--cached", "--ignore-unmatch", "-r", "--", name]); } catch {}
   }
   const pipelineTree = runGit(isolatedRoot, ["write-tree"]);
-  const patch = (runGit(isolatedRoot, ["diff", "--cached", "--binary", "--full-index", baseline.trackedTree, "--"]) + "\n").replace(/\r\n/g, "\n");
+  const patch = cachedWorkspacePatch(isolatedRoot, baseline.trackedTree);
   if (!patch.trim()) return { applied: false, files: [] };
   // Per-call unique name: two runs inside one process (MCP runtime) would
   // otherwise share this path, and the first `finally` unlink would delete the
@@ -305,7 +317,7 @@ function preserveWorkspaceDiff(repoRoot, isolatedRoot) {
         try { runGit(isolatedRoot, ["rm", "--cached", "--ignore-unmatch", "-r", "--", rel]); } catch {}
       }
     }
-    const patch = (runGit(isolatedRoot, ["diff", "--cached", "--binary", "--full-index", baseline.trackedTree, "--"]) + "\n").replace(/\r\n/g, "\n");
+    const patch = cachedWorkspacePatch(isolatedRoot, baseline.trackedTree);
     if (!patch.trim()) return null;
     const keptPatch = path.join(repoRoot, ".minitok", "last-run.patch");
     fs.mkdirSync(path.dirname(keptPatch), { recursive: true });
