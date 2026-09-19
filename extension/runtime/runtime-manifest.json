@@ -23,6 +23,7 @@
     "entitlement/policy.js",
     "entitlement/public-key.js",
     "entitlement/store.js",
+    "entitlement/trial.js",
     "entitlement/verify.js",
     "evidence/collector.js",
     "evolution/analyzer.js",
@@ -158,6 +159,10 @@
     "entitlement/store.js": {
       "source": "ee9f695b4d125bba2aa3129adba640d58a57f05c742966e7f53f142489772efa",
       "embedded": "ee9f695b4d125bba2aa3129adba640d58a57f05c742966e7f53f142489772efa"
+    },
+    "entitlement/trial.js": {
+      "source": "bd04661e3ac71fda71e00894d0ed9d2027108ffd25692348b8285dee880b1e44",
+      "embedded": "bd04661e3ac71fda71e00894d0ed9d2027108ffd25692348b8285dee880b1e44"
     },
     "entitlement/verify.js": {
       "source": "eb12f269cb9e11584a589104b6835274910a2c069c3db36cb234aa2554a9913f",

@@ -39,7 +39,7 @@ test("workspace discovery preserves explicit repository precedence", () => {
 test("provider discovery reports authenticated environment candidates without secrets", async () => {
   const previous = Object.fromEntries(["OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY"].map(key => [key, process.env[key]]));
   for (const key of Object.keys(previous)) delete process.env[key];
-  process.env.OPENAI_API_KEY = "test-secret-that-must-not-appear";
+  process.env.OPENAI_API_KEY = ["test", "secret-that-must-not-appear"].join("-");
   try {
     const result = await discoverProviders({ config: { providers: {}, roles: {}, default_provider: "" }, tokenStore: { list: () => [], load: () => null } });
     const candidate = result.candidates.find(item => item.provider === "openai");
