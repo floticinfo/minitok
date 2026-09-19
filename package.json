@@ -1,6 +1,6 @@
 {
   "name": "@flotic/minitok",
-  "version": "1.4.6",
+  "version": "1.4.8",
   "mcpName": "dev.minitok/minitok",
   "description": "Verified repository-aware coding workflow CLI for AI agents",
   "main": "src/index.js",

@@ -1,0 +1,28 @@
+project:
+  name: real-swe-single-file-fixture
+  stack: node
+
+default_provider: mock
+providers:
+  mock:
+    model: fixture-mock
+roles:
+  plan: { provider: mock, model: fixture-mock }
+  work: { provider: mock, model: fixture-mock }
+  review: { provider: mock, model: fixture-mock }
+  intel: { provider: mock, model: fixture-mock }
+execution:
+  research_enabled: false
+  timeout_sec: 30
+  timeout_hard_limit_sec: 60
+budget:
+  max_cycles: 2
+  token_budget: 20000
+  max_cycles_hard_limit: 5
+  token_hard_limit: 50000
+validation:
+  enabled: true
+  script_path: VERIFY_CMD.mjs
+  timeout_ms: 10000
+  confidence_threshold: 0.8
+  max_changed_files: 5

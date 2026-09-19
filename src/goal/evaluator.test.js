@@ -108,6 +108,16 @@ describe("GoalEvaluator", () => {
   assert.deepEqual(result.progress, { required_total: 1, passed: 0, failed: 0, unknown: 1, progress_ratio: 0 });
 });
 
+test("preserves blocked and escalated application states and refuses completion", async () => {
+    const { APPLICATION_CAPABILITIES } = require("./application");
+    const blocked = await evaluateGoal(goal([criterion("deployment", "custom", { application_check: { kind: "deployment", environment: "production", approval: true, rollback_strategy: "previous-release", health_check: { path: "/health" } } })]), { application: { capabilities: new Set(APPLICATION_CAPABILITIES), approvals: new Set(APPLICATION_CAPABILITIES) } });
+    assert.equal(blocked.completed, false);
+    assert.equal(blocked.criteria[0].status, "blocked");
+    const escalated = await evaluateGoal(goal([criterion("deployment", "custom", { application_check: { kind: "deployment", environment: "staging", approval: true, rollback_strategy: "previous-release", health_check: { path: "/health" } } })]), { application: { capabilities: new Set(APPLICATION_CAPABILITIES), approvals: new Set(APPLICATION_CAPABILITIES), deployer: async () => ({ success: true }), healthCheck: async () => ({ healthy: false }), rollback: async () => ({ success: false }) } });
+    assert.equal(escalated.completed, false);
+    assert.equal(escalated.criteria[0].status, "escalated");
+  });
+
 test("unsupported custom verifier remains unknown", async () => {
     const result = await evaluateGoal(goal([criterion("custom", "custom", { handler: "javascript" })]), { customVerifier: async () => ({ status: "passed" }) });
     assert.equal(result.completed, false);

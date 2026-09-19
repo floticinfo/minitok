@@ -112,7 +112,7 @@ export async function runScenario(scenario, options = {}) {
     } catch (error) { liveSelfReport = { provider_error: error.message }; return { next_task: "", target_criteria: [] }; }
   };
   const controller = new GoalController(spec, { session, evaluator: async goal => evaluateGoal(goal, { repoRoot: root, commandRunner: commandRunner(mode) }), taskProposer: proposer, taskExecutor: async task => { let action = task.replace(/^e2e:/, ""); if (scenario === "early_completion_claim" && count === 1) action = "noop"; const result = taskResult(root, action); if (liveSelfReport) { result.self_report = liveSelfReport; liveSelfReport = null; } return result; }, model: options.model || "mock", provider: options.provider || mode, recoveryEnabled: !["repeated_failure_escalation", "early_completion_claim"].includes(scenario), models: options.models || [] });
-  let output; try { output = await controller.run(); output.goalSpec = spec; } finally { session.lock?.release?.(); if (!options.keepFixture) fs.rmSync(root, { recursive: true, force: true }); }
+  let output; try { output = { ...await controller.run(), goalSpec: spec }; } finally { session.lock?.release?.(); if (!options.keepFixture) fs.rmSync(root, { recursive: true, force: true }); }
   return resultRecord({ scenario, mode, provider: options.provider || mode, model: options.model || "mock", commit: fixtureCommit, output, durationMs: Date.now() - started });
 }
 export async function runAll(options = {}) { const results = []; for (const scenario of options.scenarios || SCENARIOS) results.push(await runScenario(scenario, options)); return results; }

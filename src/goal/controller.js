@@ -3,7 +3,7 @@
 const { assertValidGoalSpec } = require("./validator");
 const { evaluateGoal: defaultEvaluator, evaluationIsComplete } = require("./evaluator");
 const { runTask: defaultTaskExecutor } = require("./task_executor");
-const { classifyFailure, failureSignature, patchSignature, detectStagnation } = require("./failure");
+const { classifyFailure, failureSignature, patchSignature, detectStagnation, createTerminalResult } = require("./failure");
 const { routeRole } = require("./capabilities");
 const { recoveryFor, buildRecoveryTask } = require("./recovery");
 
@@ -60,7 +60,7 @@ class GoalController {
     this.taskExecutor = options.taskExecutor || defaultTaskExecutor;
     this.taskProposer = options.taskProposer || defaultTaskProposer;
     this.startedAt = currentTime(options);
-    const initial = options.initialState || null;
+    const initial = options.initialState || options.session?.state || null;
     const progressState = initial?.progress_state && typeof initial.progress_state === "object" ? initial.progress_state : {};
     // A persisted completed state must be revalidated by the evaluator on the next run.
     this.state = initial?.status && initial.status !== "paused" && initial.status !== "completed" ? initial.status : "created";
@@ -83,6 +83,7 @@ class GoalController {
       if (failure.failure_category) this.failureCategoryCounts.set(failure.failure_category, (this.failureCategoryCounts.get(failure.failure_category) || 0) + 1);
     }
     this.recoveryHistory = Array.isArray(initial?.recovery_history) ? initial.recovery_history : [];
+    this.activeRecovery = null;
     this.modelRouting = Array.isArray(initial?.model_routing) ? initial.model_routing : [];
     this.currentProgress = Number.isFinite(progressState.current_progress) ? progressState.current_progress : progressFromEvaluation(this.evaluation);
     this.previousProgress = Number.isFinite(progressState.previous_progress) ? progressState.previous_progress : this.currentProgress;
@@ -138,7 +139,18 @@ class GoalController {
   }
 
   checkEvaluation(evaluation) {
-    if (evaluationIsComplete(this.goal, evaluation)) { this.state = "completed"; return true; }
+    if (evaluationIsComplete(this.goal, evaluation)) {
+      this.state = "completed";
+      if (this.activeRecovery && this.activeRecovery.status === "executed") {
+        this.activeRecovery.status = "completed";
+        this.activeRecovery.recovery_status = "completed";
+      }
+      return true;
+    }
+    if (this.activeRecovery && this.activeRecovery.status === "executed" && this.currentTask && this.taskHistory.at(-1)?.success !== true) {
+      this.activeRecovery.status = "failed";
+      this.activeRecovery.recovery_status = "failed";
+    }
     return false;
   }
 
@@ -156,6 +168,10 @@ class GoalController {
       const forced = this.forcedTask;
       this.forcedTask = null;
       const safeForced = safeTaskProposal({ next_task: forced.task, target_criteria: forced.target_criteria, rationale: forced.rationale, expected_verification: forced.expected_verification }, remaining);
+      if (this.activeRecovery) {
+        this.activeRecovery.status = safeForced.valid ? "executed" : "failed";
+        this.activeRecovery.recovery_status = this.activeRecovery.status;
+      }
       this.actionHistory.push({ cycle: this.cycleCount + 1, action: "recovery_task", recovery_action: forced.action, target_criteria: forced.target_criteria });
       return safeForced;
     }
@@ -177,7 +193,8 @@ class GoalController {
     this.tokenUsage.input += Number(tokens.input) || 0;
     this.tokenUsage.output += Number(tokens.output) || 0;
     const failureCategory = result?.success ? null : classifyFailure({ ...result, task });
-    const failureRecord = { task, status: result?.status || "failure", failure_category: failureCategory, verifier_id: proposal.expected_verification?.[0], error: result?.error || result?.verification?.error || result?.verification?.output, patch_signature: patchSignature(result), evidence_ids: result?.evidence?.map(item => item.evidence_id).filter(Boolean) || [] };
+    const terminal = createTerminalResult(result, { valid_evidence: result?.success === true && result?.terminal_status === "completed" });
+    const failureRecord = { task, status: result?.status || "failure", terminal_status: terminal.terminal_status, failure_stage: terminal.failure_stage, failure_category: failureCategory, verifier_id: proposal.expected_verification?.[0], error: result?.error || result?.verification?.error || result?.verification?.output, patch_signature: patchSignature(result), evidence_ids: [...(result?.evidence?.map(item => item.evidence_id).filter(Boolean) || []), ...(result?.cycle_evidence?.map(item => item.evidence_id).filter(Boolean) || [])] };
     const failureKey = failureSignature(failureRecord);
     if (!result?.success) { this.failureCounts.set(failureKey, (this.failureCounts.get(failureKey) || 0) + 1); this.failureCategoryCounts.set(failureCategory, (this.failureCategoryCounts.get(failureCategory) || 0) + 1); this.failureHistory.push({ ...failureRecord, signature: failureKey }); }
     const recovery = failureCategory ? recoveryFor(failureCategory) : null;
@@ -196,6 +213,24 @@ class GoalController {
     if (stagnation.stagnant) this.stagnantCycles += 1;
     const repeated = [...this.failureCounts.values()].some(countValue => countValue >= this.limits().sameFailureLimit) || this.stagnantCycles >= this.limits().stagnationLimit;
     const effectiveRecovery = repeated ? recoveryFor("repeated_failure") : recovery;
+    const modelBefore = this.options.model ?? this.session?.state?.model ?? null;
+    const pipelineInternalRecovery = Boolean(result?.recovery?.scheduled || result?.recovery?.task_generated || Array.isArray(result?.cycles) && result.cycles.length > 1);
+    if (this.activeRecovery && this.activeRecovery.status === "executed") {
+      this.activeRecovery.recovery_patch_signature = failureRecord.patch_signature;
+    }
+    if (this.activeRecovery && this.activeRecovery.status === "executed" && !result?.success) {
+      this.activeRecovery.status = "failed";
+      this.activeRecovery.recovery_status = "failed";
+    }
+    if (this.activeRecovery && result?.success === true && this.activeRecovery.previous_patch_signature && failureRecord.patch_signature === this.activeRecovery.previous_patch_signature) {
+      this.activeRecovery.status = "failed";
+      this.activeRecovery.recovery_status = "failed";
+      this.activeRecovery.same_patch_repeated = true;
+      this.activeRecovery.same_patch_rejected = true;
+      result.success = false;
+      result.status = "failure";
+      this.state = "repeated_failure";
+    }
     if (this.options.recoveryEnabled !== false && !result?.success && effectiveRecovery && this.cycleCount < this.limits().maxCycles) {
       let selectedModel = null;
       if (effectiveRecovery.action === "switch_model") {
@@ -204,41 +239,61 @@ class GoalController {
           this.options.model = selectedModel.model;
           this.options.provider = selectedModel.provider;
           this.modelRouting.push({ role: effectiveRecovery.role, provider: selectedModel.provider, model: selectedModel.model, reason: failureCategory });
-        } catch (error) { this.state = "escalate"; this.recoveryHistory.push({ action: effectiveRecovery.action, failure_category: failureCategory, status: "escalated", error: error.message }); }
+        } catch (error) {
+          this.state = "escalate";
+          this.recoveryHistory.push({ failure_category: failureCategory, recovery_action: effectiveRecovery.action, recovery_task: null, previous_task: task, previous_patch_signature: failureRecord.patch_signature, recovery_patch_signature: null, model_before: modelBefore, model_after: null, recovery_status: "escalated", status: "escalated", pipeline_internal_recovery: pipelineInternalRecovery, controller_recovery: true, action: effectiveRecovery.action, error: error.message });
+        }
       }
       if (this.state !== "escalate" && (repeated || this.failureCounts.get(failureKey) <= this.limits().maxRetries)) {
         const recoveryTask = buildRecoveryTask(failureRecord, { previous_tasks: this.taskHistory.map(item => item.task), previous_patch_signatures: this.taskHistory.map(item => item.patch_signature).filter(Boolean) });
         this.forcedTask = { task: recoveryTask, target_criteria: proposal.target_criteria, expected_verification: proposal.expected_verification, rationale: effectiveRecovery.detail, action: effectiveRecovery.action };
-        this.recoveryHistory.push({ action: effectiveRecovery.action, failure_category: failureCategory, task: recoveryTask, model: selectedModel?.model || this.options.model || null, status: "scheduled" });
+        const recoveryEntry = { failure_category: failureCategory, recovery_action: effectiveRecovery.action, recovery_task: recoveryTask, previous_task: task, previous_patch_signature: failureRecord.patch_signature, recovery_patch_signature: null, model_before: modelBefore, model_after: selectedModel?.model || this.options.model || this.session?.state?.model || null, recovery_status: "scheduled", status: "scheduled", same_patch_repeated: false, same_patch_rejected: false, pipeline_internal_recovery: pipelineInternalRecovery, controller_recovery: true, action: effectiveRecovery.action, task: recoveryTask, model: selectedModel?.model || this.options.model || null };
+        this.recoveryHistory.push(recoveryEntry);
+        this.activeRecovery = recoveryEntry;
         this.state = "running";
       }
     }
     if (!this.forcedTask && ["created", "running", "repeated_failure"].includes(this.state)) this.state = repeated ? (this.stagnantCycles >= this.limits().stagnationLimit ? "stagnation" : "repeated_failure") : this.state;
+    if (this.activeRecovery && !result?.success && this.state !== "running") {
+      this.activeRecovery.status = this.state === "escalate" ? "escalated" : "failed";
+      this.activeRecovery.recovery_status = this.activeRecovery.status;
+    }
     this.persistSession("task_recorded");
     return result;
   }
 
   async run() {
-    while (this.state !== "completed") {
-      const evaluation = await this.observe();
-      if (this.state === "timeout") break;
-      if (this.checkEvaluation(evaluation)) break;
-      if (this.checkLimits()) break;
-      const remaining = selectRemaining(this.goal, evaluation || {});
-      if (!remaining.length) { this.state = "blocked"; break; }
-      let proposal;
-      try { proposal = await this.propose(remaining); } catch (error) { this.state = "escalate"; this.actionHistory.push({ action: "propose_error", error: error.message }); break; }
-      if (!proposal.valid) { this.state = "blocked"; this.actionHistory.push({ action: "blocked_proposal", reason: proposal.reason }); break; }
-      if (this.checkLimits()) break;
-      try { await this.execute(proposal.task, proposal); } catch (error) { this.taskHistory.push({ cycle: this.cycleCount + 1, task: proposal.task, status: "failure", success: false, error: error.message }); this.state = "recover"; }
-      if (["repetition", "repeated_failure", "blocked", "recover", "escalate"].includes(this.state)) break;
+    try {
+      while (this.state !== "completed") {
+        const evaluation = await this.observe();
+        if (this.state === "timeout") break;
+        if (this.checkEvaluation(evaluation)) break;
+        if (this.checkLimits()) break;
+        const remaining = selectRemaining(this.goal, evaluation || {});
+        if (!remaining.length) { this.state = "blocked"; break; }
+        let proposal;
+        try { proposal = await this.propose(remaining); } catch (error) { this.state = "escalate"; this.actionHistory.push({ action: "propose_error", error: error.message }); break; }
+        if (!proposal.valid) { this.state = "blocked"; this.actionHistory.push({ action: "blocked_proposal", reason: proposal.reason }); break; }
+        if (this.checkLimits()) break;
+        try { await this.execute(proposal.task, proposal); } catch (error) { this.taskHistory.push({ cycle: this.cycleCount + 1, task: proposal.task, status: "failure", success: false, error: error.message }); this.state = "recover"; }
+        if (["repetition", "repeated_failure", "blocked", "recover", "escalate"].includes(this.state)) break;
+      }
+      this.persistSession("controller_terminal");
+      return this.result();
+    } finally {
+      if (this.options.releaseSessionOnExit === true && this.session?.lock?.release) {
+        this.session.lock.release();
+        this.session.lock = null;
+      }
     }
-    this.persistSession("controller_terminal");
-    return this.result();
   }
 
   result() {
-    return { goal_id: this.goal.goal_id, completed: this.state === "completed", state: this.state, state_version: 4, cycle_count: this.cycleCount, current_task: this.currentTask, task_history: this.taskHistory, action_history: this.actionHistory, evaluator_results: this.evaluatorResults, evaluation: this.evaluation, evidence: this.evidence, failure_history: this.failureHistory, recovery_history: this.recoveryHistory, model_routing: this.modelRouting, token_usage: this.tokenUsage, started_at: this.startedAt, evaluated_at: currentTime(this.options), approval_state: this.options.approvalState || "not_requested" };
+    const legacy = { goal_id: this.goal.goal_id, completed: this.state === "completed", state: this.state, state_version: 4, cycle_count: this.cycleCount, current_task: this.currentTask, task_history: this.taskHistory, action_history: this.actionHistory, evaluator_results: this.evaluatorResults, evaluation: this.evaluation, evidence: this.evidence, failure_history: this.failureHistory, recovery_history: this.recoveryHistory, model_routing: this.modelRouting, token_usage: this.tokenUsage, started_at: this.startedAt, evaluated_at: currentTime(this.options), approval_state: this.options.approvalState || "not_requested" };
+    const terminal = createTerminalResult({ ...legacy, completed: this.state === "completed", blocked: this.state === "blocked", humanEscalation: ["escalate", "escalated"].includes(this.state), recovery_scheduled: this.recoveryHistory.some(item => item.status === "scheduled" && this.state === "running"), recovery_failed: this.state === "recover" && this.failureHistory.length > 0, stagnantCycles: this.stagnantCycles }, { state: this.state, stagnantCycles: this.stagnantCycles, valid_evidence: this.state === "completed" && evaluationIsComplete(this.goal, this.evaluation) });
+    const approved = this.failureHistory.some(item => item.status === "success");
+    const partial = this.state !== "completed" && approved;
+    return { ...legacy, ...terminal, partial, approved };
   }
 }
 

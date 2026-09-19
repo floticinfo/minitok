@@ -8,7 +8,7 @@ const path = require("path");
 const { createGoalSpec } = require("./spec");
 const {
   createGoalSession, loadGoalSession, saveGoalSession, appendGoalEvent,
-  createCheckpoint, restoreCheckpoint, pauseGoalSession, resumeGoalSession,
+  createCheckpoint, restoreCheckpoint, pauseGoalSession, releaseGoalSessionLock, resumeGoalSession,
   markGoalCompleted, markGoalFailed, markGoalEscalated, goalSessionPaths,
 } = require("./session");
 
@@ -167,6 +167,21 @@ describe("goal session persistence", () => {
     } finally { clean(root); }
   });
 
+  test("recovers a stale session lock before loading", () => {
+    const root = workspace();
+    try {
+      const created = createGoalSession(sessionOptions(root));
+      const paths = goalSessionPaths(root, "goal-session-test");
+      close(created);
+      fs.writeFileSync(paths.lock, JSON.stringify({ pid: Number.MAX_SAFE_INTEGER, host: os.hostname(), token: "stale", locked_at: new Date(0).toISOString() }));
+      const loaded = loadGoalSession(root, "goal-session-test");
+      assert.equal(loaded.state.goal_id, "goal-session-test");
+      assert.equal(fs.existsSync(paths.lock), true);
+      close(loaded);
+      assert.equal(fs.existsSync(paths.lock), false);
+    } finally { clean(root); }
+  });
+
   test("handles Windows-style relative paths without escaping the workspace", () => {
     const root = workspace();
     try {
@@ -218,6 +233,67 @@ describe("goal session persistence", () => {
       markGoalEscalated(escalated, "human review required");
       assert.equal(escalated.state.status, "escalated");
       close(escalated);
+    } finally { clean(root); }
+  });
+});
+
+
+describe("goal session official pause/release/resume lifecycle", () => {
+  test("preserves state and history through pause, release, resume, and a new controller", async () => {
+    const root = workspace();
+    try {
+      const created = createGoalSession(sessionOptions(root));
+      created.state.task_history = [{ task: "initial", status: "success", success: true }];
+      created.state.evaluator_results = [validEvaluation()];
+      created.state.cycle_count = 1;
+      pauseGoalSession(created, "operator pause");
+      assert.equal(created.state.status, "paused");
+      assert.equal(fs.existsSync(goalSessionPaths(root, "goal-session-test").lock), true);
+      assert.equal(releaseGoalSessionLock(created), true);
+      assert.equal(releaseGoalSessionLock(created), false);
+      const resumed = resumeGoalSession(root, "goal-session-test", { model: "model-resumed", provider: "provider-resumed" });
+      assert.equal(resumed.state.status, "running");
+      assert.equal(resumed.state.model, "model-resumed");
+      assert.equal(resumed.state.provider, "provider-resumed");
+      assert.equal(resumed.state.task_history.length, 1);
+      assert.equal(resumed.state.evaluator_results.length, 1);
+      assert.equal(resumed.state.cycle_count, 1);
+      assert.equal(resumed.resumeCheck.safe_to_resume, true);
+      const { GoalController } = require("./controller");
+      const controller = new GoalController(resumed.goalSpec, { session: resumed, evaluator: async () => validEvaluation(), taskExecutor: async () => ({ success: true, status: "success", tokens: {} }), taskProposer: async () => ({ next_task: "unused" }), releaseSessionOnExit: true });
+      const output = await controller.run();
+      assert.equal(output.completed, true);
+      assert.equal(resumed.lock, null);
+    } finally { clean(root); }
+  });
+
+  test("resume before explicit release is rejected as a concurrent lifecycle", () => {
+    const root = workspace();
+    try {
+      const session = createGoalSession(sessionOptions(root));
+      pauseGoalSession(session, "pause without release");
+      assert.throws(() => resumeGoalSession(root, "goal-session-test"), error => error.code === "goal_session_locked");
+      releaseGoalSessionLock(session);
+      const resumed = resumeGoalSession(root, "goal-session-test");
+      assert.equal(resumed.state.status, "running");
+      releaseGoalSessionLock(resumed);
+    } finally { clean(root); }
+  });
+
+  test("resume persists checkpoint change verification requirement", () => {
+    const root = workspace();
+    fs.writeFileSync(path.join(root, "a.txt"), "before");
+    try {
+      const session = createGoalSession(sessionOptions(root));
+      createCheckpoint(session, { trackedPaths: ["a.txt"] });
+      pauseGoalSession(session, "pause");
+      releaseGoalSessionLock(session);
+      fs.writeFileSync(path.join(root, "a.txt"), "after");
+      const resumed = resumeGoalSession(root, "goal-session-test");
+      assert.equal(resumed.resumeCheck.checkpoint_changed, true);
+      assert.equal(resumed.resumeCheck.requires_verification, true);
+      assert.equal(resumed.state.resume_check.requires_verification, true);
+      releaseGoalSessionLock(resumed);
     } finally { clean(root); }
   });
 });

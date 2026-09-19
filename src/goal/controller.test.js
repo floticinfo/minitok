@@ -26,6 +26,9 @@ describe("GoalController", () => {
     const output = await controller.run();
     assert.equal(output.completed, true);
     assert.equal(output.state, "completed");
+    assert.equal(output.terminal_status, "completed");
+    assert.equal(output.failure_stage, null);
+    assert.equal(output.human_escalation_required, false);
     assert.equal(calls.length, 0);
   });
 
@@ -225,4 +228,154 @@ test("does not trust forged completed or APPROVE metadata without valid required
   });
   assert.equal(output.completed, false);
   assert.notEqual(output.state, "completed");
+});
+
+
+test("GoalController re-invokes the task executor for controller recovery and records distinct history", async () => {
+  const goal = spec([criterion("a")], { max_cycles: 3, same_failure_limit: 3 });
+  const evaluations = [result(goal.goal_id, [["a", "failed"]]), result(goal.goal_id, [["a", "failed"]]), result(goal.goal_id, [["a", "passed"]])];
+  let evaluationIndex = 0;
+  const calls = [];
+  const controller = new GoalController(goal, {
+    evaluator: async () => evaluations[Math.min(evaluationIndex++, evaluations.length - 1)],
+    taskProposer: async (_goal, remaining) => ({ next_task: remaining[0].id === "a" ? "initial task" : "unused", target_criteria: ["a"] }),
+    taskExecutor: async task => {
+      calls.push(task);
+      return calls.length === 1
+        ? { success: false, status: "failure", error: "verification assertion failed", changes: { changes: [{ file: "src/a.js", action: "modify", content: "wrong" }] }, tokens: {} }
+        : { success: true, status: "success", changes: { changes: [{ file: "src/a.js", action: "modify", content: "correct" }] }, tokens: {} };
+    },
+    model: "model-before",
+    provider: "provider-before",
+  });
+  const output = await controller.run();
+  assert.equal(calls.length, 2, "controller recovery must re-invoke taskExecutor");
+  assert.equal(output.completed, true);
+  assert.equal(output.recovery_history.length, 1);
+  const recovery = output.recovery_history[0];
+  assert.equal(recovery.controller_recovery, true);
+  assert.equal(recovery.pipeline_internal_recovery, false);
+  assert.equal(recovery.status, "completed");
+  assert.equal(recovery.previous_task, "initial task");
+  assert.equal(recovery.previous_patch_signature !== undefined, true);
+  assert.match(recovery.recovery_task, /different implementation strategy|recovery/i);
+});
+
+test("GoalController rejects a repeated recovery patch", async () => {
+  const goal = spec([criterion("a")], { max_cycles: 3, same_failure_limit: 3 });
+  let evaluationIndex = 0;
+  let calls = 0;
+  const controller = new GoalController(goal, {
+    evaluator: async () => result(goal.goal_id, [["a", evaluationIndex++ > 1 ? "passed" : "failed"]]),
+    taskProposer: async () => ({ next_task: "same strategy", target_criteria: ["a"] }),
+    taskExecutor: async () => { calls += 1; return { success: calls > 1, status: calls > 1 ? "success" : "failure", error: calls === 1 ? "verification failed" : undefined, changes: { changes: [{ file: "src/a.js", action: "modify", content: "same patch" }] }, tokens: {} }; },
+  });
+  const output = await controller.run();
+  assert.equal(calls, 2);
+  assert.equal(output.completed, false);
+  assert.equal(output.recovery_history.some(item => item.same_patch_repeated === true && item.same_patch_rejected === true && item.recovery_status === "failed" && item.status === "failed"), true);
+});
+
+test("GoalController does not create recovery when recovery is disabled", async () => {
+  const goal = spec([criterion("a")], { max_cycles: 2 });
+  const controller = new GoalController(goal, {
+    recoveryEnabled: false,
+    evaluator: async () => result(goal.goal_id, [["a", "failed"]]),
+    taskProposer: async () => ({ next_task: "repair", target_criteria: ["a"] }),
+    taskExecutor: async () => ({ success: false, status: "failure", error: "verification assertion failed", changes: { changes: [{ file: "src/a.js", action: "modify", content: "wrong" }] }, tokens: {} }),
+  });
+  const output = await controller.run();
+  assert.equal(output.recovery_history.length, 0);
+  assert.equal(output.completed, false);
+});
+
+test("GoalController records model routing and escalation distinction", async () => {
+  const goal = spec([criterion("a")], { max_cycles: 3, same_failure_limit: 1 });
+  const controller = new GoalController(goal, {
+    models: [
+      { provider: "strong-provider", model: "strong-model", capabilities: { error_recovery: "high", code_editing: "high", structured_output: true, repository_navigation: "high", long_horizon: "high", tool_calling: true } },
+    ],
+    model: "weak-model",
+    provider: "weak-provider",
+    evaluator: async () => result(goal.goal_id, [["a", "failed"]]),
+    taskProposer: async () => ({ next_task: "repair", target_criteria: ["a"] }),
+    taskExecutor: async () => ({ success: false, status: "failure", error: "verification assertion failed", changes: { changes: [{ file: "src/a.js", action: "modify", content: "wrong" }] }, tokens: {} }),
+  });
+  const output = await controller.run();
+  assert.equal(output.model_routing.length >= 1, true);
+  assert.equal(output.recovery_history.some(item => item.model_before === "weak-model" && item.model_after === "strong-model"), true);
+  assert.notEqual(output.terminal_status, "completed");
+});
+
+test("GoalController persists structured recovery history", async () => {
+  const workspaceRoot = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-controller-recovery-"));
+  const goal = spec([criterion("a")]);
+  let index = 0;
+  const session = createGoalSession({ workspaceRoot, goalSpec: goal, model: "m1", provider: "p1" });
+  try {
+    const controller = new GoalController(goal, {
+      session,
+      evaluator: async () => result(goal.goal_id, [["a", index++ > 1 ? "passed" : "failed"]]),
+      taskProposer: async () => ({ next_task: "repair", target_criteria: ["a"] }),
+      taskExecutor: async () => ({ success: index > 1, status: index > 1 ? "success" : "failure", error: index > 1 ? undefined : "verification failed", changes: { changes: [{ file: "src/a.js", action: "modify", content: String(index) }] }, tokens: {} }),
+    });
+    const output = await controller.run();
+    session.lock?.release?.();
+    const loaded = loadGoalSession(workspaceRoot, goal.goal_id);
+    assert.equal(output.recovery_history.length > 0, true);
+    const recovery = output.recovery_history[0];
+    for (const field of ["failure_category", "recovery_action", "recovery_task", "previous_task", "previous_patch_signature", "recovery_patch_signature", "model_before", "model_after", "recovery_status"]) assert.ok(Object.prototype.hasOwnProperty.call(recovery, field), `missing recovery field: ${field}`);
+    assert.equal(recovery.failure_category, "verification_failure");
+    assert.equal(recovery.recovery_action, "alternative_strategy");
+    assert.equal(recovery.previous_task, "repair");
+    assert.equal(typeof recovery.previous_patch_signature, "string");
+    assert.equal(typeof recovery.recovery_patch_signature, "string");
+    assert.notEqual(recovery.previous_patch_signature, recovery.recovery_patch_signature);
+    assert.equal(recovery.model_before, "m1");
+    assert.equal(recovery.model_after, "m1");
+    assert.equal(recovery.recovery_status, "completed");
+    assert.equal(recovery.status, "completed");
+    assert.equal(loaded.state.recovery_history.length > 0, true);
+    assert.deepEqual(loaded.state.recovery_history[0], recovery);
+    assert.equal(loaded.state.recovery_history[0].controller_recovery, true);
+  } finally {
+    session.lock?.release?.();
+    fs.rmSync(workspaceRoot, { recursive: true, force: true });
+  }
+});
+
+
+
+test("GoalController distinguishes pipeline internal recovery from controller recovery", async () => {
+  const goal = spec([criterion("a")], { max_cycles: 3, same_failure_limit: 3 });
+  let calls = 0;
+  const controller = new GoalController(goal, {
+    evaluator: async () => result(goal.goal_id, [["a", calls > 1 ? "passed" : "failed"]]),
+    taskProposer: async () => ({ next_task: "repair", target_criteria: ["a"] }),
+    taskExecutor: async () => {
+      calls += 1;
+      return calls === 1
+        ? { success: false, status: "failure", error: "pipeline verifier failed", recovery: { scheduled: true, task_generated: true }, cycles: [{ status: "VERIFICATION_FAILED" }, { status: "APPROVE" }], changes: { changes: [{ file: "src/a.js", action: "modify", content: "wrong" }] }, tokens: {} }
+        : { success: true, status: "success", recovery: { scheduled: false }, changes: { changes: [{ file: "src/a.js", action: "modify", content: "correct" }] }, tokens: {} };
+    },
+  });
+  const output = await controller.run();
+  assert.equal(output.recovery_history[0].pipeline_internal_recovery, true);
+  assert.equal(output.recovery_history[0].controller_recovery, true);
+  assert.equal(output.recovery_history[0].status, "completed");
+});
+
+
+test("GoalController releases an owned session lock after an executor exception", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-controller-lock-error-"));
+  const goal = spec([criterion("a")]);
+  const session = createGoalSession({ workspaceRoot: root, goalSpec: goal, model: "m", provider: "p" });
+  try {
+    const controller = new GoalController(goal, { session, releaseSessionOnExit: true, evaluator: async () => { throw new Error("evaluator failed"); }, taskExecutor: async () => ({ success: true, tokens: {} }), taskProposer: async () => ({ next_task: "unused" }) });
+    await assert.rejects(() => controller.run(), /evaluator failed/);
+    assert.equal(session.lock, null);
+    const resumed = require("./session").resumeGoalSession(root, goal.goal_id);
+    assert.equal(resumed.state.status, "running");
+    resumed.lock?.release?.();
+  } finally { session.lock?.release?.(); fs.rmSync(root, { recursive: true, force: true }); }
 });

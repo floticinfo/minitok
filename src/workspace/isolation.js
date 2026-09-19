@@ -262,7 +262,14 @@ function applyWorkspaceDiff(repoRoot, isolatedRoot) {
   try {
     execFileSync("git", ["apply", "--index", "--whitespace=nowarn", patchFile], { cwd: repoRoot, stdio: ["pipe", "pipe", "pipe"] });
     try { fs.copyFileSync(patchFile, keptPatch); } catch {}
-    return { applied: true, files: runGit(isolatedRoot, ["diff-tree", "--name-only", baseline.trackedTree, pipelineTree, "--"]).split("\n").filter(Boolean) };
+    const files = runGit(isolatedRoot, ["diff-tree", "--name-only", baseline.trackedTree, pipelineTree, "--"]).split("\n").filter(Boolean);
+    const result = { applied: true, files };
+    Object.defineProperties(result, {
+      patch_generated: { value: true, enumerable: false },
+      patch_signature: { value: crypto.createHash("sha256").update(patch, "utf8").digest("hex"), enumerable: false },
+      patch_preserved: { value: fs.existsSync(keptPatch), enumerable: false },
+    });
+    return result;
   } catch (applyError) {
     try { fs.copyFileSync(patchFile, keptPatch); } catch {}
     const err = new Error(

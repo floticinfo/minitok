@@ -55,8 +55,8 @@ module.exports = [
     },
   },
   {
-    // Integration test helpers written as ESM
-    files: ["tests/test-m3-runtime.js", "tests/test-m4-launch.js"],
+    // Integration test helpers and the disposable SWE verifier are ESM
+    files: ["tests/test-m3-runtime.js", "tests/test-m4-launch.js", "tests/fixtures/real-swe-single-file/VERIFY_CMD.mjs"],
     languageOptions: { sourceType: "module", globals: commonGlobals },
   },
 ];

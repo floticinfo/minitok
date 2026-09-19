@@ -138,7 +138,7 @@ async function evaluateCriterion(criterion, context = {}) {
   if (verifier.type === "file") return runFile(verifier.config, context, criterion);
   if (verifier.type === "custom" && verifier.config?.application_check) {
     const check = await evaluateApplicationCheck(verifier.config.application_check, context.application || context);
-    const status = ["passed", "failed", "unknown", "timeout", "unavailable", "permission_required"].includes(check.status) ? check.status : "unknown";
+    const status = ["passed", "failed", "unknown", "timeout", "unavailable", "permission_required", "blocked", "escalated"].includes(check.status) ? check.status : "unknown";
     const valid = check.evidence?.executed === true && ["passed", "failed"].includes(status);
     return { status, valid, reason: check.reason || `Application check ${status}`, evidence: createCriterionEvidence({ criterion_id: criterion.id, verifier_type: "custom", status, valid, executed: check.evidence?.executed === true, execution: { executed: check.evidence?.executed === true, timed_out: status === "timeout" }, result: check }) };
   }

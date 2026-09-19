@@ -120,7 +120,8 @@ function loadGoalSession(workspaceRoot, goalId, options = {}) {
     state.status = "blocked";
     state.terminal_detail = { reason: "Persisted completed state lacks valid evaluator evidence" };
   }
-  return { workspaceRoot: path.resolve(workspaceRoot), goalSpec, state, paths, lock: options.lock === false ? null : acquireSessionLock(paths.lock), resumeCheck: { safe_to_resume: true, checkpoint_changed: false, requires_verification: false, reason: null } };
+  const resumeCheck = state.resume_check || { safe_to_resume: true, checkpoint_changed: false, requires_verification: false, reason: null };
+  return { workspaceRoot: path.resolve(workspaceRoot), goalSpec, state, paths, lock: options.lock === false ? null : acquireSessionLock(paths.lock), resumeCheck };
 }
 function createCheckpoint(session, options = {}) {
   const checkpointId = `checkpoint_${Date.now()}_${crypto.randomBytes(6).toString("hex")}`; const tracked = fileSnapshot(session.workspaceRoot, options.trackedPaths || []);
@@ -133,6 +134,12 @@ function restoreCheckpoint(session, checkpointId) {
 }
 
 
+function releaseGoalSessionLock(session) {
+  if (!session || !session.lock || typeof session.lock.release !== "function") return false;
+  session.lock.release();
+  session.lock = null;
+  return true;
+}
 function pauseGoalSession(session, reason = "paused") { session.state.status = "paused"; session.state.pause_reason = reason; appendGoalEvent(session, { type: "paused", reason }); saveGoalSession(session); return session; }
 function resumeGoalSession(workspaceRoot, goalId, options = {}) {
   const session = loadGoalSession(workspaceRoot, goalId, options);
@@ -141,6 +148,7 @@ function resumeGoalSession(workspaceRoot, goalId, options = {}) {
   const checkpoint = session.state.last_checkpoint_id ? readJson(path.join(session.paths.checkpoints, `${session.state.last_checkpoint_id}.json`), "checkpoint") : null;
   const changed = checkpoint ? snapshotChanged(session.workspaceRoot, checkpoint.tracked_files) : false;
   session.resumeCheck = { safe_to_resume: !changed, checkpoint_changed: changed, requires_verification: changed, reason: changed ? "Tracked files changed after checkpoint; verifier must run before actions" : null };
+  session.state.resume_check = session.resumeCheck;
   session.state.status = "running"; appendGoalEvent(session, { type: "resumed", model: session.state.model, provider: session.state.provider, resume_check: session.resumeCheck }); saveGoalSession(session); return session;
 }
 function terminal(session, status, detail) { session.state.status = status; session.state.terminal_detail = redactValue(detail); appendGoalEvent(session, { type: status, detail }); saveGoalSession(session); return session; }
@@ -156,4 +164,4 @@ function markGoalCompleted(session, detail = {}) { assertCompletionEvidence(sess
 function markGoalFailed(session, detail = {}) { return terminal(session, "failed", detail); }
 function markGoalEscalated(session, detail = {}) { return terminal(session, "escalated", detail); }
 
-module.exports = { GOAL_DIRECTORY, SESSION_SCHEMA_VERSION, STATE_SCHEMA_VERSION, goalSessionPaths, createGoalSession, loadGoalSession, saveGoalSession, appendGoalEvent, createCheckpoint, restoreCheckpoint, pauseGoalSession, resumeGoalSession, markGoalCompleted, markGoalFailed, markGoalEscalated, assertCompletionEvidence, fileSnapshot, snapshotChanged, migrateState };
+module.exports = { GOAL_DIRECTORY, SESSION_SCHEMA_VERSION, STATE_SCHEMA_VERSION, goalSessionPaths, createGoalSession, loadGoalSession, saveGoalSession, appendGoalEvent, createCheckpoint, restoreCheckpoint, pauseGoalSession, releaseGoalSessionLock, resumeGoalSession, markGoalCompleted, markGoalFailed, markGoalEscalated, assertCompletionEvidence, fileSnapshot, snapshotChanged, migrateState };

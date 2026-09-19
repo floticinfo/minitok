@@ -1,5 +1,13 @@
 # Changelog
 
+## 1.4.8 - 2026-09-19
+
+### Added
+
+- Added persistent GoalController recovery lifecycle evidence, including failure classification, recovery task scheduling, patch signature comparison, same-patch rejection, model routing, session persistence, pause/resume lifecycle checks, and fail-closed terminal states.
+- Added disposable real-SWE fixture coverage for recovery, resume, multi-cycle criteria, local application observation, and Browser/Database/Deployment adapter contracts. These local and injected results are not live-provider measurements.
+- Added explicit release evidence boundaries for live provider, multi-cycle, and resume experiments: missing credentials or approval produce `live_status=skipped` and `production_ready=false` rather than a success claim.
+
 ## 1.4.6 - 2026-09-15
 
 ### Added

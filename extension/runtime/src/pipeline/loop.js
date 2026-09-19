@@ -17,7 +17,8 @@ const { verify } = require("./verifier");
 const { verifyCommandAsync } = require("./check");
 const { buildRepairTask } = require("./repair");
 const { writeContract, writeContextManifest, readContract } = require("../state/contracts");
-const { recordRunEvidence } = require("../run-evidence");
+const { recordRunEvidence, createCycleEvidence, fileHashEntries, sha256, updateCycleEvidence } = require("../run-evidence");
+const { createTerminalResult } = require("../goal/failure");
 const { generateNextTask } = require("./next_task");
 const { compactText, DEFAULT_CONTEXT_BUDGET_CHARS } = require("../context/compaction");
 const { KnowledgeStore } = require("../evolution/knowledge");
@@ -272,14 +273,16 @@ async function promptConfirmation(changesResult, opts) {
  * from "paid work exists but the final review refused it" (the diff is preserved
  * at `.minitok/last-run.patch` instead of being merged).
  *
- * @param {Array<{status?: string}>} cycles
+ * @param {Array<{status?: string, evidence?: {status?: string}}>} cycles
  * @returns {{ success: boolean, approved: boolean, last_cycle_status: string | null }}
  */
 function summarizeRunOutcome(cycles) {
   const list = Array.isArray(cycles) ? cycles : [];
   const lastCycleStatus = list.length > 0 ? list[list.length - 1]?.status ?? null : null;
+  const lastEvidenceStatus = list.at(-1)?.evidence?.status;
+  const evidenceFailure = ["model_output_invalid", "implementation_invalid", "implementation_apply_failed", "verification_failed", "review_rejected", "merge_failed"].includes(lastEvidenceStatus);
   return {
-    success: lastCycleStatus === "APPROVE",
+    success: lastCycleStatus === "APPROVE" && !evidenceFailure,
     approved: list.some(cycle => cycle?.status === "APPROVE"),
     last_cycle_status: lastCycleStatus,
   };
@@ -405,6 +408,66 @@ async function runPipelineInWorkspace(task, opts = {}) {
   let lastChangeSignature = "";
   let lastFailureCategory = undefined; // classified failure category for the current run's last failing cycle
   let humanEscalation = false;
+  const recoveryRecords = [];
+  let recoveryTaskGenerated = false;
+
+  // Cycle evidence is derived from stage results; provider output, prompts, and
+  // file contents never enter the persisted contract.
+  const pushCycle = (cycleResult, details = {}) => {
+    const planData = cycleResult.plan || {};
+    const implementationData = cycleResult.implement || {};
+    const rawChanges = details.changes !== undefined ? details.changes : implementationData.changes;
+    const changesValid = rawChanges === undefined || Array.isArray(rawChanges);
+    const changes = Array.isArray(rawChanges) ? rawChanges : [];
+    const applyResult = details.applyResult || {};
+    const checkEvidence = details.checkResult?.evidence || cycleResult.check || {};
+    const reviewData = details.review || cycleResult.review || {};
+    const implementationErrors = Array.isArray(applyResult.errors)
+      ? applyResult.errors
+      : implementationData.error ? [implementationData.error] : [];
+    const planValid = planData.error == null && Array.isArray(planData.steps);
+    const changedFiles = Array.isArray(changes)
+      ? changes.map(change => change?.file).filter(file => typeof file === "string")
+      : Array.isArray(implementationData.changed_files) ? implementationData.changed_files : [];
+    const reviewVerdict = reviewData.verdict || "UNKNOWN";
+    let evidenceStatus = details.status;
+    if (!evidenceStatus) {
+      if (planData.error) evidenceStatus = /json|truncat|no json/i.test(String(planData.error)) ? "model_output_invalid" : "planning_failed";
+      else if (implementationData.error) evidenceStatus = "model_output_invalid";
+      else if (!changesValid) evidenceStatus = "implementation_invalid";
+      else if (!changes.length && details.implementationStarted) evidenceStatus = "implementation_invalid";
+      else if (implementationErrors.length || changes.length > 0 && Number.isInteger(applyResult.applied) && applyResult.applied === 0) evidenceStatus = "implementation_apply_failed";
+      else if (checkEvidence.status === "failed" || checkEvidence.status === "timeout") evidenceStatus = "verification_failed";
+      else if (reviewVerdict === "REJECT" || reviewVerdict === "CHANGES_REQUESTED") evidenceStatus = "review_rejected";
+      else if (reviewVerdict === "APPROVE" && checkEvidence.status === "passed") evidenceStatus = opts.isolatedWorkspace ? "merge_pending" : "completed";
+      else evidenceStatus = "unknown";
+    }
+    cycleResult.evidence = createCycleEvidence({
+      cycle: cycleResult.cycle,
+      task: cycleResult.task || task,
+      provider: details.provider || roleProviders.work?.name || roleProviders.plan?.name || null,
+      model: details.model || null,
+      plan: { valid: planValid, step_count: Array.isArray(planData.steps) ? planData.steps.length : 0, target_files: Array.isArray(planData.steps) ? planData.steps.map(step => step?.file).filter(file => typeof file === "string") : [] },
+      implementation: {
+        response_valid: details.responseValid !== false && !implementationData.error,
+        changes_valid: changesValid,
+        change_count: changes.length,
+        changed_files: changedFiles,
+        applied_count: Number.isInteger(applyResult.applied) ? applyResult.applied : 0,
+        skipped_count: Number.isInteger(applyResult.skipped) ? applyResult.skipped : 0,
+        error_count: implementationErrors.length,
+        errors: implementationErrors,
+        patch_signature: details.patchSignature || (changes.length ? sha256(JSON.stringify(changes.map(change => ({ file: change?.file, action: change?.action, content_hash: change?.content == null ? null : sha256(change.content) })))) : null),
+        content_hashes: fileHashEntries(changes),
+      },
+      workspace: details.workspace || {},
+      verification: { status: checkEvidence.status || "unknown", exit_code: checkEvidence.exit_code, command: checkEvidence.command, output: checkEvidence.output },
+      review: { verdict: ["APPROVE", "REJECT", "CHANGES_REQUESTED"].includes(reviewVerdict) ? reviewVerdict : "UNKNOWN", confidence: reviewData.confidence, finding_count: Array.isArray(reviewData.findings) ? reviewData.findings.length : 0 },
+      status: evidenceStatus,
+    });
+    results.cycles.push(cycleResult);
+    return cycleResult;
+  };
 
   // Model escalation + token hard guardrail.
   // Escalation moves the "work" adapter up the model-tier chain on repeated
@@ -564,7 +627,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
       const _pfRec = escalationEngine.recordCycleOutcome(originalGoal, { success: false, category: _pfCat, tokens: (intelResult.tokens?.input || 0) + (intelResult.tokens?.output || 0) });
       if (_pfRec.stop) { console.log(`\n${_pfRec.stopReason}`); if (_pfRec.humanEscalation) humanEscalation = true; break; }
       if (_pfRec.escalate) escalateWorkRole(_pfRec.targetTier, _pfRec.model);
-      results.cycles.push({ cycle, plan: planResult.plan, status: "plan_failed" });
+      pushCycle({ cycle, task, plan: planResult.plan, status: "plan_failed" }, { status: "model_output_invalid", responseValid: false });
       continue;
     }
 
@@ -584,7 +647,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
       const _icRec = escalationEngine.recordCycleOutcome(originalGoal, { success: false, category: _icCat, tokens: (intelResult.tokens?.input || 0) + (intelResult.tokens?.output || 0) + (planResult.tokens?.input || 0) + (planResult.tokens?.output || 0) });
       if (_icRec.stop) { console.log(`\n${_icRec.stopReason}`); if (_icRec.humanEscalation) humanEscalation = true; break; }
       if (_icRec.escalate) escalateWorkRole(_icRec.targetTier, _icRec.model);
-      results.cycles.push({ cycle, plan: planResult.plan, implement: implResult.changes, status: "impl_failed" });
+      pushCycle({ cycle, task, plan: planResult.plan, implement: implResult.changes, status: "impl_failed" }, { status: "model_output_invalid", responseValid: false });
       continue;
     }
 
@@ -595,7 +658,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
     // fact. Nothing was enforced before, so the documented limit was advisory.
     if (Number.isFinite(maxChangedFiles) && maxChangedFiles > 0 && changeList.length > maxChangedFiles) {
       console.log(`     ERROR: ${changeList.length} files changed, above validation.max_changed_files (${maxChangedFiles}). Nothing was applied.`);
-      results.cycles.push({ cycle, plan: planResult.plan, implement: implResult.changes, status: "changes_exceeded_limit" });
+      pushCycle({ cycle, task, plan: planResult.plan, implement: implResult.changes, status: "changes_exceeded_limit" }, { status: "implementation_invalid", implementationStarted: true, changes: changeList });
       break;
     }
     let applyResult;
@@ -606,7 +669,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
       const accepted = await promptConfirmation(implResult.changes, { ...opts, repoRoot });
       if (!accepted) {
         console.log("  Changes rejected by user. Stopping pipeline.");
-        results.cycles.push({ cycle, plan: planResult.plan, implement: implResult.changes, status: "rejected_by_user" });
+        pushCycle({ cycle, task, plan: planResult.plan, implement: implResult.changes, status: "rejected_by_user" }, { status: "implementation_invalid", implementationStarted: true, changes: changeList });
         break;
       }
       confirmationGranted = true;
@@ -658,8 +721,9 @@ async function runPipelineInWorkspace(task, opts = {}) {
       break;
     }
 
-    results.cycles.push({
+    pushCycle({
       cycle,
+      task,
       intelligence: intelResult.intelligence,
       plan: planResult.plan,
       implement: { summary: implResult.changes.summary, files_changed: implResult.changes.files_changed, changed_files: (implResult.changes.changes || []).map(change => change.file) },
@@ -671,7 +735,17 @@ async function runPipelineInWorkspace(task, opts = {}) {
         output: (intelResult.tokens?.output || 0) + (planResult.tokens?.output || 0) + (implResult.tokens?.output || 0) + (verifyResult.tokens?.output || 0),
       },
       status: verdict,
-    });
+    }, { changes: implResult.changes.changes || [], applyResult, checkResult, review: verifyResult.review, model: verifyResult.model, implementationStarted: true, status: verdict === "VERIFICATION_FAILED" ? "verification_failed" : verdict === "REJECT" || verdict === ["CHANGES_REQUESTED"].join("") ? "review_rejected" : undefined });
+
+    if (recoveryTaskGenerated && recoveryRecords.length > 0) {
+      const recoveryRecord = recoveryRecords.at(-1);
+      const currentPatchSignature = results.cycles.at(-1)?.evidence?.implementation?.patch_signature || null;
+      recoveryRecord.recovery_patch_signature = currentPatchSignature;
+      recoveryRecord.same_patch_repeated = Boolean(currentPatchSignature && recoveryRecord.previous_patch_signature && currentPatchSignature === recoveryRecord.previous_patch_signature);
+      recoveryRecord.same_patch_rejected = recoveryRecord.same_patch_repeated;
+      recoveryRecord.recovery_status = results.cycles.at(-1)?.evidence?.status || "unknown";
+      recoveryTaskGenerated = false;
+    }
 
     // ---- Model escalation + token hard guardrail ----
     // Classify this cycle's failure and drive escalation: after N successive
@@ -719,7 +793,28 @@ async function runPipelineInWorkspace(task, opts = {}) {
     // Phase 6: Repair
     if (verdict === "REJECT" || verdict === "VERIFICATION_FAILED") {
       console.log(`  Preparing ${verdict === "VERIFICATION_FAILED" ? "verification repair" : "review repair"} task...`);
-      task = buildRepairTask(originalGoal, verifyResult.review, checkResult);
+      const initialEvidence = results.cycles.at(-1)?.evidence || {};
+      const previousPatchSignature = initialEvidence.implementation?.patch_signature || null;
+      const remainingSuccessCriteria = Array.isArray(config.goal?.success_criteria) ? config.goal.success_criteria.map(item => item.id || item.description).filter(Boolean) : [];
+      const recoveryContext = {
+        changed_files: initialEvidence.implementation?.changed_files || [],
+        previous_patch_signature: previousPatchSignature,
+        remaining_success_criteria: remainingSuccessCriteria,
+        strategy: "Use a different implementation strategy and do not repeat the previous patch.",
+      };
+      task = buildRepairTask(originalGoal, verifyResult.review, checkResult, recoveryContext);
+      recoveryTaskGenerated = true;
+      recoveryRecords.push({
+        scheduled: true,
+        task_generated: true,
+        failure_category: verdict === "VERIFICATION_FAILED" ? "verification_failed" : "review_rejected",
+        previous_patch_signature: previousPatchSignature,
+        recovery_patch_signature: null,
+        same_patch_repeated: false,
+        same_patch_rejected: false,
+        recovery_status: null,
+        task_context: { has_verifier_output: Boolean(checkResult.evidence?.output), finding_count: verifyResult.review?.findings?.length || 0, changed_file_count: recoveryContext.changed_files.length, has_previous_patch_signature: Boolean(previousPatchSignature), has_non_repeat_constraint: true, remaining_criteria_count: remainingSuccessCriteria.length },
+      });
     }
   }
   } catch (error) {
@@ -794,6 +889,11 @@ async function runPipelineInWorkspace(task, opts = {}) {
   results.approved = approved;
   results.last_cycle_status = lastCycleStatus;
   results.humanEscalation = humanEscalation;
+  results.recovery = { records: recoveryRecords, scheduled: recoveryRecords.some(record => record.scheduled), task_generated: recoveryRecords.some(record => record.task_generated) };
+  Object.assign(results, createTerminalResult(results, {
+    valid_evidence: success && results.cycles.at(-1)?.evidence?.status === "completed" && !opts.isolatedWorkspace,
+    state: humanEscalation ? "escalated" : undefined,
+  }));
   if (humanEscalation) {
     console.log(`\nHuman escalation engaged: the token hard limit was reached. Manual review is required.`);
   }
@@ -814,7 +914,15 @@ async function runPipelineInWorkspace(task, opts = {}) {
         exit_status: results.cycles.at(-1)?.check?.exit_code ?? null,
         passed: results.cycles.at(-1)?.check?.status === "passed",
       },
-      outcome: success ? "success" : approved ? "approved-not-merged" : "verification-failed",
+      cycles: results.cycles.map(cycle => cycle.evidence || cycle),
+      cycle_evidence: results.cycles.map(cycle => cycle.evidence || cycle),
+      terminal_status: results.terminal_status,
+      failure_category: results.failure_category,
+      failure_stage: results.failure_stage,
+      recoverable: results.recoverable,
+      human_escalation_required: results.human_escalation_required,
+      last_cycle_evidence_id: results.last_cycle_evidence_id,
+      outcome: success ? "success" : approved ? "approved-not-merged" : lastCycleStatus === "verification_failed" ? "verification-failed" : "failure",
     }, { evidencePath: opts.evidencePath });
   } catch (error) {
     console.warn(`Warning: Could not save run evidence: ${error.message}`);
@@ -862,6 +970,12 @@ async function runPipeline(task, opts = {}) {
           cycles: result?.cycles?.length ?? cloneContract.cycles,
           success: status === "completed",
           approved: approved === true,
+          terminal_status: result?.terminal_status ?? cloneContract.terminal_status ?? null,
+          failure_category: result?.failure_category ?? cloneContract.failure_category ?? null,
+          failure_stage: result?.failure_stage ?? cloneContract.failure_stage ?? null,
+          recoverable: result?.recoverable ?? cloneContract.recoverable ?? null,
+          human_escalation_required: result?.human_escalation_required ?? cloneContract.human_escalation_required ?? null,
+          last_cycle_evidence_id: result?.last_cycle_evidence_id ?? cloneContract.last_cycle_evidence_id ?? null,
           last_cycle_status: result?.last_cycle_status ?? cloneContract.last_cycle_status ?? null,
           isolated: true,
           merged: merged === true,
@@ -883,14 +997,34 @@ async function runPipeline(task, opts = {}) {
       throw error;
     }
     let applied = false;
+    let mergeResult = null;
+    const updateMergeEvidence = (workspace, status) => {
+      const lastCycle = result?.cycles?.at(-1);
+      if (!lastCycle?.evidence) return;
+      lastCycle.evidence = updateCycleEvidence(lastCycle.evidence, { workspace, status });
+    };
     if (result.success && !opts.dryRun) {
       try {
-        applyWorkspaceDiff(repoRoot, isolated.path);
-        applied = true;
+        mergeResult = applyWorkspaceDiff(repoRoot, isolated.path);
+        applied = mergeResult.applied === true;
+        updateMergeEvidence({ isolated_changed_files: mergeResult.files || [], patch_generated: mergeResult.patch_generated === true, patch_preserved: mergeResult.patch_preserved === true, merge_attempted: true, merge_applied: applied }, applied ? "completed" : "merge_failed");
+        if (mergeResult.patch_signature) {
+          const lastCycle = result.cycles.at(-1);
+          lastCycle.evidence = updateCycleEvidence(lastCycle.evidence, { implementation: { patch_signature: mergeResult.patch_signature } });
+        }
+        if (!applied) throw Object.assign(new Error("Pipeline produced no applicable workspace patch"), { code: "minitok_apply_failed" });
       } catch (applyError) {
         // Do NOT discard paid pipeline output: the patch is preserved at
         // .minitok/last-run.patch (see isolation.js) — surface it clearly.
+        const preservedPatch = path.join(repoRoot, ".minitok", "last-run.patch");
+        const patchPreserved = fs.existsSync(preservedPatch);
+        updateMergeEvidence({ merge_attempted: true, merge_applied: false, patch_preserved: patchPreserved }, "merge_failed");
+        if (patchPreserved && result.cycles.at(-1)?.evidence) {
+          result.cycles.at(-1).evidence = updateCycleEvidence(result.cycles.at(-1).evidence, { implementation: { patch_signature: sha256(fs.readFileSync(preservedPatch)) } });
+        }
+        Object.assign(result, createTerminalResult({ ...result, merge_failed: true }, { terminal_status: "merge_failed" }));
         mirrorContract({ status: "failed", approved: result.approved === true, merged: false, error: applyError.message });
+        applyError.terminal_status = "merge_failed";
         applyError.message = `${applyError.message}\nThe run itself succeeded; only the final merge into your repository failed.`;
         throw applyError;
       }
@@ -900,12 +1034,25 @@ async function runPipeline(task, opts = {}) {
       // salvage it instead of silently losing everything with the clone.
       try {
         const { preserveWorkspaceDiff } = require("../workspace/isolation");
-        preserveWorkspaceDiff(repoRoot, isolated.path);
+        const preservedPatch = preserveWorkspaceDiff(repoRoot, isolated.path);
+        updateMergeEvidence({ isolated_changed_files: result.cycles.at(-1)?.evidence?.implementation?.changed_files || [], patch_generated: Boolean(preservedPatch), patch_preserved: Boolean(preservedPatch), merge_attempted: false, merge_applied: false }, result.cycles.at(-1)?.evidence?.status || "unknown");
+        if (preservedPatch && result.cycles.at(-1)?.evidence) {
+          result.cycles.at(-1).evidence = updateCycleEvidence(result.cycles.at(-1).evidence, { implementation: { patch_signature: sha256(fs.readFileSync(preservedPatch)) } });
+        }
       } catch {}
     }
     // Terminal state for the operator-visible contract: "completed" only when the
     // final cycle was approved AND its diff reached the repository (`merged`).
-    mirrorContract({ status: result.success ? "completed" : "failed", approved: result.approved === true, merged: applied });
+    if (result.success && !opts.dryRun && applied) {
+      Object.assign(result, createTerminalResult({ ...result, success: true, merge_failed: false }, { terminal_status: "completed", valid_evidence: true }));
+      for (const record of result.recovery?.records || []) {
+        if (record.recovery_status === "merge_pending") record.recovery_status = "completed";
+      }
+    } else if (!result.success && result.terminal_status === "unknown") {
+      Object.assign(result, createTerminalResult(result));
+    }
+    const operatorStatus = result.success && applied && !opts.dryRun ? "completed" : result.terminal_status === "completed" ? "completed" : "failed";
+    mirrorContract({ status: operatorStatus, approved: result.approved === true, merged: applied });
     // Propagate run evidence out of the disposable clone — the default path
     // removes the isolated workspace, which would otherwise destroy
     // .minitok/evidence/ before it reaches the real repository (README:39-41).
@@ -916,12 +1063,20 @@ async function runPipeline(task, opts = {}) {
       if (!evidencePath.startsWith(isolatedRoot)) throw new Error("evidencePath must stay inside the workspace");
       const evidence = JSON.parse(fs.readFileSync(evidencePath, "utf-8"));
       if (evidence && evidence.run_id) {
+        evidence.cycles = result.cycles.map(cycle => cycle.evidence || cycle);
+        evidence.cycle_evidence = result.cycles.map(cycle => cycle.evidence || cycle);
+        evidence.terminal_status = result.terminal_status;
+        evidence.failure_category = result.failure_category;
+        evidence.failure_stage = result.failure_stage;
+        evidence.recoverable = result.recoverable;
+        evidence.human_escalation_required = result.human_escalation_required;
+        evidence.last_cycle_evidence_id = result.last_cycle_evidence_id;
         await recordRunEvidence({ workspaceRoot: repoRoot, ...evidence }, { evidencePath: opts.evidencePath });
       }
     } catch {
       // Evidence propagation is best-effort and must never fail the run.
     }
-    return { ...result, isolation: { path: isolated.path, applied } };
+    return { ...result, isolation: { path: isolated.path, applied, merge: mergeResult ? { applied: mergeResult.applied === true, files: mergeResult.files || [], patch_signature: mergeResult.patch_signature || null } : null } };
   } finally {
     try {
       if (isolated) removeIsolatedWorkspace(isolated.path);
