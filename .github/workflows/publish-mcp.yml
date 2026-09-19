@@ -53,6 +53,7 @@ jobs:
           test "${RELEASE_TAG#v}" = "$(node -p "require('./package.json').version")"
           npm ci
           npm --prefix extension ci --ignore-scripts
+          npm run package:extension
           npm run check:mcp-registry
           npm run lint
           npm run typecheck
