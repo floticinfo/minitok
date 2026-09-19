@@ -69,8 +69,12 @@ jobs:
           curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
           chmod +x mcp-publisher
 
-      - name: Authenticate to MCP Registry with GitHub OIDC
-        run: ./mcp-publisher login github-oidc
+      - name: Authenticate to MCP Registry with domain proof
+        env:
+          MCP_PRIVATE_KEY: ${{ secrets.MCP_PRIVATE_KEY }}
+        run: |
+          test -n "$MCP_PRIVATE_KEY"
+          ./mcp-publisher login http --domain minitok.dev --private-key "$MCP_PRIVATE_KEY"
 
       - name: Publish MCP Registry metadata
         run: ./mcp-publisher publish
