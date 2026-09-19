@@ -82,7 +82,8 @@ function assertNoLinks(root) {
   const visit = current => {
     const stat = fs.lstatSync(current);
     const real = fs.realpathSync.native(current);
-    if (stat.isSymbolicLink() || !sameResolvedPath(real, path.resolve(current))) throw new Error(`Unsafe workspace path: ${path.relative(resolvedRoot, current)}`);
+    const isRoot = sameResolvedPath(current, resolvedRoot);
+    if (stat.isSymbolicLink() || (!isRoot && !sameResolvedPath(real, path.resolve(current)))) throw new Error(`Unsafe workspace path: ${path.relative(resolvedRoot, current)}`);
     if (!stat.isDirectory()) return;
     for (const entry of fs.readdirSync(current)) visit(path.join(current, entry));
   };
