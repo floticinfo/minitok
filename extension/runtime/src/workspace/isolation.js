@@ -247,7 +247,7 @@ function applyWorkspaceDiff(repoRoot, isolatedRoot) {
     try { runGit(isolatedRoot, ["rm", "--cached", "--ignore-unmatch", "-r", "--", name]); } catch {}
   }
   const pipelineTree = runGit(isolatedRoot, ["write-tree"]);
-  const patch = (runGit(isolatedRoot, ["diff-tree", "--binary", "--full-index", "-p", baseline.trackedTree, pipelineTree, "--"]) + "\n").replace(/\r\n/g, "\n");
+  const patch = (runGit(isolatedRoot, ["diff", "--cached", "--binary", "--full-index", baseline.trackedTree, "--"]) + "\n").replace(/\r\n/g, "\n");
   if (!patch.trim()) return { applied: false, files: [] };
   // Per-call unique name: two runs inside one process (MCP runtime) would
   // otherwise share this path, and the first `finally` unlink would delete the
@@ -305,8 +305,7 @@ function preserveWorkspaceDiff(repoRoot, isolatedRoot) {
         try { runGit(isolatedRoot, ["rm", "--cached", "--ignore-unmatch", "-r", "--", rel]); } catch {}
       }
     }
-    const pipelineTree = runGit(isolatedRoot, ["write-tree"]);
-    const patch = (runGit(isolatedRoot, ["diff-tree", "--binary", "--full-index", "-p", baseline.trackedTree, pipelineTree, "--"]) + "\n").replace(/\r\n/g, "\n");
+    const patch = (runGit(isolatedRoot, ["diff", "--cached", "--binary", "--full-index", baseline.trackedTree, "--"]) + "\n").replace(/\r\n/g, "\n");
     if (!patch.trim()) return null;
     const keptPatch = path.join(repoRoot, ".minitok", "last-run.patch");
     fs.mkdirSync(path.dirname(keptPatch), { recursive: true });
