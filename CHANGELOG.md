@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.9 - 2026-09-19
+
+### Changed
+
+- Prepared the approved 1.4.9 release candidate with the 0.3.15 extension artifact and refreshed release verification boundaries.
+- Preserved fail-closed publication and deployment checks until the authorized release workflow and approved environments execute successfully.
+
 ## 1.4.8 - 2026-09-19
 
 ### Added

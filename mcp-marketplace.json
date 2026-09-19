@@ -2,7 +2,7 @@
   "$schemaVersion": 1,
   "server": "dev.minitok/minitok",
   "package": "@flotic/minitok",
-  "version": "1.4.8",
+  "version": "1.4.9",
   "registry": {
     "officialMcpRegistry": "server.json",
     "npmPackage": "https://www.npmjs.com/package/@flotic/minitok",

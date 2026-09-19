@@ -8,7 +8,7 @@
     "url": "https://github.com/floticinfo/minitok",
     "source": "github"
   },
-  "version": "1.4.8",
+  "version": "1.4.9",
   "icons": [
     {
       "src": "https://minitok.dev/assets/minitok-harlekin-mark.png",
@@ -22,7 +22,7 @@
     {
       "registryType": "npm",
       "identifier": "@flotic/minitok",
-      "version": "1.4.8",
+      "version": "1.4.9",
       "packageArguments": [
         {
           "type": "positional",
