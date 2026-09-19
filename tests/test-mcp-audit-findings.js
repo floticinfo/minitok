@@ -26,7 +26,8 @@ test("approval paths are canonical and constrained", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-mcp-"));
   try {
     fs.mkdirSync(path.join(root, ".minitok"));
-    assert.equal(requireApprovalPath(path.join(root, ".minitok", "approval.json"), root), path.join(root, ".minitok", "approval.json"));
+    const canonicalRoot = fs.realpathSync.native(root);
+    assert.equal(requireApprovalPath(path.join(root, ".minitok", "approval.json"), root), path.join(canonicalRoot, ".minitok", "approval.json"));
     assert.throws(() => requireApprovalPath(path.join(root, "approval.json"), root), /under workspace/);
     assert.throws(() => requireApprovalPath(path.join(root, ".minitok", "..", "approval.json"), root), /under workspace/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }

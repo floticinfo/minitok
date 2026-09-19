@@ -11,7 +11,7 @@ const { setOwnerOnlyPermissions, BROAD_PRINCIPAL_SIDS, _windowsPermissionCommand
 /** Read a file's ACL as SIDs so the assertions are language independent. */
 function aclSids(filePath) {
   const literal = filePath.replace(/'/g, "''");
-  const script = `(Get-Acl -LiteralPath '${literal}').Access | ForEach-Object { $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value }`;
+  const script = `Import-Module Microsoft.PowerShell.Security -ErrorAction Stop; (Get-Acl -LiteralPath '${literal}').Access | ForEach-Object { $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value }`;
   return execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { encoding: "utf8", timeout: 20000 })
     .split(/\r?\n/)
     .map(line => line.trim())
