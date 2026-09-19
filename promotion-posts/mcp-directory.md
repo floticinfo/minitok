@@ -5,7 +5,7 @@
 ## Official MCP Registry identity
 
 - **Registry name:** `io.github.floticinfo/minitok`
-- **Package:** `@flotic/minitok@1.4.9`
+- **Package:** `@flotic/minitok@1.4.10`
 - **Standard metadata:** `server.json`
 - **Downstream marketplace metadata:** `mcp-marketplace.json`
 - **Ownership check:** `package.json.mcpName` exactly matches the Registry name
@@ -30,7 +30,7 @@ The remote endpoint exposes only read-only status and compaction tools. The MCP 
 Install the public npm package, authenticate the user, and generate host configuration:
 
 ```bash
-npm install -g @flotic/minitok@1.4.9
+npm install -g @flotic/minitok@1.4.10
 minitok doctor
 minitok mcp connect cline --scopes read,write,verify_exec
 ```

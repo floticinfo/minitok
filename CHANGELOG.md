@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.4.10 - 2026-09-20
+
+### Fixed
+
+- Completed the portable CI and Windows isolation fixes needed for the MCP-only release workflow.
+- Stabilized Windows ACL and canonical-path verification across supported Node.js runners.
+
 ## 1.4.9 - 2026-09-19
 
 ### Changed
