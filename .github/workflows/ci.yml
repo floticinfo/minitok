@@ -32,7 +32,7 @@ jobs:
           npm run package:extension
 
       - name: Run tests
-        run: npm test
+        run: npm test -- --test-concurrency=1
 
       - name: Run lint
         run: npm run lint
