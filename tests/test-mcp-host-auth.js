@@ -202,6 +202,9 @@ test("a pipeline outcome of success:false is recorded and reported as failed", a
 
     const persisted = JSON.parse(fs.readFileSync(path.join(box.root, "runtime-state", "mcp-runs.json"), "utf8"));
     assert.equal(persisted.records.find(record => record.run_id === runId).state, "failed", "the persisted record must not claim success either");
+  } finally { box.cleanup(); }
+});
+
 /** A runtime-token fixture: the record a host configuration launches against. */
 function runtimeTokenDir() {
   const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "minitok-mcp-token-")));
@@ -274,7 +277,4 @@ test("the token file's expiry, rotation and revocation govern a live session", a
   } finally {
     fs.rmSync(fixture.root, { recursive: true, force: true });
   }
-});
-
-  } finally { box.cleanup(); }
 });

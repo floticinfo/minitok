@@ -1,0 +1,64 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "dev.minitok/minitok",
+  "title": "minitok",
+  "description": "Verified coding workflows with planning, verification, bounded retries, evidence, and evolution.",
+  "websiteUrl": "https://minitok.dev/docs",
+  "repository": {
+    "url": "https://github.com/floticinfo/minitok",
+    "source": "github"
+  },
+  "version": "1.4.9",
+  "icons": [
+    {
+      "src": "https://minitok.dev/assets/minitok-harlekin-mark.png",
+      "mimeType": "image/png",
+      "sizes": [
+        "any"
+      ]
+    }
+  ],
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@flotic/minitok",
+      "version": "1.4.9",
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        },
+        {
+          "type": "positional",
+          "value": "serve"
+        }
+      ],
+      "transport": {
+        "type": "stdio"
+      },
+      "environmentVariables": [
+        {
+          "name": "MINITOK_MCP_AUTH_TOKEN_FILE",
+          "description": "Owner-only runtime token file created by minitok mcp connect; required for authenticated local MCP sessions.",
+          "isRequired": true,
+          "format": "string",
+          "isSecret": true
+        },
+        {
+          "name": "MINITOK_MCP_SCOPES",
+          "description": "Explicit local scopes. Defaults to read; add write and verify_exec only when the user intends repository changes and verification execution.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        },
+        {
+          "name": "MINITOK_SERVER_URL",
+          "description": "Optional HTTPS minitok service URL override. Defaults to https://api.minitok.dev.",
+          "isRequired": false,
+          "format": "string",
+          "isSecret": false
+        }
+      ]
+    }
+  ]
+}

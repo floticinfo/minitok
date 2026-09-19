@@ -8,8 +8,14 @@ const path = require('node:path');
 const {
   recordRunEvidence,
   readRunEvidence,
-  normalizeEvidence
+  normalizeEvidence,
+  createCycleEvidence,
+  updateCycleEvidence,
+  fileHashEntries,
+  sha256,
+  redactLimited
 } = require('./run-evidence');
+const { applyChanges } = require('./pipeline/implementer');
 
 async function temporaryWorkspace() {
   return fs.mkdtemp(path.join(os.tmpdir(), 'minitok-evidence-'));
@@ -127,4 +133,79 @@ test('redacts sensitive values', () => {
 
   assert.doesNotMatch(JSON.stringify(evidence), /abc123|secret-value|private-key/);
   assert.equal(evidence.task, 'Do not expose token=[REDACTED]');
+});
+
+test('records a valid implementation with applied change using hashes only', () => {
+  const repo = require('node:fs').mkdtempSync(require('node:path').join(require('node:os').tmpdir(), 'minitok-cycle-'));
+  try {
+    const result = applyChanges(repo, { changes: [{ file: 'a.txt', action: 'create', content: 'secret source' }] });
+    assert.equal(result.applied, 1);
+    const cycle = createCycleEvidence({
+      cycle: 1,
+      task: 'write a file',
+      plan: { valid: true, step_count: 1, target_files: ['a.txt'] },
+      implementation: { response_valid: true, change_count: 1, changed_files: ['a.txt'], applied_count: result.applied, errors: [], content_hashes: fileHashEntries([{ file: 'a.txt', content: 'secret source' }]), patch_signature: sha256('patch') },
+      verification: { status: 'passed', exit_code: 0, command: 'node VERIFY_CMD.mjs', output: 'ok' },
+      review: { verdict: 'APPROVE', confidence: 0.9, finding_count: 0 },
+      status: 'completed'
+    });
+    assert.equal(cycle.implementation.applied_count, 1);
+    assert.equal(cycle.implementation.content_hashes[0].hash, sha256('secret source'));
+    assert.doesNotMatch(JSON.stringify(cycle), /secret source/);
+  } finally {
+    require('node:fs').rmSync(repo, { recursive: true, force: true });
+  }
+});
+
+test('classifies invalid JSON and empty changes as non-completed evidence', () => {
+  const invalid = createCycleEvidence({ status: 'model_output_invalid', implementation: { response_valid: false, errors: ['Invalid JSON'] } });
+  const empty = createCycleEvidence({ status: 'implementation_invalid', implementation: { response_valid: true, change_count: 0 } });
+  assert.equal(invalid.status, 'model_output_invalid');
+  assert.equal(empty.status, 'implementation_invalid');
+  assert.notEqual(empty.status, 'completed');
+});
+
+test('records apply errors separately from verifier failures and review rejection', () => {
+  const applyFailure = createCycleEvidence({ status: 'implementation_apply_failed', implementation: { error_count: 1, errors: ['write failed'] } });
+  const verificationFailure = createCycleEvidence({ status: 'verification_failed', verification: { status: 'failed', exit_code: 3, output: 'boom' } });
+  const rejection = createCycleEvidence({ status: 'review_rejected', review: { verdict: 'REJECT', confidence: 0.2, finding_count: 1 } });
+  assert.equal(applyFailure.status, 'implementation_apply_failed');
+  assert.equal(verificationFailure.status, 'verification_failed');
+  assert.equal(rejection.status, 'review_rejected');
+});
+
+test('redacts and limits verifier output and keeps patch evidence secret-free', () => {
+  const output = redactLimited(`token=secret ${'x'.repeat(5000)}`);
+  const cycle = createCycleEvidence({ verification: { status: 'failed', output }, implementation: { patch_signature: sha256('diff') }, status: 'verification_failed' });
+  assert.doesNotMatch(JSON.stringify(cycle), /secret/);
+  assert.ok(cycle.verification.output.length <= 4012);
+  assert.doesNotMatch(JSON.stringify(cycle), /diff/);
+});
+
+test('normalizes run terminal metadata and preserves the last cycle evidence id', () => {
+  const cycle = createCycleEvidence({ cycle: 2, status: 'verification_failed', verification: { status: 'failed', exit_code: 1 } });
+  const evidence = normalizeEvidence({
+    task: 'verify fixture',
+    terminal_status: 'verification_failed',
+    failure_category: 'verification_failure',
+    failure_stage: 'verify',
+    recoverable: true,
+    human_escalation_required: false,
+    last_cycle_evidence_id: cycle.evidence_id,
+    cycles: [cycle],
+  });
+  assert.equal(evidence.terminal_status, 'verification_failed');
+  assert.equal(evidence.failure_stage, 'verify');
+  assert.equal(evidence.last_cycle_evidence_id, cycle.evidence_id);
+  assert.equal(evidence.cycles[0].evidence_id, cycle.evidence_id);
+});
+
+test('updates isolated merge evidence without changing the original patch body', () => {
+  const initial = createCycleEvidence({ cycle: 1, status: 'merge_pending', workspace: { patch_generated: true } });
+  const merged = updateCycleEvidence(initial, { status: 'completed', workspace: { merge_attempted: true, merge_applied: true, isolated_changed_files: ['a.txt'] } });
+  const failed = updateCycleEvidence(initial, { status: 'merge_failed', workspace: { merge_attempted: true, merge_applied: false, patch_preserved: true } });
+  assert.equal(merged.workspace.merge_applied, true);
+  assert.equal(merged.status, 'completed');
+  assert.equal(failed.status, 'merge_failed');
+  assert.equal(failed.workspace.patch_preserved, true);
 });

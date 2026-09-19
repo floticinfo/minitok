@@ -34,7 +34,12 @@ function hostRoots() {
 function hostCandidates() {
   const roots = hostRoots();
   return {
-    cline: [path.join(roots.vscodeUser, "globalStorage", "saoudrizwan.claude-dev", "settings", "cline_mcp_settings.json")],
+    // Current Cline IDE and CLI locations, followed by the legacy VS Code path.
+    cline: [
+      path.join(roots.home, ".cline", "data", "settings", "cline_mcp_settings.json"),
+      path.join(roots.home, ".cline", "mcp.json"),
+      path.join(roots.vscodeUser, "globalStorage", "saoudrizwan.claude-dev", "settings", "cline_mcp_settings.json"),
+    ],
     claude: [path.join(roots.claude, "claude_desktop_config.json")],
     cursor: [path.join(roots.home, ".cursor", "mcp.json"), path.join(roots.vscodeUser, "globalStorage", "mcp.json")],
   };
@@ -296,6 +301,7 @@ function planChange(file, action, options = {}) {
       args: [path.resolve(__dirname, "../../runtime/stdio-entry.js")],
       env,
       disabled: false,
+      autoApprove: [],
     };
   } else {
     delete servers.minitok;
@@ -330,8 +336,26 @@ async function remoteStatus(url, token, options = {}) {
   const { remoteHealth } = require("../../mcp/remote");
   return remoteHealth({ url, token, allowOAuth: options.allowOAuth !== false, accountOptions: options });
 }
+
+function setupInstructions(serverUrl) {
+  return [
+    "MCP first-time setup needs an active minitok entitlement.",
+    `Create or sign in to your account: ${serverUrl === "https://api.minitok.dev" ? "https://minitok.dev/signup" : `${serverUrl}/signup`}`,
+    `Choose a plan and complete payment: ${serverUrl === "https://api.minitok.dev" ? "https://minitok.dev/pricing" : `${serverUrl}/pricing`}`,
+    "Then run `minitok mcp setup cline` again; the account session will retrieve and activate the installation automatically.",
+    "There is no free plan or free trial. LLM provider usage is billed separately.",
+  ];
+}
+
 function register(program) {
   const mcp = program.command("mcp");
+
+  mcp.command("serve")
+    .description("Run the authenticated MCP stdio server for package and marketplace clients")
+    .action(() => {
+      const { RuntimeStdio } = require("../../runtime/stdio");
+      new RuntimeStdio().start();
+    });
 
   mcp.command("status")
     .option("--server <url>", "minitok server URL")
@@ -452,4 +476,4 @@ function register(program) {
       console.log(JSON.stringify({ status: "ok", path: record.path, expires_at: new Date(record.expires_at).toISOString() }));
     });
 }
-module.exports = { register, detect, configuredScopes, readConfig, writeConfig, configs, serverContainer, configuredServerUrl, planChange, readLock, processIsRunning, hostCandidates, resolveHost, configuredTokenFiles };
+module.exports = { register, detect, configuredScopes, readConfig, writeConfig, configs, serverContainer, configuredServerUrl, planChange, readLock, processIsRunning, hostCandidates, resolveHost, configuredTokenFiles, setupInstructions };

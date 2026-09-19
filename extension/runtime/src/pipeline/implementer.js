@@ -248,16 +248,15 @@ function isProtectedPath(repoRoot, filePath, options = {}) {
   // and applies to every repository, canonical or customer.
   const sensitive = sensitiveFileNameReason(rel);
   if (sensitive) return { protected: true, reason: sensitive };
-  // On Windows/NTFS the filesystem is case-insensitive, normalize for comparison
-  if (process.platform === "win32") {
-    rel = rel.toLowerCase();
-  }
+  // Protected names must be matched case-insensitively on every platform. The
+  // policy protects the logical repository path, not only the host filesystem.
+  rel = rel.toLowerCase();
   const releaseProtected = isCanonicalReleaseRepository(root);
   const requested = Array.isArray(options.protectedExtraPaths) ? options.protectedExtraPaths : [];
   const extraPaths = requested
     .filter(value => typeof value === "string" && value.trim())
     .map(value => value.replace(/\\/g, "/").replace(/[. ]+$/, "").replace(/^\.\//, ""))
-    .map(value => (process.platform === "win32" ? value.toLowerCase() : value));
+    .map(value => value.toLowerCase());
   const protectedPaths = [
     ...PROTECTED_PATHS,
     ...PROTECTED_EXECUTION_PATHS,
@@ -266,7 +265,7 @@ function isProtectedPath(repoRoot, filePath, options = {}) {
     ...(releaseProtected ? [...RELEASE_PROTECTED_PATHS, ...VERIFICATION_PROTECTED_PATHS] : []),
   ];
   for (const p of protectedPaths) {
-    const pat = process.platform === "win32" ? p.toLowerCase() : p;
+    const pat = p.toLowerCase();
     if (rel === pat || rel.startsWith(pat + "/")) {
       return { protected: true, reason: `Protected path: ${p}` };
     }

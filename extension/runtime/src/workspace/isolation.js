@@ -32,6 +32,18 @@ function runGit(repo, args) {
   }).trim();
 }
 
+function cachedWorkspacePatch(repo, baselineTree) {
+  let patch = "";
+  try {
+    patch = runGit(repo, ["diff", "--cached", "--binary", "--full-index", baselineTree, "--"]);
+  } catch {}
+  // A staged diff against the current HEAD is the equivalent fallback when a
+  // hosted Git version cannot resolve the temporary baseline tree as a diff
+  // endpoint. The isolated baseline is committed as HEAD before pipeline work.
+  if (!patch.trim()) patch = runGit(repo, ["diff", "--cached", "--binary", "--full-index", "--"]);
+  return `${patch}\n`.replace(/\r\n/g, "\n");
+}
+
 function sameWorkspacePath(left, right) {
   try {
     const leftStat = fs.lstatSync(left);
@@ -56,15 +68,28 @@ function sameWorkspacePath(left, right) {
  * perfectly safe workspaces with "Unsafe workspace path".
  */
 function sameResolvedPath(left, right) {
-  return process.platform === "win32" ? left.toLowerCase() === right.toLowerCase() : left === right;
+  if (process.platform !== "win32") return left === right;
+  const normalize = value => {
+    let normalized = String(value);
+    if (normalized.length >= 4 && normalized[0] === "\\" && normalized[1] === "\\" && (normalized[2] === "?" || normalized[2] === ".") && normalized[3] === "\\") normalized = normalized.slice(4);
+    return normalized.replace(/[\\/]+$/, "").toLowerCase();
+  };
+  return normalize(left) === normalize(right);
 }
 
 function assertNoLinks(root) {
   const resolvedRoot = path.resolve(root);
   const visit = current => {
     const stat = fs.lstatSync(current);
+    const metadataName = path.basename(current).toLowerCase();
+    if (metadataName === ".git" || metadataName === ".minitok") {
+      if (stat.isSymbolicLink()) throw new Error(`Unsafe workspace path: ${path.relative(resolvedRoot, current)}`);
+      return;
+    }
     const real = fs.realpathSync.native(current);
-    if (stat.isSymbolicLink() || !sameResolvedPath(real, path.resolve(current))) throw new Error(`Unsafe workspace path: ${path.relative(resolvedRoot, current)}`);
+    const isRoot = sameResolvedPath(current, resolvedRoot);
+    const expected = path.join(fs.realpathSync.native(path.dirname(current)), path.basename(current));
+    if (stat.isSymbolicLink() || (!isRoot && !sameResolvedPath(real, expected))) throw new Error(`Unsafe workspace path: ${path.relative(resolvedRoot, current)}`);
     if (!stat.isDirectory()) return;
     for (const entry of fs.readdirSync(current)) visit(path.join(current, entry));
   };
@@ -247,7 +272,7 @@ function applyWorkspaceDiff(repoRoot, isolatedRoot) {
     try { runGit(isolatedRoot, ["rm", "--cached", "--ignore-unmatch", "-r", "--", name]); } catch {}
   }
   const pipelineTree = runGit(isolatedRoot, ["write-tree"]);
-  const patch = (runGit(isolatedRoot, ["diff-tree", "--binary", "--full-index", "-p", baseline.trackedTree, pipelineTree, "--"]) + "\n").replace(/\r\n/g, "\n");
+  const patch = cachedWorkspacePatch(isolatedRoot, baseline.trackedTree);
   if (!patch.trim()) return { applied: false, files: [] };
   // Per-call unique name: two runs inside one process (MCP runtime) would
   // otherwise share this path, and the first `finally` unlink would delete the
@@ -262,7 +287,14 @@ function applyWorkspaceDiff(repoRoot, isolatedRoot) {
   try {
     execFileSync("git", ["apply", "--index", "--whitespace=nowarn", patchFile], { cwd: repoRoot, stdio: ["pipe", "pipe", "pipe"] });
     try { fs.copyFileSync(patchFile, keptPatch); } catch {}
-    return { applied: true, files: runGit(isolatedRoot, ["diff-tree", "--name-only", baseline.trackedTree, pipelineTree, "--"]).split("\n").filter(Boolean) };
+    const files = runGit(isolatedRoot, ["diff-tree", "--name-only", baseline.trackedTree, pipelineTree, "--"]).split("\n").filter(Boolean);
+    const result = { applied: true, files };
+    Object.defineProperties(result, {
+      patch_generated: { value: true, enumerable: false },
+      patch_signature: { value: crypto.createHash("sha256").update(patch, "utf8").digest("hex"), enumerable: false },
+      patch_preserved: { value: fs.existsSync(keptPatch), enumerable: false },
+    });
+    return result;
   } catch (applyError) {
     try { fs.copyFileSync(patchFile, keptPatch); } catch {}
     const err = new Error(
@@ -298,8 +330,7 @@ function preserveWorkspaceDiff(repoRoot, isolatedRoot) {
         try { runGit(isolatedRoot, ["rm", "--cached", "--ignore-unmatch", "-r", "--", rel]); } catch {}
       }
     }
-    const pipelineTree = runGit(isolatedRoot, ["write-tree"]);
-    const patch = (runGit(isolatedRoot, ["diff-tree", "--binary", "--full-index", "-p", baseline.trackedTree, pipelineTree, "--"]) + "\n").replace(/\r\n/g, "\n");
+    const patch = cachedWorkspacePatch(isolatedRoot, baseline.trackedTree);
     if (!patch.trim()) return null;
     const keptPatch = path.join(repoRoot, ".minitok", "last-run.patch");
     fs.mkdirSync(path.dirname(keptPatch), { recursive: true });

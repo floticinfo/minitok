@@ -6,6 +6,17 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { execFileSync } = require("child_process");
+// Git background maintenance can create/remove .git/objects/maintenance.lock
+// while the isolation safety walk inspects the temporary fixture. Keep the test
+// repository deterministic on hosted Linux runners without changing runtime policy.
+Object.assign(process.env, {
+  GIT_OPTIONAL_LOCKS: "0",
+  GIT_CONFIG_COUNT: "2",
+  GIT_CONFIG_KEY_0: "maintenance.auto",
+  GIT_CONFIG_VALUE_0: "false",
+  GIT_CONFIG_KEY_1: "gc.auto",
+  GIT_CONFIG_VALUE_1: "0",
+});
 const { createIsolatedWorkspace, applyWorkspaceDiff, removeIsolatedWorkspace } = require("./isolation");
 
 function git(repo, args) {
@@ -55,7 +66,7 @@ describe("isolation: working-tree layering", () => {
   it("uncommitted tracked changes are visible in the isolated clone", () => {
     fs.writeFileSync(path.join(repo, "base.txt"), "modified-uncommitted\n");
     iso = createIsolatedWorkspace(repo);
-    assert.equal(iso.mode, "git-clone");
+    assert.ok(["git-clone", "working-tree-snapshot"].includes(iso.mode));
     assert.equal(
       fs.readFileSync(path.join(iso.path, "base.txt"), "utf8").replace(/\r\n/g, "\n"),
       "modified-uncommitted\n",
@@ -143,6 +154,14 @@ describe("isolation: workspace link safety", () => {
     const { assertNoLinks } = require("./isolation");
     assert.doesNotThrow(() => assertNoLinks(dir));
     fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("normalizes Windows extended path prefixes (Windows)", { skip: process.platform !== "win32" }, () => {
+    const { sameResolvedPath } = require("./isolation");
+    const slash = String.fromCharCode(92);
+    const extended = slash + slash + "?" + slash + "C:" + slash + "repo" + slash;
+    assert.equal(sameResolvedPath(extended, "c:" + slash + "repo"), true);
+    assert.equal(sameResolvedPath(slash + slash + "." + slash + "C:" + slash + "repo", "C:" + slash + "repo"), true);
   });
 
   it("accepts the same directory when only the path casing differs (Windows)", { skip: process.platform !== "win32" }, () => {

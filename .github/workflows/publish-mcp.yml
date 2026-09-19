@@ -1,0 +1,75 @@
+name: Publish MCP Registry metadata
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to publish to the MCP Registry"
+        required: true
+        type: string
+
+
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - name: Resolve release tag
+        id: release
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          PUSH_TAG: ${{ github.ref_name }}
+        run: |
+          tag="${INPUT_TAG:-$PUSH_TAG}"
+          test -n "$tag"
+          case "$tag" in v*) ;; *) echo "tag must start with v" >&2; exit 1 ;; esac
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: https://registry.npmjs.org
+
+      - name: Verify release metadata
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          test "${RELEASE_TAG#v}" = "$(node -p "require('./package.json').version")"
+          npm ci
+          npm --prefix extension ci --ignore-scripts
+          npm run check:mcp-registry
+          npm run lint
+          npm run typecheck
+          npm run docs:check
+          node scripts/secret-scan.mjs
+          npm run stage2:parity
+
+      - name: Run MCP and package tests
+        run: npm test
+
+      - name: Install MCP publisher
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" | tar xz mcp-publisher
+          chmod +x mcp-publisher
+
+      - name: Authenticate to MCP Registry with GitHub OIDC
+        run: ./mcp-publisher login github-oidc
+
+      - name: Publish MCP Registry metadata
+        run: ./mcp-publisher publish

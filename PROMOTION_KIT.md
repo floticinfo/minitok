@@ -16,15 +16,15 @@ minitok gives AI coding tasks a workflow: research, plan, implement, verify, rev
 
 **Title:** minitok — verified repository-aware coding workflow for AI agents
 
-**Description:** minitok is a Node.js CLI that turns repository context into inspectable code changes through explicit research, planning, implementation, deterministic verification, review, repair, and evidence recording. The local canonical CLI is `@flotic/minitok@1.4.2`. Treat publication as unverified until the approved release manifest and registry evidence are available. It supports Anthropic, OpenAI, and Google, plus OpenAI-compatible endpoints as custom providers, with local-first execution and opt-in telemetry.
+**Description:** minitok is a Node.js CLI that turns repository context into inspectable code changes through explicit research, planning, implementation, deterministic verification, review, repair, and evidence recording. The local canonical CLI is `@flotic/minitok@1.4.9`. Treat publication as unverified until the approved release manifest and registry evidence are available. It supports Anthropic, OpenAI, and Google, plus OpenAI-compatible endpoints as custom providers, with local-first execution and opt-in telemetry.
 
-**Call to action:** Install with `npm install -g @flotic/minitok@1.4.2`, run `minitok doctor`, then initialize a repository with `minitok migrate`.
+**Call to action:** Install with `npm install -g @flotic/minitok@1.4.9`, run `minitok doctor`, then initialize a repository with `minitok migrate`.
 
 ## VS Code Marketplace submission
 
 **Display name:** minitok
 
-**Tagline:** Run AI coding tasks through planning, verification, review, repair, and evidence.
+**Tagline:** Verified coding workflows for the terminal
 
 **Categories:** AI, Other
 
@@ -45,13 +45,17 @@ These files are drafts for operator review. They do not publish automatically an
 
 ## MCP directory submission
 
+The official MCP Registry and downstream directories are separate publication surfaces. The official Registry consumes `server.json`; Cline/Glama/other directories may consume the npm package, README, or `mcp-marketplace.json` review metadata.
+
+**Official Registry name:** `io.github.floticinfo/minitok`
+
 **Name:** minitok MCP
 
 **Transport:** local stdio, authenticated localhost HTTP, and an authenticated HTTPS remote MCP endpoint at `https://api.minitok.dev/mcp`.
 
 **Description:** Exposes repository-aware coding workflow controls to MCP clients with customer JWT authentication, paid entitlement enforcement, session binding and expiry, read-only remote tool boundaries, deterministic verification, and recorded evidence. It is not an AI model and does not replace the configured model provider.
 
-**Configuration note:** Use the installed package's `minitok mcp connect <host>` output. Never publish tokens, customer JWTs, installation-token files, or provider API keys.
+**Configuration note:** Use `server.json` for the official MCP Registry and `mcp-marketplace.json` for downstream marketplace review. Install `@flotic/minitok@1.4.9`, authenticate the user, and use `minitok mcp connect <host>`. Never publish tokens, customer JWTs, installation-token files, provider API keys, or account cookies. Active paid entitlement is required for production MCP methods; default scope is read-only and auto-approval is disabled.
 
 ## Product Hunt launch copy
 

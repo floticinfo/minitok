@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const { runPipeline } = require("../pipeline/loop");
+const goalTools = require("./goal-tools");
 
 const MCP_ERROR_CODES = Object.freeze({ INVALID_PARAMS: -32602, AUTH_REQUIRED: -32001, PERMISSION_DENIED: -32003, NOT_FOUND: -32004, RUN_LIMIT_REACHED: -32005, TOOL_ERROR: -32000 });
 
@@ -23,12 +24,19 @@ const MCP_ERROR_CODES = Object.freeze({ INVALID_PARAMS: -32602, AUTH_REQUIRED: -
  * `minitok_task`): they are data, not decoration.
  */
 const TOOLS = [
+  { name: "minitok_discover", description: "Discover the current workspace and authenticated providers without modifying files; returns candidates and whether user approval is required", annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", properties: { repo: { type: "string", minLength: 1, maxLength: 4096 }, workspace: { type: "string", minLength: 1, maxLength: 256 }, provider_override: { type: "string", minLength: 1, maxLength: 256 }, selection_id: { type: "string", minLength: 16, maxLength: 128 }, verify: { type: "boolean" } }, additionalProperties: false } },
   { name: "minitok_run_list", description: "List minitok runs", annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", properties: {}, additionalProperties: false } },
   { name: "minitok_run_get", description: "Get a minitok run by run_id", annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", properties: { run_id: { type: "string", minLength: 1, maxLength: 128 } }, required: ["run_id"], additionalProperties: false } },
   { name: "minitok_run_cancel", description: "Cancel an active minitok run", annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, inputSchema: { type: "object", properties: { run_id: { type: "string", minLength: 1, maxLength: 128 } }, required: ["run_id"], additionalProperties: false } },
 { name: "minitok_approve_run", description: "Approve a pending minitok change request", annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, inputSchema: { type: "object", properties: { approval_file: { type: "string", minLength: 1, maxLength: 4096 }, nonce: { type: "string", minLength: 16, maxLength: 128 }, run_id: { type: "string", minLength: 1, maxLength: 128 } }, required: ["approval_file", "nonce", "run_id"], additionalProperties: false } },
    { name: "minitok_reject_run", description: "Reject a pending minitok change request", annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, inputSchema: { type: "object", properties: { approval_file: { type: "string", minLength: 1, maxLength: 4096 }, nonce: { type: "string", minLength: 16, maxLength: 128 }, run_id: { type: "string", minLength: 1, maxLength: 128 } }, required: ["approval_file", "nonce", "run_id"], additionalProperties: false } },
-  { name: "minitok_run", description: "Run the minitok pipeline; repository changes require approval unless an explicitly permitted policy allows auto_accept.", annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, inputSchema: { type: "object", properties: { run_id: { type: "string", minLength: 1, maxLength: 128 }, task: { type: "string", minLength: 1, maxLength: 20000 }, repo: { type: "string", minLength: 1, maxLength: 4096 }, workspace: { type: "string", minLength: 1, maxLength: 256 }, dry_run: { type: "boolean" }, auto_accept: { type: "boolean" }, provider_override: { type: "string", minLength: 1, maxLength: 256 }, approval_file: { type: "string", minLength: 1, maxLength: 4096 }, approval_timeout_ms: { type: "integer", minimum: 1000, maximum: 3600000 } }, required: ["task"], additionalProperties: false } },
+  { name: "minitok_run", description: "Run the minitok pipeline; repository changes require approval unless an explicitly permitted policy allows auto_accept.", annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, inputSchema: { type: "object", properties: { run_id: { type: "string", minLength: 1, maxLength: 128 }, task: { type: "string", minLength: 1, maxLength: 20000 }, repo: { type: "string", minLength: 1, maxLength: 4096 }, workspace: { type: "string", minLength: 1, maxLength: 256 }, dry_run: { type: "boolean" }, auto_accept: { type: "boolean" }, provider_override: { type: "string", minLength: 1, maxLength: 256 }, selection_id: { type: "string", minLength: 16, maxLength: 128 }, approval_file: { type: "string", minLength: 1, maxLength: 4096 }, approval_timeout_ms: { type: "integer", minimum: 1000, maximum: 3600000 } }, required: ["task"], additionalProperties: false } },
+  { name: "minitok_goal_start", description: "Start a persistent Goal Session; use for long-running goals rather than one concrete task", annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, inputSchema: { type: "object", properties: { goal: { type: "string", minLength: 1, maxLength: 20000 }, repo: { type: "string", minLength: 1, maxLength: 4096 }, mode: { type: "string", enum: ["safe", "supervised", "workspace", "autonomous"] }, provider_override: { type: "string", maxLength: 256 }, goal_spec: { type: "object" } }, required: ["goal", "repo"], additionalProperties: false } },
+  { name: "minitok_goal_status", description: "Read persistent Goal Session status and evaluator evidence", annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", properties: { goal_id: { type: "string", minLength: 1, maxLength: 128 }, repo: { type: "string", minLength: 1, maxLength: 4096 } }, required: ["goal_id", "repo"], additionalProperties: false } },
+  { name: "minitok_goal_continue", description: "Continue a persistent Goal Session from stored state", annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, inputSchema: { type: "object", properties: { goal_id: { type: "string", minLength: 1, maxLength: 128 }, repo: { type: "string", minLength: 1, maxLength: 4096 }, mode: { type: "string", enum: ["safe", "supervised", "workspace", "autonomous"] }, provider_override: { type: "string", maxLength: 256 } }, required: ["goal_id", "repo"], additionalProperties: false } },
+  { name: "minitok_goal_pause", description: "Pause a persistent Goal Session", annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, inputSchema: { type: "object", properties: { goal_id: { type: "string", minLength: 1, maxLength: 128 }, repo: { type: "string", minLength: 1, maxLength: 4096 }, reason: { type: "string", maxLength: 2000 } }, required: ["goal_id", "repo"], additionalProperties: false } },
+  { name: "minitok_goal_resume", description: "Resume a paused persistent Goal Session after preflight checks", annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, inputSchema: { type: "object", properties: { goal_id: { type: "string", minLength: 1, maxLength: 128 }, repo: { type: "string", minLength: 1, maxLength: 4096 }, mode: { type: "string", enum: ["safe", "supervised", "workspace", "autonomous"] }, provider_override: { type: "string", maxLength: 256 } }, required: ["goal_id", "repo"], additionalProperties: false } },
+  { name: "minitok_goal_cancel", description: "Cancel a persistent Goal Session", annotations: { readOnlyHint: false, destructiveHint: true, openWorldHint: false }, inputSchema: { type: "object", properties: { goal_id: { type: "string", minLength: 1, maxLength: 128 }, repo: { type: "string", minLength: 1, maxLength: 4096 }, reason: { type: "string", maxLength: 2000 } }, required: ["goal_id", "repo"], additionalProperties: false } },
   { name: "minitok_knowledge_query", description: "Query past minitok outcomes", annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", properties: { limit: { type: "integer", minimum: 0, maximum: 1000 }, project: { type: "string", maxLength: 4096 } }, additionalProperties: false } },
   { name: "minitok_knowledge_record", description: "Record an evolution outcome", annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", properties: { goal: { type: "string", minLength: 1, maxLength: 2000 }, status: { type: "string", enum: ["success", "failure", "partial"] }, cycles: { type: "integer", minimum: 0, maximum: 10000 }, summary: { type: "string", maxLength: 20000 } }, required: ["goal", "status"], additionalProperties: false } },
   { name: "minitok_analyze_failures", description: "Analyze failure patterns", annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", properties: { project: { type: "string", minLength: 1, maxLength: 4096 } }, additionalProperties: false } },
@@ -56,6 +64,11 @@ const TOOL_SCOPES = Object.freeze({
   minitok_reject_run: "write",
   minitok_knowledge_record: "write",
   minitok_observe: "write",
+  minitok_goal_start: "write",
+  minitok_goal_continue: "write",
+  minitok_goal_pause: "write",
+  minitok_goal_resume: "write",
+  minitok_goal_cancel: "write",
 });
 function requiredScopeFor(name) { return TOOL_SCOPES[name] || "read"; }
 
@@ -158,9 +171,28 @@ async function _getToolHandler(name, args, services, runtimeOptions = {}) {
   // Previously the validated copy was discarded and the original object was used,
   // which made the run_id rule below unreachable.
   args = validateArgs(name, args);
+  if (name === "minitok_discover") {
+    const { discover } = require("../discovery");
+    const root = runtimeOptions.workspaceRoot || process.cwd();
+    const explicitRepo = args.repo ? requireWorkspacePath(args.repo, root, "repo") : undefined;
+    const prior = args.selection_id && typeof runtimeOptions.resolveSelection === "function" ? runtimeOptions.resolveSelection(args.selection_id, args.provider_override, true) : null;
+    if (args.selection_id && !prior) throw Object.assign(new Error("Provider selection is missing or stale"), { code: "SELECTION_INVALID" });
+    if (prior && args.provider_override && (!prior.candidates || !prior.candidates.includes(args.provider_override))) throw Object.assign(new Error("Provider is not one of the discovered candidates"), { code: "SELECTION_INVALID" });
+    const result = await discover({ explicitRepo, explicitName: args.workspace, explicitProvider: args.provider_override, verify: args.verify === true, cwd: root });
+    const authenticated = result.providers.candidates.filter(candidate => candidate.authenticated);
+    const selected = result.providers.selected?.provider || (authenticated.length === 1 ? authenticated[0].provider : null);
+    const selection = typeof runtimeOptions.createSelection === "function" ? runtimeOptions.createSelection({ workspace_root: result.workspace.selected?.repository_root || root, provider: selected, status: result.providers.status, candidates: authenticated.map(candidate => candidate.provider) }) : null;
+    if (selection) result.selection = selection;
+    return { content: [{ type: "text", text: JSON.stringify(result) }] };
+  }
   if (name === "minitok_run_list") return { content: [{ type: "text", text: JSON.stringify([...(runtimeOptions.recoveredRuns || []).map(run => ({ run_id: run.run_id, state: run.state, recovery: run.recovery || undefined })), ...[...runtimeOptions.runs?.values?.() || []].map(run => ({ run_id: run.runId, state: run.state || (run.controller.signal.aborted ? "cancelled" : "running"), persistence: run.persistence || runtimeOptions.persistence || null }))]) }] };
   if (name === "minitok_run_get") { const run = runtimeOptions.runs?.get?.(args.run_id) || (runtimeOptions.recoveredRuns || []).find(item => item.run_id === args.run_id); if (!run) throw Object.assign(new Error("Run not found"), { code: "RUN_NOT_FOUND" }); return { content: [{ type: "text", text: JSON.stringify({ run_id: run.runId || run.run_id, state: run.state || "unknown", recovery: run.recovery || undefined, persistence: run.persistence || runtimeOptions.persistence || null }) }] }; }
   if (name === "minitok_run_cancel") { const run = runtimeOptions.runs?.get?.(args.run_id); if (!run) throw Object.assign(new Error("Run not found"), { code: "RUN_NOT_FOUND" }); run.controller.abort(); run.state = "cancelled"; return { content: [{ type: "text", text: JSON.stringify({ run_id: args.run_id, state: "cancelled" }) }] }; }
+  if (["minitok_goal_start", "minitok_goal_status", "minitok_goal_continue", "minitok_goal_pause", "minitok_goal_resume", "minitok_goal_cancel"].includes(name)) {
+    const goalOptions = { ...runtimeOptions, model: runtimeOptions.model, services };
+    const result = name === "minitok_goal_start" ? await goalTools.startGoal(args, goalOptions) : name === "minitok_goal_status" ? goalTools.readGoal(args, goalOptions) : name === "minitok_goal_continue" || name === "minitok_goal_resume" ? await goalTools.continueGoal(args, goalOptions) : name === "minitok_goal_pause" ? goalTools.pauseGoal(args, goalOptions) : goalTools.cancelGoal(args, goalOptions);
+    return { content: [{ type: "text", text: JSON.stringify({ schema_version: 1, ...result }) }] };
+  }
   if (["minitok_approve_run", "minitok_reject_run"].includes(name)) { const approvalFile = requireApprovalPath(args.approval_file, runtimeOptions.workspaceRoot || process.cwd()); if (typeof runtimeOptions.writeApproval !== "function") throw Object.assign(new Error("Approval transport unavailable"), { code: "APPROVAL_UNAVAILABLE" }); const decision = name === "minitok_approve_run" ? "approve" : "reject"; runtimeOptions.writeApproval(approvalFile, decision, { nonce: args.nonce, runId: args.run_id }); return { content: [{ type: "text", text: JSON.stringify({ decision, approval_file: approvalFile }) }] }; }
   switch (name) {
     case "minitok_run": {

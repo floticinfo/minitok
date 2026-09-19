@@ -1,5 +1,50 @@
 # Changelog
 
+## 1.4.9 - 2026-09-19
+
+### Changed
+
+- Prepared the approved 1.4.9 release candidate with the 0.3.15 extension artifact and refreshed release verification boundaries.
+- Preserved fail-closed publication and deployment checks until the authorized release workflow and approved environments execute successfully.
+
+## 1.4.8 - 2026-09-19
+
+### Added
+
+- Added persistent GoalController recovery lifecycle evidence, including failure classification, recovery task scheduling, patch signature comparison, same-patch rejection, model routing, session persistence, pause/resume lifecycle checks, and fail-closed terminal states.
+- Added disposable real-SWE fixture coverage for recovery, resume, multi-cycle criteria, local application observation, and Browser/Database/Deployment adapter contracts. These local and injected results are not live-provider measurements.
+- Added explicit release evidence boundaries for live provider, multi-cycle, and resume experiments: missing credentials or approval produce `live_status=skipped` and `production_ready=false` rather than a success claim.
+
+## 1.4.6 - 2026-09-15
+
+### Added
+
+- Added `minitok mcp setup cline` for first-time MCP onboarding. It checks entitlement, guides users to account creation and paid-plan setup when needed, activates an account-backed installation without printing the one-time activation key, refreshes the local runtime token, writes the Cline configuration, and reports the next restart step.
+- Added validated `GoalSpec` compilation and validation, including repository path, verifier, dangerous-field, execution-policy, and Repository ODD constraints. Model completion claims are metadata only; they do not establish goal completion.
+- Added `GoalEvaluator` evidence collection and completion gates, persistent Goal Sessions with atomic state, checkpoints, locks, pause/resume, migration, and corruption handling, plus `GoalController` cycle limits, recovery, escalation, and capability-based model routing.
+- Added the six persistent MCP Goal tools (`minitok_goal_start`, `minitok_goal_status`, `minitok_goal_continue`, `minitok_goal_pause`, `minitok_goal_resume`, and `minitok_goal_cancel`), with explicit scope checks and source/runtime parity for the bundled Extension runtime.
+- Added mock-first local application observation with allowlisted localhost HTTP, process, API, browser-driver, and read-only database adapters; external access and deployment remain disabled by default.
+- Added deterministic benchmark raw artifacts and validation for baseline/minitok records, including evidence and negative/security-case metrics. Mock benchmark output is not a live-provider measurement or a product-superiority claim.
+- The executed local verification set passed: Goal unit tests 114/114, Goal E2E tests 9/9, MCP Goal and transport tests 21/21, discovery/CLI/Phase 0/local fixture tests 14/14, Registry metadata tests 4/4, release artifact tests 10/10, and version metadata tests 2/2; lint, typecheck, documentation consistency, version metadata, MCP Registry metadata, package dry-run, and runtime parity checks also passed. Real provider/live E2E, external Registry publication, and production validation were not run.
+
+## 1.4.5 - 2026-09-15
+
+### Changed
+
+- Switched official MCP Registry ownership from the GitHub organization namespace to the verified `minitok.dev` domain namespace `dev.minitok/minitok`, so Registry publication does not require exposing a personal GitHub account as an organization member. The npm package remains `@flotic/minitok`; only `mcpName`, server metadata, and Registry ownership proof changed.
+
+## 1.4.4 - 2026-09-15
+
+### Added
+
+- Added official MCP Registry and downstream marketplace publication metadata. `server.json` follows the official npm/stdio Registry schema and uses `io.github.floticinfo/minitok` with npm ownership verification through `package.json.mcpName`. `mcp-marketplace.json` documents transports, tools, resources, prompts, authentication, active paid entitlement, scopes, approval behavior, privacy, telemetry, and provider-cost boundaries. Added offline metadata validation, npm-pack inclusion checks, and an OIDC-based tag publication workflow for operator-approved releases. No credentials or automatic publication are performed by local checks.
+
+## 1.4.3 - 2026-09-15
+
+### Added
+
+- Added MCP compatibility for current commercial hosts: protocol negotiation for `2025-11-25`, `2025-06-18`, `2025-03-26`, `2024-11-05`, and `2024-10-07`, standard `Content-Length` stdio framing with legacy newline compatibility, response framing preservation, bounded frame parsing, current Cline configuration paths, and an explicit empty `autoApprove` default. The release is based on the complete 1.4.2 codebase; non-MCP features from 1.4.2 are retained.
+
 ## 1.4.2 - 2026-09-15
 
 ### Changed

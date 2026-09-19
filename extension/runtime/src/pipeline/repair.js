@@ -1,9 +1,13 @@
 "use strict";
 
-function buildRepairTask(originalGoal, review, check) {
+function buildRepairTask(originalGoal, review, check, context = {}) {
   const findings = (review?.findings || []).map(f => `- [${f.severity || "error"}] ${f.message || "issue"}`).join("\n");
   const verification = check?.evidence ? `\nVerification command: ${check.evidence.command}\nVerification output:\n${check.evidence.output}` : "";
-  return `${originalGoal}\n\nRepair the failed implementation. Address every review finding and verification failure before making changes.\n\nReview summary: ${review?.summary || "No review summary"}\nFindings:\n${findings || "- Verification failed; inspect the command output."}${verification}`;
+  const changedFiles = Array.isArray(context.changed_files) ? context.changed_files.join(", ") : "unknown";
+  const previousPatch = context.previous_patch_signature || "unknown";
+  const remaining = Array.isArray(context.remaining_success_criteria) ? context.remaining_success_criteria.join(", ") : "unknown";
+  const strategy = context.strategy || "Use a different implementation strategy and do not repeat the previous patch.";
+  return `${originalGoal}\n\nRepair the failed implementation. Address every review finding and verification failure before making changes.\n\nReview summary: ${review?.summary || "No review summary"}\nFindings:\n${findings || "- Verification failed; inspect the command output."}${verification}\n\nCurrent changed files: ${changedFiles}\nPrevious patch signature: ${previousPatch}\nRemaining success criteria: ${remaining}\nRecovery constraint: ${strategy}`;
 }
 
 module.exports = { buildRepairTask };

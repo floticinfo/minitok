@@ -1,17 +1,15 @@
 # minitok
 
-![minitok Harlekin brand mark](media/minitok.png)
+**Verified coding workflows for the terminal**
 
-**Verified repository-aware coding workflows for AI agents**
-
-minitok brings repository-aware coding workflows into VS Code. Describe a task, let minitok inspect and plan the change, run implementation, verify the result, review failures, and preserve evidence for review.
+A repository-aware workflow for changes you can review. minitok brings the workflow from [minitok.dev](https://minitok.dev) into VS Code: describe a task, inspect the repository and proposed plan, execute the change, verify it with configured checks, review the result, adapt through bounded repair when checks fail, and preserve local evidence of the outcome.
 
 ## What it provides
 
 - Browser-based account sign-in with VS Code SecretStorage
 - Sign out and account switching
-- Repository-aware task execution through the minitok CLI
-- Deterministic verification and recorded evidence
+- Repository-aware task planning and execution through the minitok CLI
+- Deterministic verification, review, bounded repair, and recorded evidence
 - Sidebar workflow status and session history
 - MCP stdio integration through the embedded runtime
 - Local-first execution with consent-controlled telemetry policies
@@ -21,7 +19,7 @@ minitok brings repository-aware coding workflows into VS Code. Describe a task, 
 1. Install `@flotic/minitok` globally:
 
    ```bash
-   npm install -g @flotic/minitok@1.4.2
+   npm install -g @flotic/minitok@1.4.9
    ```
 
 2. Open a trusted VS Code workspace.
@@ -29,7 +27,7 @@ minitok brings repository-aware coding workflows into VS Code. Describe a task, 
 4. Select **Sign in with browser**.
 5. Describe the repository task and run it.
 
-An active paid plan and a valid installation entitlement are required before a real run. Provider credentials remain configured through the minitok CLI configuration.
+An active paid plan and a valid installation entitlement are required before a real run. Provider credentials can be configured through the VS Code extension settings or the minitok CLI configuration.
 
 ## Plans
 

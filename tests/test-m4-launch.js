@@ -56,7 +56,11 @@ describe("M4.3 Entitlement Gate", () => {
   it("no secrets leaked", () => { const s = JSON.stringify(checkEntitlement()); assert.ok(!s.includes("sk_live")); assert.ok(!s.includes("sk_test")); });
 });
 describe("M4.4 MCP Protocol", () => {
-  it("14 tools defined", () => assert.equal(getToolDefinitions().length, 14));
+  it("current MCP tool surface is defined", () => {
+    const names = getToolDefinitions().map(tool => tool.name);
+    assert.equal(names.length, 21);
+    for (const name of ["minitok_discover", "minitok_goal_start", "minitok_goal_status", "minitok_goal_continue", "minitok_goal_pause", "minitok_goal_resume", "minitok_goal_cancel"]) assert.ok(names.includes(name));
+  });
   it("minitok_ prefix", () => { for (const t of getToolDefinitions()) assert.ok(t.name.startsWith("minitok_")); });
   it("valid schema", () => { for (const t of getToolDefinitions()) { assert.ok(t.inputSchema); assert.equal(t.inputSchema.type, "object"); } });
   it("status returns entitlement", async () => { const r = await getToolHandler("minitok_status", {}, { knowledge: { query: () => ({ outcomes: [], total: 0 }) }, entitlement: { status: async () => ({ state: "MISSING", allowed: false }) } }); assert.ok(JSON.parse(r.content[0].text).entitlement); });

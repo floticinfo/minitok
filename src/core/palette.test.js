@@ -109,13 +109,14 @@ test("the shipped brand assets carry the primary colour", () => {
   // because nothing regenerates these files automatically.
   const read = (...parts) => fs.readFileSync(path.join(__dirname, "..", "..", ...parts), "utf8");
   const assets = { "extension/media/minitok.svg": read("extension", "media", "minitok.svg"), "extension/rasterize-icon.cjs": read("extension", "rasterize-icon.cjs"), "extension/rasterize-representative.cjs": read("extension", "rasterize-representative.cjs") };
-  const allowed = [BRAND.primary.toUpperCase(), BRAND.onPrimary.toUpperCase()];
-  for (const [name, source] of Object.entries(assets)) {
-    assert.equal(source.includes(`fill="${BRAND.primary}"`), true, `${name} must paint the tile in ${BRAND.primary}`);
-    assert.equal(source.includes("src/core/palette.js"), true, `${name} must name the palette as its source`);
-    for (const literal of [...new Set([...source.matchAll(/#[0-9a-fA-F]{6}/g)].map(match => match[0].toUpperCase()))]) {
-      assert.equal(allowed.includes(literal), true, `${name} hardcodes ${literal}, which is not a palette colour`);
-    }
+  const svg = assets["extension/media/minitok.svg"];
+  assert.match(svg, /viewBox="0 0 72\.105095 72\.105095"/, "the supplied SVG viewBox must be preserved");
+  assert.match(svg, /transform="rotate\(45\)"/, "the supplied SVG rotation must be preserved");
+  assert.match(svg, /fill:#013dcf/i, "the supplied SVG must retain its primary fill");
+  assert.match(svg, /fill:#ffffff/i, "the supplied SVG must retain its white glyph");
+  for (const [name, source] of Object.entries(assets).filter(([name]) => name !== "extension/media/minitok.svg")) {
+    assert.equal(source.includes("media/minitok.svg"), true, `${name} must render the supplied SVG asset`);
+    assert.match(source, /omitBackground:\s*true/, `${name} must preserve the transparent icon background`);
   }
   const manifest = JSON.parse(read("extension", "package.json"));
   assert.equal(manifest.icon, "media/minitok.png", "the Marketplace icon is the rasterized tile");
