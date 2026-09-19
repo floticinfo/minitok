@@ -8,14 +8,17 @@ const path = require("path");
 const { execFileSync } = require("child_process");
 const { setOwnerOnlyPermissions, BROAD_PRINCIPAL_SIDS, _windowsPermissionCommands } = require("./file-permissions");
 
-/** Read a file's ACL as SIDs so the assertions are language independent. */
+/** Read a file's ACL as SIDs without relying on localized PowerShell modules. */
 function aclSids(filePath) {
-  const literal = filePath.replace(/'/g, "''");
-  const script = `Import-Module Microsoft.PowerShell.Security -ErrorAction Stop; (Get-Acl -LiteralPath '${literal}').Access | ForEach-Object { $_.IdentityReference.Translate([System.Security.Principal.SecurityIdentifier]).Value }`;
-  return execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-Command", script], { encoding: "utf8", timeout: 20000 })
-    .split(/\r?\n/)
-    .map(line => line.trim())
-    .filter(Boolean);
+  const aclFile = `${filePath}.acl`;
+  try {
+    execFileSync("icacls", [filePath, "/save", aclFile], { stdio: "ignore", timeout: 15000 });
+    const sddl = fs.readFileSync(aclFile, "utf16le");
+    const aliases = { WD: "S-1-1-0", IU: "S-1-5-11", BU: "S-1-5-32-545", PU: "S-1-5-4", BG: "S-1-5-32-546" };
+    return [...sddl.matchAll(/;;;([^;)]+)/g)].map(match => aliases[match[1]] || match[1]);
+  } finally {
+    fs.rmSync(aclFile, { force: true });
+  }
 }
 
 describe("file permissions: owner-only access", () => {
