@@ -81,6 +81,11 @@ function assertNoLinks(root) {
   const resolvedRoot = path.resolve(root);
   const visit = current => {
     const stat = fs.lstatSync(current);
+    const isGitMetadata = path.basename(current).toLowerCase() === ".git";
+    if (isGitMetadata) {
+      if (stat.isSymbolicLink()) throw new Error(`Unsafe workspace path: ${path.relative(resolvedRoot, current)}`);
+      return;
+    }
     const real = fs.realpathSync.native(current);
     const isRoot = sameResolvedPath(current, resolvedRoot);
     if (stat.isSymbolicLink() || (!isRoot && !sameResolvedPath(real, path.resolve(current)))) throw new Error(`Unsafe workspace path: ${path.relative(resolvedRoot, current)}`);
