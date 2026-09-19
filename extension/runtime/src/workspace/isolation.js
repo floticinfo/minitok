@@ -71,9 +71,7 @@ function sameResolvedPath(left, right) {
   if (process.platform !== "win32") return left === right;
   const normalize = value => {
     let normalized = String(value);
-    for (const prefix of ["\\\\?\\", "\\\\.\\"]) {
-      if (normalized.startsWith(prefix)) { normalized = normalized.slice(prefix.length); break; }
-    }
+    if (normalized.length >= 4 && normalized[0] === "\\" && normalized[1] === "\\" && (normalized[2] === "?" || normalized[2] === ".") && normalized[3] === "\\") normalized = normalized.slice(4);
     return normalized.replace(/[\\/]+$/, "").toLowerCase();
   };
   return normalize(left) === normalize(right);

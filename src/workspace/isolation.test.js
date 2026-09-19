@@ -156,6 +156,14 @@ describe("isolation: workspace link safety", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
+  it("normalizes Windows extended path prefixes (Windows)", { skip: process.platform !== "win32" }, () => {
+    const { sameResolvedPath } = require("./isolation");
+    const slash = String.fromCharCode(92);
+    const extended = slash + slash + "?" + slash + "C:" + slash + "repo" + slash;
+    assert.equal(sameResolvedPath(extended, "c:" + slash + "repo"), true);
+    assert.equal(sameResolvedPath(slash + slash + "." + slash + "C:" + slash + "repo", "C:" + slash + "repo"), true);
+  });
+
   it("accepts the same directory when only the path casing differs (Windows)", { skip: process.platform !== "win32" }, () => {
     const dir = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "mt-links-case-")));
     fs.writeFileSync(path.join(dir, "app.js"), "ok\n");
