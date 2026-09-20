@@ -5,9 +5,21 @@ const { compileGoal, compileModelGoal } = require("../goal/compiler");
 const { runGoal } = require("../goal/controller");
 const { runTask } = require("../goal/task_executor");
 const { createGoalSession, loadGoalSession, saveGoalSession, pauseGoalSession, resumeGoalSession, markGoalFailed } = require("../goal/session");
+const { resolveExecutionPolicy } = require("../goal/execution_policy");
 
 const ACTIVE_GOALS = new Map();
-const GOAL_MODES = new Set(["safe", "supervised", "workspace", "autonomous"]);
+const GOAL_MODES = new Set(["safe", "supervised", "authorized_external", "unrestricted", "workspace", "autonomous"]);
+function capabilityGrants(args = {}, runtimeOptions = {}) {
+  if (Array.isArray(args.capabilities)) return args.capabilities;
+  const permissions = runtimeOptions.permissions;
+  const grants = [];
+  if (permissions?.has?.("read") || permissions?.has?.("write")) grants.push("read", "inspect");
+  if (permissions?.has?.("verify_exec")) grants.push("verify");
+  return [...new Set(grants)];
+}
+function policyInput(args = {}, runtimeOptions = {}, source = "mcp") {
+  return { mode: args.mode, capabilities: capabilityGrants(args, runtimeOptions), explicit_confirmation: args.explicit_confirmation === true, auto_accept: args.auto_accept === true && runtimeOptions.permissions?.has?.("auto_accept"), source, actor: runtimeOptions.actor };
+}
 function requireGoalRepo(value, workspaceRoot) {
   if (typeof value !== "string" || !path.isAbsolute(value)) throw Object.assign(new Error("goal repo must be an absolute path"), { code: "INVALID_PATH" });
   const resolved = path.resolve(value); const root = path.resolve(workspaceRoot || process.cwd()); const relative = path.relative(root, resolved);
@@ -28,7 +40,7 @@ function resultForSession(session, extra = {}) {
 }
 function launch(session, options = {}) {
   const goalId = session.goalSpec.goal_id; const controller = new AbortController(); const record = { controller, paused: false, promise: null, session }; ACTIVE_GOALS.set(goalId, record);
-  const taskExecutor = options.taskExecutor || ((task, taskOptions) => runTask(task, { ...taskOptions, repoRoot: session.workspaceRoot, signal: controller.signal, providerOverride: options.providerOverride, autoAccept: options.mode === "autonomous" }));
+  const taskExecutor = options.taskExecutor || ((task, taskOptions) => runTask(task, { ...taskOptions, repoRoot: session.workspaceRoot, signal: controller.signal, providerOverride: options.providerOverride, autoAccept: options.policyDecision?.allowed === true && options.mode === "unrestricted" }));
   record.promise = runGoal(session.goalSpec, { ...options, session, signal: controller.signal, taskExecutor, recoveryEnabled: options.recoveryEnabled !== false });
   record.promise.then(result => { if (record.paused) session.state.status = "paused"; else if (result.state === "completed") session.state.status = "completed"; else if (result.state === "escalate") session.state.status = "escalated"; else if (result.completed !== true && !["paused", "running"].includes(session.state.status)) session.state.status = "failed"; saveGoalSession(session); }).catch(error => { if (!record.paused) markGoalFailed(session, { error: error.message }); }).finally(() => { ACTIVE_GOALS.delete(goalId); session.lock?.release?.(); });
   return record;
@@ -40,19 +52,23 @@ async function startGoal(args, runtimeOptions = {}) {
   const mode = args.mode || "safe";
   if (!GOAL_MODES.has(mode)) throw Object.assign(new Error("Invalid goal mode"), { code: "INVALID_PARAMS" });
   if (mode === "autonomous" && !runtimeOptions.permissions?.has?.("auto_accept")) throw Object.assign(new Error("autonomous goal mode requires explicit auto_accept permission"), { code: "AUTO_ACCEPT_DENIED" });
+  const policyDecision = resolveExecutionPolicy(policyInput(args, runtimeOptions));
+  if (!policyDecision.allowed && !policyDecision.approval_required) throw Object.assign(new Error(policyDecision.reason), { code: policyDecision.always_blocked_capabilities.length ? "ALWAYS_BLOCKED" : "EXECUTION_POLICY_DENIED", policy: policyDecision });
   const repoRoot = requireGoalRepo(args.repo || runtimeOptions.workspaceRoot, runtimeOptions.workspaceRoot); const compiled = compileInput(args); const compiledRecord = /** @type {Record<string, any>} */ (compiled);
   if (compiled.status === "clarification_required") return { state: "clarification_required", current_state: "clarification_required", goal: { objective: compiledRecord.objective || args.goal || "" }, criteria: [], current_task: null, next_action: "Provide clarification", blocker: null, alternatives: [], recommended_action: "Provide clarification", approval_required: false, resume_command: null, resume_action: "Provide clarification before starting the goal", evidence: [], questions: compiledRecord.questions || [], question_details: compiledRecord.question_details || [] };
   if (compiled.status !== "ready") throw Object.assign(new Error(`Goal specification is ${compiled.status}`), { code: compiled.status === "unsupported" ? "GOAL_UNSUPPORTED" : "GOAL_INVALID", details: compiledRecord.errors || [{ path: "$", code: "UNSUPPORTED_GOAL", message: compiledRecord.reason || `Goal specification is ${compiled.status}` }] });
-  const session = createGoalSession({ workspaceRoot: repoRoot, goalSpec: compiledRecord.spec, model: runtimeOptions.model, provider: args.provider_override, approvalState: mode === "safe" ? "approval_required" : "not_requested" });
-  launch(session, { ...runtimeOptions, mode, providerOverride: args.provider_override });
+  const session = createGoalSession({ workspaceRoot: repoRoot, goalSpec: compiledRecord.spec, model: runtimeOptions.model, provider: args.provider_override, approvalState: policyDecision.approval_required ? "approval_required" : "not_requested" });
+  launch(session, { ...runtimeOptions, mode: policyDecision.mode, capabilities: policyDecision.capabilities, explicit_confirmation: args.explicit_confirmation === true, auto_accept: policyDecision.audit_context.auto_accept, policyDecision, providerOverride: args.provider_override });
   return resultForSession(session, { state: "running", next_action: "Call minitok_goal_status to observe progress" });
 }
 function readGoal(args, runtimeOptions = {}) { const repoRoot = requireGoalRepo(args.repo, runtimeOptions.workspaceRoot); return resultForSession(loadGoalSession(repoRoot, args.goal_id, { lock: false })); }
 async function continueGoal(args, runtimeOptions = {}) {
   const repoRoot = requireGoalRepo(args.repo, runtimeOptions.workspaceRoot);
   if (ACTIVE_GOALS.has(args.goal_id)) throw Object.assign(new Error("Goal session is already running"), { code: "GOAL_SESSION_BUSY" });
+  const policyDecision = resolveExecutionPolicy(policyInput(args, runtimeOptions));
+  if (!policyDecision.allowed && !policyDecision.approval_required) throw Object.assign(new Error(policyDecision.reason), { code: policyDecision.always_blocked_capabilities.length ? "ALWAYS_BLOCKED" : "EXECUTION_POLICY_DENIED", policy: policyDecision });
   const session = resumeGoalSession(repoRoot, args.goal_id, { model: runtimeOptions.model, provider: args.provider_override, migrate: true });
-  launch(session, { ...runtimeOptions, mode: args.mode || "supervised", providerOverride: args.provider_override }); return resultForSession(session, { state: "running" });
+  launch(session, { ...runtimeOptions, mode: policyDecision.mode, capabilities: policyDecision.capabilities, explicit_confirmation: args.explicit_confirmation === true, auto_accept: policyDecision.audit_context.auto_accept, policyDecision, providerOverride: args.provider_override }); return resultForSession(session, { state: "running" });
 }
 function pauseGoal(args, runtimeOptions = {}) { const repoRoot = requireGoalRepo(args.repo, runtimeOptions.workspaceRoot); const active = ACTIVE_GOALS.get(args.goal_id); const session = active?.session || loadGoalSession(repoRoot, args.goal_id); if (active) { active.paused = true; active.controller.abort(); ACTIVE_GOALS.delete(args.goal_id); } pauseGoalSession(session, args.reason || "paused by MCP client"); session.lock?.release?.(); return resultForSession(session, { state: "paused" }); }
 function cancelGoal(args, runtimeOptions = {}) { const repoRoot = requireGoalRepo(args.repo, runtimeOptions.workspaceRoot); const active = ACTIVE_GOALS.get(args.goal_id); const session = active?.session || loadGoalSession(repoRoot, args.goal_id); if (active) { active.paused = true; active.controller.abort(); ACTIVE_GOALS.delete(args.goal_id); } markGoalFailed(session, { cancelled: true, reason: args.reason || "cancelled by MCP client" }); session.lock?.release?.(); return resultForSession(session, { state: "failed" }); }

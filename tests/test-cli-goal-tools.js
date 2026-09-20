@@ -33,6 +33,16 @@ test("CLI goal status exposes additive blocker and resume fields", () => {
   } finally { fs.rmSync(repo, { recursive: true, force: true }); }
 });
 
+test("CLI goal registration exposes explicit policy controls", () => {
+  const { Command } = require("commander");
+  const program = new Command();
+  require("../src/cli/commands/goal").register(program);
+  const start = program.commands.find(command => command.name() === "goal").commands.find(command => command.name() === "start");
+  assert.ok(start.options.some(option => option.long === "--capabilities"));
+  assert.ok(start.options.some(option => option.long === "--explicit-confirmation"));
+  assert.ok(start.options.some(option => option.long === "--auto-accept"));
+});
+
 test("CLI goal registration includes start/status/continue/resume", () => {
   const { Command } = require("commander");
   const program = new Command();

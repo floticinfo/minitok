@@ -41,6 +41,7 @@
     "goal/controller.js",
     "goal/evaluator.js",
     "goal/evidence.js",
+    "goal/execution_policy.js",
     "goal/expansion.js",
     "goal/failure.js",
     "goal/odd.js",
@@ -212,8 +213,8 @@
       "embedded": "fdccc81100e3c029a7a284605aca4e5e7ac4bbf6ea8f6b28beb62d217f827972"
     },
     "goal/blocker.js": {
-      "source": "4130f6ab0e5d77295bf26892b58a95a7994966652f57994519ae114ef4404f33",
-      "embedded": "4130f6ab0e5d77295bf26892b58a95a7994966652f57994519ae114ef4404f33"
+      "source": "ad63e7819392f06bce8a51a9b7b09a88117ad7de28cc1346fdfb80a55d76e9ec",
+      "embedded": "ad63e7819392f06bce8a51a9b7b09a88117ad7de28cc1346fdfb80a55d76e9ec"
     },
     "goal/capabilities.js": {
       "source": "835345c95f6d99672b1a381ab36fe1d6d3f8f33170a8b5e0dd11657b232ed47f",
@@ -224,8 +225,8 @@
       "embedded": "675521fbbe443483de7780574dfe66761384ffcb97901b5ea8365a5a32fead16"
     },
     "goal/controller.js": {
-      "source": "cb32dbafec46e0e3ab70b16c51b55176886fc4e4313f6ea3fd0118d82a8ab05c",
-      "embedded": "cb32dbafec46e0e3ab70b16c51b55176886fc4e4313f6ea3fd0118d82a8ab05c"
+      "source": "b883211812451224b2ebe02d6ca7b39f2bc5153ba941d1230c84f9852d288b7c",
+      "embedded": "b883211812451224b2ebe02d6ca7b39f2bc5153ba941d1230c84f9852d288b7c"
     },
     "goal/evaluator.js": {
       "source": "216d25cf150aeeedc4a0c5640ba11dae2870337fcf2ab0f8fb834f3b8860573c",
@@ -234,6 +235,10 @@
     "goal/evidence.js": {
       "source": "606af720d67dca41bf546683688601cd935f95dab4e30546160f58233c1eae29",
       "embedded": "606af720d67dca41bf546683688601cd935f95dab4e30546160f58233c1eae29"
+    },
+    "goal/execution_policy.js": {
+      "source": "f2cf07bc132dc666998871262c37e874a0db078eab1bb13296be70fc364c8750",
+      "embedded": "f2cf07bc132dc666998871262c37e874a0db078eab1bb13296be70fc364c8750"
     },
     "goal/expansion.js": {
       "source": "24a3136418d49ef41e990f21ffdcf27ebbc137cb883c745c539c7b6e043ae655",
@@ -248,8 +253,8 @@
       "embedded": "614567cbad38a201959c91bb43c31e09e9bef1fad54b20a807df8b7d5072c22b"
     },
     "goal/plan.js": {
-      "source": "ec19be2c39d5c054f152877900d378c1b615e91175f28a873d1e8bb8fc2630a8",
-      "embedded": "ec19be2c39d5c054f152877900d378c1b615e91175f28a873d1e8bb8fc2630a8"
+      "source": "f4a501579f0c7cf5ee0db11bff1f2522b228a1ea1c4e5648486f9982a9ac15b5",
+      "embedded": "f4a501579f0c7cf5ee0db11bff1f2522b228a1ea1c4e5648486f9982a9ac15b5"
     },
     "goal/recovery.js": {
       "source": "8cadd386951bf02984c18cc028e489185f3352d2544006adf3103af2a87cc747",
@@ -260,8 +265,8 @@
       "embedded": "2b8b9a35da37f71da46efcfddcad7ceded8ce3f03bb6663cb5ee2c10107d2cb3"
     },
     "goal/spec.js": {
-      "source": "1ea7f6ec46937b734385eeb0bc322c21a56f5db93d464e1957f31ace0734628a",
-      "embedded": "1ea7f6ec46937b734385eeb0bc322c21a56f5db93d464e1957f31ace0734628a"
+      "source": "65d74e51c87dcd56b3501935d2cc131af75d94da005551d845d93a11661c7b78",
+      "embedded": "65d74e51c87dcd56b3501935d2cc131af75d94da005551d845d93a11661c7b78"
     },
     "goal/task_executor.js": {
       "source": "d07fe950a069575930b5c5e10556a07695ae00f389bfe2e12e9db45bf86a7188",
@@ -280,16 +285,16 @@
       "embedded": "57c2d171d131f56b7227fae0417a0412ce713d5280bcd6da5298c289ca3c013e"
     },
     "mcp/goal-tools.js": {
-      "source": "8552bbf975a13465febff0b1c0428c171bd93fa050b945e8a00a383e79bc90fa",
-      "embedded": "8552bbf975a13465febff0b1c0428c171bd93fa050b945e8a00a383e79bc90fa"
+      "source": "5aa80d6a13e790a965e2ed3acda0efd41ea035a277c3717cbe968c169fc40f20",
+      "embedded": "5aa80d6a13e790a965e2ed3acda0efd41ea035a277c3717cbe968c169fc40f20"
     },
     "mcp/runtime-token.js": {
       "source": "d07663e879ad91f12b327101f7b747e8bfc527bed6abc8aa2018ee393f4382d4",
       "embedded": "d07663e879ad91f12b327101f7b747e8bfc527bed6abc8aa2018ee393f4382d4"
     },
     "mcp/tools.js": {
-      "source": "9160dd6724cf9db628d1b7b2cf9339123b943ca107f7305b14c3e0baa482c62b",
-      "embedded": "9160dd6724cf9db628d1b7b2cf9339123b943ca107f7305b14c3e0baa482c62b"
+      "source": "7001eea59aafedce1c3ce927771245b7a1f8e1077a15f14f7e899c5087f5d892",
+      "embedded": "7001eea59aafedce1c3ce927771245b7a1f8e1077a15f14f7e899c5087f5d892"
     },
     "pipeline/authorization.js": {
       "source": "b6b7eb34e7a4d9790820d8a4b9828bf4ee965af1476b5d5c4522768b1d4aae4e",

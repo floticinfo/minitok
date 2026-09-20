@@ -7,7 +7,7 @@ const PLAN_VERSION = 1;
 const STEP_SOURCES = Object.freeze(["explicit", "inferred", "recovery"]);
 const STEP_RISKS = Object.freeze(["low", "medium", "high", "critical"]);
 const STEP_STATUSES = Object.freeze(["proposed", "ready", "blocked", "pending", "running", "completed", "failed", "skipped", "deferred"]);
-const EXECUTION_POLICIES = Object.freeze(["safe", "supervised", "authorized_external", "never_autonomous"]);
+const EXECUTION_POLICIES = Object.freeze(["safe", "supervised", "authorized_external", "unrestricted", "never_autonomous", "always_blocked"]);
 const SIDE_EFFECTS = Object.freeze(["file_change", "external_call", "publish", "deploy", "credential", "database_mutation"]);
 const APPROVAL_REQUIREMENTS = Object.freeze([...SIDE_EFFECTS]);
 const PLAN_FIELDS = new Set(["objective", "explicit_steps", "inferred_steps", "dependencies", "success_criteria", "scope_boundary", "risk_level", "approval_requirements", "assumptions", "plan_version", "execution_policy"]);
@@ -72,7 +72,8 @@ function detectSideEffects(step) {
 function approvalRequirementsFor(sideEffects) { return sideEffects.filter(effect => APPROVAL_REQUIREMENTS.includes(effect)); }
 const NEVER_AUTONOMOUS_PATTERN = /(?:private\s+key|secret\s+(?:output|export|extract|reveal)|extract(?:ing)?\s+(?:a\s+)?private\s+key|force\s+push|tag\s+overwrite|overwrite\s+tag|approval\s+bypass|bypass\s+approval|destructive\s+(?:database|db)|drop\s+(?:database|table)|delete\s+from)/i;
 function policyFor(sideEffects, requested, text = "") {
-  if (requested === "never_autonomous" || NEVER_AUTONOMOUS_PATTERN.test(text)) return "never_autonomous";
+  if (requested === "always_blocked" || requested === "never_autonomous" || NEVER_AUTONOMOUS_PATTERN.test(text)) return requested === "always_blocked" ? "always_blocked" : "never_autonomous";
+  if (requested === "unrestricted") return "unrestricted";
   if (sideEffects.some(effect => ["publish", "deploy", "credential", "database_mutation", "external_call"].includes(effect))) return "authorized_external";
   if (requested === "authorized_external") return requested;
   if (requested === "supervised" || sideEffects.includes("file_change")) return "supervised";

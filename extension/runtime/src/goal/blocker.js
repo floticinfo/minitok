@@ -3,6 +3,7 @@
 const crypto = require("crypto");
 const { redactValue, redactText } = require("./evidence");
 const { EXECUTION_POLICIES, SIDE_EFFECTS } = require("./plan");
+const { resolveExecutionPolicy, capabilitiesForSideEffects, normalizeMode } = require("./execution_policy");
 
 const BLOCKER_CATEGORIES = Object.freeze([
   "environment_failure", "network_failure", "authentication_failure", "permission_blocked",
@@ -76,7 +77,7 @@ function normalizeCost(value) {
   return { level: COST_LEVELS.includes(cost.level) ? cost.level : "unknown", estimate: cost.estimate == null ? null : redactText(String(cost.estimate)), currency: cost.currency || null, details: cost.details ? redactText(String(cost.details)) : null };
 }
 function inferExecutionPolicy(sideEffects, requested) {
-  if (requested === "never_autonomous") return requested;
+  if (requested === "never_autonomous" || requested === "always_blocked" || requested === "unrestricted") return requested;
   if (sideEffects.some(effect => EXTERNAL_EFFECTS.has(effect))) return "authorized_external";
   if (requested === "authorized_external") return requested;
   if (requested === "supervised") return requested;
@@ -89,8 +90,8 @@ function normalizeAlternative(input = {}) {
   const external = hasExternalEffect(sideEffects);
   const permissions = Array.isArray(value.required_permissions) ? value.required_permissions.filter(nonEmptyString) : [];
   const executionPolicy = inferExecutionPolicy(sideEffects, value.execution_policy);
-  const neverAutonomous = executionPolicy === "never_autonomous";
-  const approvalRequired = value.approval_required === true || external || ["supervised", "authorized_external", "never_autonomous"].includes(executionPolicy);
+  const neverAutonomous = ["never_autonomous", "always_blocked"].includes(executionPolicy);
+  const approvalRequired = value.approval_required === true || external || ["supervised", "authorized_external", "never_autonomous", "unrestricted"].includes(executionPolicy);
   return { alternative_id: value.alternative_id || stableId("alternative", { description: value.description, side_effects: sideEffects }), description: redactText(String(value.description || "")), rationale: redactText(String(value.rationale || "")), expected_benefit: redactText(String(value.expected_benefit || "")), risk_level: ALTERNATIVE_RISKS.includes(value.risk_level) ? value.risk_level : "unknown", side_effects: sideEffects, required_permissions: [...new Set(permissions)], estimated_cost: normalizeCost(value.estimated_cost), reversible: value.reversible === true, verification_plan: value.verification_plan === undefined ? {} : redactValue(value.verification_plan), approval_required: approvalRequired, applicable: value.applicable !== false && !neverAutonomous, execution_policy: executionPolicy };
 }
 function alternative(id, description, rationale, options = {}) {
@@ -146,8 +147,8 @@ function validateAlternative(value, path, errors) {
   if (!EXECUTION_POLICIES.includes(value.execution_policy)) errors.push(issue(`${path}.execution_policy`, "INVALID_EXECUTION_POLICY", `execution_policy must be one of: ${EXECUTION_POLICIES.join(", ")}`));
   validateCost(value.estimated_cost, `${path}.estimated_cost`, errors);
   validateSafeValue(value.verification_plan, `${path}.verification_plan`, errors);
-  if (hasExternalEffect(value.side_effects) && !["authorized_external", "never_autonomous"].includes(value.execution_policy)) errors.push(issue(`${path}.execution_policy`, "POLICY_SIDE_EFFECT_MISMATCH", "External side effects require authorized_external or never_autonomous"));
-  if (value.side_effects.includes("file_change") && !["supervised", "authorized_external", "never_autonomous"].includes(value.execution_policy)) errors.push(issue(`${path}.execution_policy`, "POLICY_SIDE_EFFECT_MISMATCH", "File changes require supervised or stronger policy"));
+  if (hasExternalEffect(value.side_effects) && !["authorized_external", "unrestricted", "never_autonomous", "always_blocked"].includes(value.execution_policy)) errors.push(issue(`${path}.execution_policy`, "POLICY_SIDE_EFFECT_MISMATCH", "External side effects require authorized_external, unrestricted, or stronger policy"));
+  if (value.side_effects.includes("file_change") && !["supervised", "authorized_external", "unrestricted", "never_autonomous", "always_blocked"].includes(value.execution_policy)) errors.push(issue(`${path}.execution_policy`, "POLICY_SIDE_EFFECT_MISMATCH", "File changes require supervised or stronger policy"));
   if (hasExternalEffect(value.side_effects) && value.approval_required !== true) errors.push(issue(`${path}.approval_required`, "APPROVAL_REQUIRED", "External side effects require approval"));
 }
 function validateTerminalReason(value, errors) {
@@ -184,13 +185,18 @@ function assertValidBlockerReport(report) {
 function noAlternativeReason(category, context = {}) {
   return { why: `No safe applicable alternative was identified for ${category}`, required_external_action: redactText(String(context.required_external_action || "Operator investigation and explicit decision are required")), user_command: context.user_command ? redactText(String(context.user_command)) : null, resume_conditions: redactText(String(context.resume_conditions || "Provide new redacted evidence and verify the blocker condition has cleared")) };
 }
-function isAlternativeAutonomousSafe(alternativePlan, policy = "safe") {
-  if (!alternativePlan || alternativePlan.applicable !== true || alternativePlan.approval_required === true) return false;
-  if (policy !== "safe" || alternativePlan.execution_policy !== "safe") return false;
-  return alternativePlan.side_effects.length === 0;
+function isAlternativeAutonomousSafe(alternativePlan, policy = "safe", options = {}) {
+  if (!alternativePlan || alternativePlan.applicable !== true) return false;
+  const policyValue = /** @type {any} */ (policy);
+  const mode = normalizeMode(typeof policyValue === "string" ? policyValue : policyValue?.mode).mode;
+  if (mode === "safe") return alternativePlan.approval_required !== true && alternativePlan.execution_policy === "safe" && alternativePlan.side_effects.length === 0;
+  const capabilities = capabilitiesForSideEffects(alternativePlan.side_effects);
+  if (capabilities.length === 0) return resolveExecutionPolicy({ mode, capabilities: ["verify"], explicit_confirmation: options.explicit_confirmation === true, auto_accept: options.auto_accept === true, actor: options.actor, source: "internal" }).allowed;
+  const decision = resolveExecutionPolicy({ mode, capabilities, explicit_confirmation: options.explicit_confirmation === true, auto_accept: options.auto_accept === true, actor: options.actor, source: "internal" });
+  return decision.allowed;
 }
 function buildApprovalRequest(report, alternativePlan, context = {}) {
-  if (!alternativePlan || alternativePlan.execution_policy === "never_autonomous") return null;
+  if (!alternativePlan || ["never_autonomous", "always_blocked"].includes(alternativePlan.execution_policy)) return null;
   return {
     type: "goal_alternative_approval_request",
     blocker_id: report?.blocker_id || null,
@@ -205,10 +211,11 @@ function buildApprovalRequest(report, alternativePlan, context = {}) {
 }
 function selectAlternative(report, options = {}) {
   const policy = options.execution_policy?.mode || options.execution_policy || "safe";
+  const policyOptions = { explicit_confirmation: options.explicit_confirmation === true, auto_accept: options.auto_accept === true, actor: options.actor };
   const repeated = new Set([...(options.used_alternative_ids || []), ...(options.usedAlternativeIds || [])]);
   const usedPatches = new Set([...(options.used_patch_signatures || []), ...(options.usedPatchSignatures || [])]);
   const candidates = (report?.alternatives || []).filter(item => !repeated.has(item.alternative_id) && item.applicable !== false);
-  const safe = candidates.find(item => isAlternativeAutonomousSafe(item, policy));
+  const safe = candidates.find(item => isAlternativeAutonomousSafe(item, policy, policyOptions));
   if (safe) return { status: "selected", alternative: safe, requires_approval: false, approval_request: null, reason: "safe alternative permitted by the current execution policy" };
   const approval = candidates.find(item => item.approval_required === true || hasExternalEffect(item.side_effects));
   if (approval) return { status: "approval_required", alternative: approval, requires_approval: true, approval_request: buildApprovalRequest(report, approval, options), reason: "alternative requires approval or an external side effect" };

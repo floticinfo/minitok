@@ -80,6 +80,18 @@ test("goal pause/resume/cancel preserve the session and distinguish states", asy
   } finally { box.clean(); }
 });
 
+test("unrestricted goal mode requires explicit confirmation, auto_accept scope, and capabilities", async () => {
+  const box = sandbox();
+  try {
+    box.runtime.permissions = new Set(["read", "write", "verify_exec"]);
+    const denied = await box.call("minitok_goal_start", { goal: "goal test", repo: box.root, goal_spec: validSpec("goal-unrestricted-denied"), mode: "unrestricted", capabilities: ["workspace_write"], explicit_confirmation: true, auto_accept: true });
+    assert.equal(denied.isError, true);
+    box.runtime.permissions.add("auto_accept");
+    const allowed = await box.call("minitok_goal_start", { goal: "goal test", repo: box.root, goal_spec: validSpec("goal-unrestricted-allowed"), mode: "unrestricted", capabilities: ["workspace_write"], explicit_confirmation: true, auto_accept: true });
+    assert.equal(allowed.isError, false);
+  } finally { box.clean(); }
+});
+
 test("autonomous goal mode requires explicit auto_accept permission", async () => {
   const box = sandbox();
   try {

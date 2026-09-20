@@ -8,6 +8,7 @@ const { evaluateGoal: defaultEvaluator, evaluationIsComplete } = require("./eval
 const { runTask: defaultTaskExecutor } = require("./task_executor");
 const { classifyFailure, failureSignature, patchSignature, detectStagnation, createTerminalResult } = require("./failure");
 const { routeRole } = require("./capabilities");
+const { resolveExecutionPolicy } = require("./execution_policy");
 const { recoveryFor, selectBlockerRecovery, buildRecoveryTask } = require("./recovery");
 
 function currentTime(options) { return (options.now || (() => new Date().toISOString()))(); }
@@ -63,6 +64,10 @@ class GoalController {
     this.taskExecutor = options.taskExecutor || defaultTaskExecutor;
     this.taskProposer = options.taskProposer || defaultTaskProposer;
     this.escalationEngine = options.escalationEngine || null;
+    const requestedMode = options.mode || options.execution_policy?.mode || goalSpec.execution_policy?.mode || options.execution_policy || "safe";
+    const requestedCapabilities = options.capabilities || options.execution_capabilities || ["read", "inspect", "verify"];
+    this.policyDecision = resolveExecutionPolicy({ mode: requestedMode, capabilities: requestedCapabilities, explicit_confirmation: options.explicit_confirmation === true, auto_accept: options.auto_accept === true || options.autoAccept === true, source: options.source || "internal", actor: options.actor });
+    this.options = /** @type {Record<string, any>} */ ({ ...options, mode: this.policyDecision.mode, policyDecision: this.policyDecision });
     this.startedAt = currentTime(options);
     const initial = options.initialState || options.session?.state || null;
     const progressState = initial?.progress_state && typeof initial.progress_state === "object" ? initial.progress_state : {};
@@ -135,11 +140,12 @@ class GoalController {
     this.session.state.blocker_reports = this.blockerReports;
     this.session.state.alternative_history = this.alternativeHistory;
     this.session.state.model_routing = this.modelRouting;
+    this.session.state.execution_policy = this.policyDecision;
     this.session.state.progress_state = { last_fingerprint: this.lastFingerprint, stagnant_cycles: this.stagnantCycles, current_progress: this.currentProgress || 0, previous_progress: this.previousProgress || 0 };
     this.session.state.token_usage = this.tokenUsage;
     this.session.state.model = this.options.model || this.session.state.model;
     this.session.state.provider = this.options.provider || this.session.state.provider;
-    this.session.state.final_outcome = this.state === "completed" || ["escalate", "blocked", "failed", "timeout", "token_limit", "stagnation", "repetition", "verification_required"].includes(this.state) ? { state: this.state, completed: this.state === "completed", cycle_count: this.cycleCount, selected_alternative: this.alternativeHistory.at(-1)?.alternative_id || null } : this.session.state.final_outcome || null;
+    this.session.state.final_outcome = this.state === "completed" || ["escalate", "blocked", "failed", "timeout", "token_limit", "max_cycles", "stagnation", "repetition", "verification_required"].includes(this.state) ? { state: this.state, completed: this.state === "completed", cycle_count: this.cycleCount, selected_alternative: this.alternativeHistory.at(-1)?.alternative_id || null } : this.session.state.final_outcome || null;
     saveGoalSession(this.session);
     appendGoalEvent(this.session, { type: eventType, state: this.session.state.status, cycle: this.cycleCount, current_task: this.currentTask });
   }
@@ -235,7 +241,7 @@ class GoalController {
       affected_step: task,
       evidence: result?.evidence || result?.cycle_evidence || [],
       retryable: failureRecord.failure_category === "timeout" || failureRecord.failure_category === "environment_failure",
-      execution_policy: this.options.execution_policy || this.goal.execution_policy,
+      execution_policy: this.options.mode || this.options.execution_policy || this.goal.execution_policy,
       command: result?.verification?.command,
     });
     this.blockerReports.push(report);
@@ -244,7 +250,10 @@ class GoalController {
       if (escalation.humanEscalation) this.actionHistory.push({ cycle: this.cycleCount, action: "human_escalation_required", blocker_id: report.blocker_id, reason: escalation.reason });
     }
     const selection = selectBlockerRecovery(report, {
-      execution_policy: this.options.execution_policy || this.goal.execution_policy,
+      execution_policy: this.options.mode || this.options.execution_policy || this.goal.execution_policy,
+      explicit_confirmation: this.options.explicit_confirmation === true,
+      auto_accept: this.options.auto_accept === true || this.options.autoAccept === true,
+      actor: this.options.actor,
       used_alternative_ids: this.alternativeHistory.map(item => item.alternative_id).filter(Boolean),
       used_patch_signatures: this.taskHistory.map(item => item.patch_signature).filter(Boolean),
     });

@@ -238,7 +238,21 @@ protected_path_write
 
 `workspace_write`, `local_mutation`, `external_call`, `credential_use`, `publish`, `deploy`, `database_mutation`, `force_push`, `tag_overwrite`는 기본적으로 `approval_required`이며 명시적 unrestricted 권한이 있을 때만 resolver가 자동 승인을 검토할 수 있다. `protected_path_write`는 `always_blocked`이며 unrestricted에서도 허용하지 않는다. private key 원문 노출, credential 값·authorization header·password·token 로그 출력, approval 우회는 항상 차단되는 operation으로 분류한다.
 
-알 수 없는 capability, 중복 capability, 빈 capability 및 dangerous object key는 fail closed한다. 이 Phase에서는 contract와 validation만 추가하며 실제 CLI/MCP 실행 resolver 연결과 unrestricted 실행은 다음 Phase의 책임이다.
+알 수 없는 capability, 중복 capability, 빈 capability 및 dangerous object key는 fail closed한다.
+
+### Phase 2 공통 Execution Policy Resolver
+
+CLI, MCP, GoalController와 Blocker alternative selection은 `src/goal/execution_policy.js`의 동일 resolver를 사용한다. resolver 입력은 mode, capability grant, explicit confirmation, auto-accept, source, actor이며, 출력은 유효 mode, 허용 여부, approval-required capability, denied capability, always-blocked capability, 비밀값 없는 audit context를 포함한다.
+
+- mode 누락은 `safe`다.
+- `safe`는 read/inspect/verify만 자동 허용하고 mutation/external capability는 차단한다.
+- `supervised`는 workspace/local mutation을 명시적 confirmation 후 허용한다.
+- `authorized_external`은 명시적 confirmation과 필요한 credential presence 후 외부 capability를 허용한다.
+- `unrestricted`는 명시 mode, explicit confirmation, auto-accept 권한, capability grant가 모두 있어야 하며 approval-required capability를 자동 진행할 수 있다.
+- `always_blocked`와 unknown capability는 모든 mode에서 거부한다.
+- legacy `workspace`/`autonomous`는 compatibility alias로만 처리하며 unrestricted 권한을 암묵적으로 부여하지 않는다.
+
+resolver 결과는 session state와 blocker decision에 기록되지만 credential 값, private key, authorization header, password, token은 기록하지 않는다. mode와 resolver가 허용하더라도 path traversal, workspace 경계 탈출, protected path, 실행 파일/검증기 변조 방지는 별도 무결성 계층에서 계속 적용한다.
 
 ### CLI/MCP/runtime parity
 

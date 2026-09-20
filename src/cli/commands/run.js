@@ -4,6 +4,7 @@ const { WorkspaceManager } = require("../../workspace/manager");
 const { runPipeline } = require("../../pipeline/loop");
 const { normalizeProvider } = require("../../auth/aliases");
 const { PREAUTHORIZED } = require("../../pipeline/authorization");
+const { resolveExecutionPolicy } = require("../../goal/execution_policy");
 const path = require("path");
 
 function classifyProviderHealth(name, available, health) {
@@ -14,7 +15,13 @@ function classifyProviderHealth(name, available, health) {
   return "error";
 }
 
-async function cmdRun(task, opts) {
+async function cmdRun(task, opts = {}) {
+  const requestedCapabilities = typeof opts.capabilities === "string" ? opts.capabilities.split(",").map(item => item.trim()).filter(Boolean) : opts.capabilities;
+  const policyDecision = opts.mode ? resolveExecutionPolicy({ mode: opts.mode, capabilities: requestedCapabilities, explicit_confirmation: opts.explicitConfirmation === true, auto_accept: opts.autoAccept === true, source: "cli", actor: opts.actor }) : null;
+  if (policyDecision && !policyDecision.allowed && !policyDecision.approval_required) {
+    console.error(`Execution policy denied: ${policyDecision.reason}`);
+    return 1;
+  }
   if (!task) {
     console.error("Error: Task description required.\n\nUsage: minitok run \"Fix authentication bug\"");
     return 1;
@@ -158,7 +165,7 @@ async function cmdRun(task, opts) {
       evidencePath: typeof opts.evidencePath === "string" ? opts.evidencePath : undefined,
       runId: typeof opts.runId === "string" ? opts.runId : undefined,
       signal: opts.signal,
-      autoAccept: opts.autoAccept,
+      autoAccept: policyDecision ? policyDecision.allowed === true && opts.autoAccept === true : opts.autoAccept === true,
       providerOverride: opts.providerOverride,
       codingAdapter: opts.codingAdapter,
       researchAdapter: opts.researchAdapter,
