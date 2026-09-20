@@ -3,12 +3,14 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const { expandGoal } = require("../src/goal/expansion");
 const { createGoalPlan, validateGoalPlan } = require("../src/goal/plan");
 const { BLOCKER_CATEGORIES, createBlockerReport, normalizeAlternative, selectAlternative, buildApprovalRequest } = require("../src/goal/blocker");
 const { GoalController } = require("../src/goal/controller");
 const { createGoalSpec } = require("../src/goal/spec");
+const { createGoalSession, loadGoalSession, releaseGoalSessionLock, goalSessionPaths } = require("../src/goal/session");
 
 function context(allowed = ["src", "tests"]) { return { repository_odd: { allowed_paths: allowed, blocked_paths: [".git"], protected_paths: ["VERIFY_CMD.mjs"], allow_external: false } }; }
 function expansionInput(objective, criteria = [{ id: "goal", description: "Goal is verified", required: true }], extra = {}) { return { objective, success_criteria: criteria, repository_context: context(), execution_policy: "safe", ...extra }; }
@@ -64,11 +66,18 @@ test("permission and publish blockers expose approval/manual action without exec
   const approval = permission.alternatives.find(item => item.alternative_id === "user-approval");
   assert.equal(approval.approval_required, true);
   assert.equal(approval.execution_policy, "authorized_external");
+  const selected = selectAlternative(permission, { execution_policy: "safe", used_alternative_ids: ["scope-replan"] });
+  assert.equal(selected.status, "approval_required");
+  assert.equal(selected.alternative.alternative_id, "user-approval");
+  assert.deepEqual(selected.approval_request.required_permissions, ["approval"]);
+  assert.match(selected.approval_request.resume_action, /minitok_goal_resume/);
+
   const publish = normalizeAlternative({ alternative_id: "publish", description: "Publish package", rationale: "release", expected_benefit: "publication", risk_level: "critical", side_effects: ["publish"], required_permissions: ["approval"], estimated_cost: "high", reversible: false, verification_plan: { type: "publication_check" }, applicable: true });
-  const request = buildApprovalRequest({ blocker_id: "blocker-test" }, publish);
+  const request = buildApprovalRequest({ blocker_id: "blocker-test" }, publish, { resume_action: "After the operator publishes the approved artifact, call minitok_goal_resume and run the publication check." });
   assert.equal(request.approval_required, true);
   assert.equal(request.execution_policy, "authorized_external");
-  assert.match(request.resume_action, /resume/);
+  assert.equal(request.required_permissions[0], "approval");
+  assert.match(request.resume_action, /operator publishes.*minitok_goal_resume.*publication check/i);
   assert.doesNotMatch(JSON.stringify(request), /token|password|api.?key|private.?key/i);
 });
 
@@ -90,6 +99,22 @@ test("does not repeat alternatives and escalates after safe candidates are exhau
   assert.equal(second.alternative, null);
 });
 
+test("exhausted blocker alternatives escalate to a human instead of retrying", async () => {
+  const goal = goalSpec();
+  const result = await new GoalController(goal, {
+    initialState: {
+      alternative_history: ["alternate-strategy", "alternate-command", "dry-run", "alternate-provider", "alternate-model"].map(alternative_id => ({ alternative_id })),
+    },
+    evaluator: async () => ({ goal_id: goal.goal_id, completed: false, criteria: [{ id: "a", status: "failed", evidence_ids: [] }], remaining_criteria: ["a"], unknown_criteria: [], evidence: [] }),
+    taskProposer: async () => ({ next_task: "verify", target_criteria: ["a"] }),
+    taskExecutor: async () => ({ success: false, status: "failure", error: "test failed", stage: "verify", tokens: {} }),
+  }).run();
+  assert.equal(result.state, "escalate");
+  assert.equal(result.human_escalation_required, true);
+  assert.equal(result.alternative_history.at(-1).status, "escalate");
+  assert.match(result.alternative_history.at(-1).resume_action, /minitok_goal_resume/);
+});
+
 test("blocks publish/deploy, force push, tag overwrite, and unapproved workspace changes", () => {
   for (const phrase of ["npm publish", "deploy to staging", "force push", "overwrite tag", "expose private key"]) {
     const alternative = normalizeAlternative({ alternative_id: phrase.replace(/\W/g, "-"), description: phrase, rationale: "unsafe", expected_benefit: "unsafe", risk_level: "critical", side_effects: ["external_call"], execution_policy: "never_autonomous", required_permissions: [], estimated_cost: "unknown", reversible: false, verification_plan: {}, applicable: true });
@@ -104,16 +129,33 @@ test("blocks publish/deploy, force push, tag overwrite, and unapproved workspace
 test("redacts credentials and preserves successful alternative evidence in controller output", async () => {
   let calls = 0;
   const goal = goalSpec();
-  const result = await new GoalController(goal, {
-    execution_policy: "safe",
-    evaluator: async () => ({ goal_id: goal.goal_id, completed: calls > 1, criteria: [{ id: "a", status: calls > 1 ? "passed" : "failed", evidence_ids: ["e1"], reason: "state" }], evidence: [{ evidence_id: "e1", valid: calls > 1, executed: true, execution: { executed: true }, stderr: "token=hidden" }], remaining_criteria: calls > 1 ? [] : ["a"], unknown_criteria: [] }),
-    taskProposer: async () => ({ next_task: "verify", target_criteria: ["a"] }),
-    taskExecutor: async () => { calls += 1; return calls === 1 ? { success: false, status: "failure", error: "connection reset", stage: "verify", tokens: {} } : { success: true, status: "success", tokens: {} }; },
-  }).run();
-  assert.equal(result.completed, true);
-  assert.ok(result.blocker_reports.length > 0);
-  assert.ok(result.alternative_history.some(item => item.verification_status === "passed"));
-  assert.doesNotMatch(JSON.stringify(result), /token=hidden/);
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-phase8-evidence-"));
+  let session;
+  try {
+    session = createGoalSession({ workspaceRoot: root, goalSpec: goal });
+    const result = await new GoalController(goal, {
+      session,
+      releaseSessionOnExit: true,
+      execution_policy: "safe",
+      evaluator: async () => ({ goal_id: goal.goal_id, completed: calls > 1, criteria: [{ id: "a", status: calls > 1 ? "passed" : "failed", evidence_ids: ["e1"], reason: "state" }], evidence: [{ evidence_id: "e1", valid: calls > 1, executed: true, execution: { executed: true }, stderr: "token=hidden" }], remaining_criteria: calls > 1 ? [] : ["a"], unknown_criteria: [] }),
+      taskProposer: async () => ({ next_task: "verify", target_criteria: ["a"] }),
+      taskExecutor: async () => { calls += 1; return calls === 1 ? { success: false, status: "failure", error: "connection reset", stage: "verify", tokens: {} } : { success: true, status: "success", tokens: {} }; },
+    }).run();
+    assert.equal(result.completed, true);
+    assert.ok(result.blocker_reports.length > 0);
+    assert.ok(result.alternative_history.some(item => item.verification_status === "passed"));
+    assert.doesNotMatch(JSON.stringify(result), /token=hidden/);
+
+    const loaded = loadGoalSession(root, goal.goal_id);
+    const stateText = fs.readFileSync(goalSessionPaths(root, goal.goal_id).state, "utf8");
+    assert.ok(loaded.state.resolution_attempts.length > 0);
+    assert.ok(loaded.state.evidence_refs.includes("e1"));
+    assert.doesNotMatch(stateText, /token=hidden/);
+    releaseGoalSessionLock(loaded);
+  } finally {
+    session?.lock?.release?.();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("existing isolation and security test modules remain available", () => {
