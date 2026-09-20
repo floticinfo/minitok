@@ -42,3 +42,17 @@ Phase 10의 Goal Compiler는 자연어 목표를 임의로 성공 조건으로 �
 ## Out of scope
 
 이번 Phase 10에서도 새로운 provider, browser/database runtime, deployment engine, external telemetry backend, autonomous write capability를 추가하지 않았다. 실제 환경 benchmark는 별도 승인된 opt-in phase가 필요하다.
+
+## Unrestricted 운영 한계와 사용자 위험
+
+`unrestricted`는 기본 비활성이고 사용자의 명시적 mode/confirmation/config allowlist가 필요한 opt-in 모드다. allowlist가 넓거나 목표가 부정확하면 workspace 변경, 외부 호출, publish/deploy, database mutation, force push, tag overwrite가 승인 대기 없이 실행될 수 있다. 운영자는 먼저 `safe` 또는 `supervised`로 verifier와 scope를 확인하고 최소 capability만 허용해야 한다.
+
+`workspace_write`, `external_call`, `credential_use`, `publish`, `deploy`, `database_mutation`, `force_push`, `tag_overwrite`는 독립 capability다. 설정에 포함되지 않은 capability는 unrestricted에서도 거부된다. `always_blocked` (always-blocked) 작업은 어떤 mode에서도 실행하지 않으며, path traversal, workspace escape, dangerous object key, protected path/verifier tampering, private key 또는 secret logging이 여기에 포함된다.
+
+resume은 저장된 unrestricted 정책을 자동 신뢰하지 않는다. CLI/MCP 호출자는 mode, confirmation, capability와 필요한 auto-accept 권한을 다시 제출해야 하며, checkpoint 이후 파일 변경이 있으면 read-only verification gate를 먼저 통과해야 한다.
+
+모든 risk execution에는 preflight/final audit가 필요하다. 기본 audit fallback은 사용자 home의 `~/.minitok/audit.jsonl`이며, `auditPath`를 지정한 실행·테스트에서는 repository-local 파일을 사용할 수 있고 session state에도 redacted audit reference가 남는다. credential 값, private key 원문, authorization header, password, token, URL query/userinfo와 adapter raw result는 evidence·응답·로그에 남기지 않는다. redaction은 운영자가 비밀값을 입력하거나 외부 adapter가 별도 로그를 남기는 것을 방지하는 대체 수단이 아니다.
+
+현재 unrestricted adapter는 injected/mock 계약을 검증하는 단계다. 실제 production registry, cloud, database, browser, SCM 시스템의 가용성·권한·롤백·비용은 검증하지 않았다. production 연결은 별도 승인과 dry-run/integration 검증이 필요하다.
+
+safe로 복귀하려면 새 CLI/MCP 요청에 `mode: safe`를 명시하고 unrestricted capability와 auto-accept를 제거한다. 이전 unrestricted session state만 읽어서는 재실행되지 않는다.

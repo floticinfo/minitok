@@ -43,3 +43,21 @@ legacy task / goal input
 ## 모델 교체
 
 모델 이름이 아니라 capability contract(`structured_output`, `tool_calling`, `repository_navigation`, `code_editing`, `error_recovery`, `long_horizon`)로 역할 적합성을 평가한다. 반복 실패 시 recovery policy가 더 강한 capability 모델을 선택하고, 후보가 없으면 escalate한다.
+
+## Phase 10 운영 계약과 runtime parity
+
+정책 resolver의 canonical mode는 `safe`, `supervised`, `authorized_external`, `unrestricted`, `always_blocked`다. legacy `never_autonomous`는 `always_blocked` compatibility alias로 normalize되며, 단순 승인 대기 작업은 `approval_required` 상태로 표현한다.
+
+`src/goal/execution_policy.js`가 CLI와 MCP의 공통 resolver이고, `src/goal/risk_execution.js`가 allowlisted injected adapter와 integrity gate를 연결한다. `src/goal/execution_audit.js`는 preflight/final redacted audit와 fail-closed persistence를 담당한다. extension runtime은 대응하는 `extension/runtime/src/goal/` 및 `extension/runtime/src/mcp/` 구현을 유지하며 `npm run stage2:parity`와 runtime sync/parity 검증으로 drift를 확인한다.
+
+unrestricted execution은 다음 교집합으로만 허용된다.
+
+```text
+explicit mode + confirmation + configured capability allowlist
++ required runtime permission + credential presence (when required)
++ workspace/integrity validation + persisted preflight audit
+```
+
+어느 하나라도 실패하면 adapter와 후속 executor를 호출하지 않는다. path traversal, workspace escape, dangerous key, protected path/verifier tampering, secret/private-key logging 및 `always_blocked` (always-blocked) operation은 mode와 무관하게 차단된다. audit에는 safe relative path와 URL protocol/hostname/port/pathname만 남기고 민감한 query/userinfo/raw result는 제거한다.
+
+runtime parity는 기능을 production에 연결했다는 뜻이 아니다. 현재 adapter는 injected/mock 중심이며 실제 registry, cloud, database, browser, SCM production 동작은 별도 승인된 integration 단계의 대상이다.

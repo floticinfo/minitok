@@ -45,3 +45,54 @@ npm run test:packed-install
 ```
 
 각 결과에서 기존 worktree 오류와 이번 변경 오류를 분리한다. 외부 service, cloud, production database, browser 자동화는 기본 benchmark와 회귀 suite에서 실행하지 않는다.
+
+## Unrestricted 운영 runbook
+
+### 1. 시작 전 점검
+
+1. 목표와 required criterion, verifier, allowed path를 확인한다.
+2. 먼저 `safe` 또는 `supervised`로 read-only 관찰과 검증을 수행한다.
+3. unrestricted가 정말 필요한 side effect인지 확인한다.
+4. `minitok.yml`의 `goal.unrestricted.enabled`와 최소 capability allowlist를 review한다.
+5. `always_blocked` (always-blocked), protected path, verifier tampering, workspace boundary 조건을 확인한다.
+
+### 2. 명시적 실행
+
+CLI에서는 `--mode unrestricted --confirm-unrestricted --auto-accept`와 필요한 반복 `--capability`만 전달한다. MCP에서는 `mode: "unrestricted"`, `confirm_unrestricted: true`, 필요한 `capabilities`를 전달하고 unrestricted runtime permission을 확인한다. `publish`, `deploy`, `database_mutation`, `force_push`, `tag_overwrite`, `credential_use`는 각자 별도 allowlist 항목이다.
+
+### 3. 실행 중 확인
+
+- preflight audit가 persistence된 뒤에만 adapter가 호출된다.
+- audit persistence 실패는 adapter와 후속 task executor를 모두 차단한다.
+- status 응답의 policy decision, granted/denied capability, blocker, verification result를 확인한다.
+- credential 값과 raw provider/adapter response를 복사하거나 출력하지 않는다.
+
+### 4. Pause/resume
+
+pause 후에는 `<repository>/.minitok/goals/<goal_id>/state.json`, `events.jsonl`, `evidence/`와 기본 audit 경로 `~/.minitok/audit.jsonl` 또는 실행 시 지정한 `auditPath`의 redacted 상태를 확인한다. resume 시 unrestricted 정책을 자동 상속하지 않으므로 mode, confirmation, capability, auto-accept를 다시 제출한다. checkpoint tracked file이 바뀌었으면 read-only verifier 통과 전에는 executor를 호출하지 않는다.
+
+### 5. 중단과 safe 복귀
+
+위험 신호가 있으면 즉시 pause 또는 cancel하고, 새 요청은 `mode: safe`로 시작한다. unrestricted capability와 `--auto-accept`를 제거하고, 외부 target과 변경 path를 재검토한 뒤 필요하면 supervised approval로 전환한다.
+
+### 6. 검증 범위
+
+현재 운영 검증은 injected/mock adapter와 dry-run이다. production publish/deploy/database/SCM 호출은 실행하지 않는다. production adapter를 도입할 때도 동일한 policy resolver, integrity gate, secret redaction, preflight/final audit persistence와 rollback/observability 계약을 먼저 검증해야 한다.
+
+## 문서화된 운영 검증 명령
+
+```text
+npm test
+npm run lint
+npm run typecheck
+npm run typecheck:extension
+npm run docs:check
+npm run check:mcp-registry
+npm run check:version-metadata
+npm run stage2:parity
+npm run test:e2e:goal
+npm pack --dry-run
+npm run test:packed-install
+```
+
+`stage2:parity`와 기본 E2E는 production에 접속하지 않는다. production evidence가 필요하면 별도 승인된 harness와 명시적인 live gate를 사용하고, 그 결과를 mock 검증 결과와 혼동하지 않는다.

@@ -232,3 +232,20 @@ Operator manual checks before any mutation:
 3. Stage only the approved release candidate files and review the staged diff.
 4. Create the approved release commit, then run `npm run release:manifest:generate`, `npm run release:manifest`, and `npm run release:check`.
 5. Create the required `v1.4.6` tag only after manifest validation; push remains a separately approved operation.
+
+## Phase 10 unrestricted 문서/readiness gate
+
+문서화된 운영 계약도 release readiness의 일부로 검토한다.
+
+- 기본 mode가 `safe`이고 unrestricted가 config에서 기본 비활성인지 확인한다.
+- CLI와 MCP 예시가 `mode`, explicit confirmation, capability allowlist와 resume 재확인을 명시하는지 확인한다.
+- `always_blocked` (always-blocked)와 integrity boundary가 unrestricted에서도 유지된다고 명시하는지 확인한다.
+- audit evidence 위치(`~/.minitok/audit.jsonl` 기본 fallback 또는 지정한 `auditPath`, Goal Session state/evidence)와 redaction 범위를 문서와 구현이 일치하게 설명하는지 확인한다.
+- mock/injected adapter 검증과 production publish/deploy/database/SCM 검증을 구분한다.
+- source와 extension runtime의 policy/audit/MCP 구현이 parity 검사에 통과하는지 확인한다.
+
+이번 단계의 문서와 테스트는 production side effect를 실행하지 않는다. `stage2:parity`, `npm run test:e2e:goal`, packed-install은 local contract/mock 검증이며 production readiness 증거가 아니다. 실제 production 연결은 별도 승인, dry-run, rollback 계획, credential 운영 계획과 live evidence가 필요하다.
+
+### Operator safe rollback
+
+unrestricted session을 안전하게 중단하려면 pause/cancel 후 새 CLI/MCP 요청을 `safe` mode로 시작하고 unrestricted capability와 auto-accept를 제거한다. 저장된 unrestricted state만으로 resume하지 않으며, resume이 필요할 때는 explicit confirmation과 allowlist를 다시 검토한다.

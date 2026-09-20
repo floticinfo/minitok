@@ -508,3 +508,73 @@ minitok goal resume --goal-id <goal_id> --repo <repository> --json
 상태 응답은 state/current_state, blocker, alternatives, recommended_action, approval_required, resume_action/resume_command, evidence, final_outcome을 포함할 수 있다.
 
 `blocked`, `escalated`, `approval_required`, `clarification_required` 상태는 성공으로 숨기지 않는다.
+
+## 11. 현재 운영 가이드: 명시적 unrestricted
+
+`unrestricted`는 기본 모드가 아니며, 사용자가 특정 goal과 capability 범위를 명시적으로 승인한 경우에만 사용하는 opt-in 실행 모드다.
+
+### 기본값과 설정
+
+- CLI와 MCP goal의 기본 mode는 항상 `safe`다.
+- `goal.unrestricted.enabled: true`가 없거나 false이면 unrestricted는 비활성이다.
+- `auto_accept`만 전달하거나 legacy `autonomous`를 사용하는 것만으로 unrestricted가 활성화되지 않는다.
+- unrestricted에는 mode 명시, explicit confirmation, 설정 allowlist, 필요한 auto-accept 권한이 모두 필요하다.
+- credential은 값이 아니라 presence boolean만 정책·audit에 반영한다.
+
+```yaml
+# minitok.yml
+goal:
+  unrestricted:
+    enabled: true
+    capabilities:
+      - workspace_write
+      - external_call
+      - publish
+    require_explicit_confirmation: true
+    require_auto_accept: true
+```
+
+`publish`, `deploy`, `database_mutation`, `force_push`, `tag_overwrite`, `credential_use`는 서로 별도의 capability다. 하나를 허용해도 다른 capability가 암묵적으로 허용되지 않는다. `always_blocked` 작업은 allowlist에 적어도 실행할 수 없다.
+
+### CLI 예시
+
+```text
+minitok goal start "Update and publish the package" --repo <repository> \
+  --mode unrestricted \
+  --confirm-unrestricted \
+  --capability workspace_write \
+  --capability publish \
+  --auto-accept
+
+minitok goal status --repo <repository> --goal-id <goal_id> --json
+```
+
+기존 `--capabilities workspace_write,publish` comma-list도 backward compatible하게 유지된다. `--mode unrestricted`와 `--confirm-unrestricted`가 없거나 config allowlist 밖 capability를 요청하면 session/adapter 실행 전에 fail-closed한다.
+
+### MCP 예시
+
+```json
+{
+  "goal": "Update and publish the package",
+  "repo": "C:\\repo",
+  "mode": "unrestricted",
+  "confirm_unrestricted": true,
+  "capabilities": ["workspace_write", "publish"]
+}
+```
+
+MCP는 CLI와 동일한 `src/goal/execution_policy.js` resolver를 사용한다. runtime permission에 unrestricted scope가 없거나 confirmation/config/capability 조건을 충족하지 못하면 실행하지 않는다. 응답의 `execution_mode`, `granted_capabilities`, `denied_capabilities`, `policy_decision`, `audit_id`를 확인한다.
+
+### Resume, audit, safe 복귀
+
+pause/resume 시 저장된 unrestricted state를 자동 신뢰하지 않는다. CLI는 `--mode unrestricted --confirm-unrestricted`와 필요한 capability/`--auto-accept`를 다시 전달해야 하며, MCP도 동일한 mode, confirmation, capability를 새 요청에 포함해야 한다. checkpoint 또는 tracked file이 변경되면 read-only verifier가 먼저 통과해야 한다.
+
+기본 audit fallback은 사용자 home의 `~/.minitok/audit.jsonl`이며, 테스트·주입 adapter는 `auditPath`로 repository-local 경로를 지정할 수 있다. Goal Session의 `state.json`에는 `execution_audits`와 `execution_audit_refs`가 redacted 상태로 보존된다. query/fragment/userinfo, credential 값, private key 원문, authorization header, password, token, raw adapter response는 저장하지 않는다.
+
+안전하게 되돌리려면 새 요청에서 `--mode safe`를 사용하고 unrestricted capability와 `--auto-accept`를 제거한다. 이전 state가 unrestricted였다는 사실만으로 adapter가 재실행되지 않는다.
+
+### Always-blocked와 위험 고지
+
+path traversal, workspace 경계 탈출, dangerous object key, protected path 변경, 실행 파일·검증기 변조, private key/secret logging, `always_blocked` operation은 unrestricted에서도 차단하고 escalation한다. unrestricted를 켜면 allowlist에 포함된 파일 변경, 외부 호출, publish/deploy 및 기타 mutation이 승인 대기 없이 실행될 수 있어 데이터 손실, 비용 발생, 배포, branch history 변경 위험이 있다.
+
+현재 adapter 검증은 injected/mock 또는 dry-run 범위다. 실제 production publish/deploy/database/SCM 성공을 의미하지 않으며, production 연결은 동일한 resolver, integrity gate, redaction, preflight/final audit persistence 계약을 만족하는 별도 승인 단계가 필요하다.
