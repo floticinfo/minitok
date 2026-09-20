@@ -1,5 +1,7 @@
 "use strict";
 
+const { selectAlternative } = require("./blocker");
+
 const STRATEGIES = Object.freeze({
   model_output_invalid: { action: "structured_retry", role: "plan", detail: "Request the same intent using strict structured output" },
   planning_error: { action: "replan", role: "plan", detail: "Rebuild the plan from the failure evidence" },
@@ -13,6 +15,7 @@ const STRATEGIES = Object.freeze({
   unknown: { action: "escalate", role: "recovery", detail: "Failure cause is unknown; require escalation" },
 });
 function recoveryFor(category) { return STRATEGIES[category] || STRATEGIES.unknown; }
+function selectBlockerRecovery(blockerReport, options = {}) { return selectAlternative(blockerReport, options); }
 function buildRecoveryTask(failure, context = {}) {
   const strategy = recoveryFor(failure.failure_category || "unknown");
   const priorTasks = new Set(context.previous_tasks || []);
@@ -21,4 +24,4 @@ function buildRecoveryTask(failure, context = {}) {
   const suffix = priorTasks.has(base) || (failure.patch_signature && priorPatches.has(failure.patch_signature)) ? " Use a different implementation strategy and do not repeat the previous patch." : "";
   return `${base}. ${strategy.detail}. Failure: ${String(failure.error || "unknown").slice(0, 500)}${suffix}`;
 }
-module.exports = { STRATEGIES, recoveryFor, buildRecoveryTask };
+module.exports = { STRATEGIES, recoveryFor, selectBlockerRecovery, buildRecoveryTask };

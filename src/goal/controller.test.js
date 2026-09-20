@@ -379,3 +379,48 @@ test("GoalController releases an owned session lock after an executor exception"
     resumed.lock?.release?.();
   } finally { session.lock?.release?.(); fs.rmSync(root, { recursive: true, force: true }); }
 });
+
+test("diagnoses a blocker, selects a safe alternative, and records verification evidence", async () => {
+  const goal = spec([criterion("a")], { max_cycles: 3, same_failure_limit: 3 });
+  let calls = 0;
+  const controller = new GoalController(goal, {
+    execution_policy: "safe",
+    evaluator: async () => result(goal.goal_id, [["a", calls > 1 ? "passed" : "failed"]]),
+    taskProposer: async () => ({ next_task: "initial", target_criteria: ["a"] }),
+    taskExecutor: async task => { calls += 1; return calls === 1 ? { success: false, status: "failure", error: "connection reset", stage: "verify", evidence: [{ evidence_id: "e-blocker", valid: true }], tokens: {} } : { success: true, status: "success", tokens: {} }; },
+  });
+  const output = await controller.run();
+  assert.equal(output.completed, true);
+  assert.equal(output.blocker_reports.length, 1);
+  assert.equal(output.blocker_reports[0].category, "network_failure");
+  assert.equal(output.alternative_history[0].status, "selected");
+  assert.equal(output.alternative_history[0].verification_status, "passed");
+  assert.equal(output.alternative_history[0].execution_status, "completed");
+});
+
+test("does not autonomously execute credential alternatives and escalates", async () => {
+  const goal = spec([criterion("a")], { max_cycles: 3 });
+  let calls = 0;
+  const controller = new GoalController(goal, {
+    execution_policy: "safe",
+    evaluator: async () => result(goal.goal_id, [["a", "failed"]]),
+    taskProposer: async () => ({ next_task: "auth task", target_criteria: ["a"] }),
+    taskExecutor: async () => { calls += 1; return { success: false, status: "failure", error: "authentication failed", stage: "work", tokens: {} }; },
+  });
+  const output = await controller.run();
+  assert.equal(calls, 2);
+  assert.equal(output.state, "escalate");
+  assert.equal(output.alternative_history[0].alternative_id, "local-validation");
+  assert.equal(output.alternative_history[0].status, "selected");
+  assert.equal(output.alternative_history.at(-1).status, "approval_required");
+  assert.equal(output.blocker_reports[0].requires_user_decision, true);
+});
+
+test("skips a previously selected alternative and escalates when all safe alternatives are exhausted", async () => {
+  const goal = spec([criterion("a")], { max_cycles: 4, same_failure_limit: 4 });
+  const initialState = { status: "running", alternative_history: [{ alternative_id: "retry-backoff", status: "selected", execution_status: "failed" }], task_history: [{ task: "old", status: "failure", success: false, patch_signature: "old" }], evaluator_results: [result(goal.goal_id, [["a", "failed"]])] };
+  const controller = new GoalController(goal, { initialState, execution_policy: "safe", evaluator: async () => result(goal.goal_id, [["a", "failed"]]), taskProposer: async () => ({ next_task: "retry", target_criteria: ["a"] }), taskExecutor: async () => ({ success: false, status: "failure", error: "connection reset", stage: "verify", tokens: {} }) });
+  const output = await controller.run();
+  assert.equal(output.alternative_history.some(item => item.alternative_id === "retry-backoff" && item.status === "selected"), true);
+  assert.equal(output.alternative_history.at(-1).alternative_id !== "retry-backoff", true);
+});

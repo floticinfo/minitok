@@ -2,7 +2,8 @@
 
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { recoveryFor, buildRecoveryTask } = require("./recovery");
+const { recoveryFor, selectBlockerRecovery, buildRecoveryTask } = require("./recovery");
+const { createBlockerReport } = require("./blocker");
 
 test("selects separated recovery strategies by failure category", () => {
   assert.equal(recoveryFor("model_output_invalid").action, "structured_retry");
@@ -11,6 +12,13 @@ test("selects separated recovery strategies by failure category", () => {
   assert.equal(recoveryFor("environment_failure").action, "reobserve_environment");
   assert.equal(recoveryFor("permission_blocked").action, "escalate_approval");
   assert.equal(recoveryFor("repeated_failure").action, "switch_model");
+});
+
+test("selects blocker recovery through the existing recovery boundary", () => {
+  const report = createBlockerReport({ category: "network_failure", stage: "verify", cause: "connection reset", affected_step: "check" });
+  const selected = selectBlockerRecovery(report, { execution_policy: "safe" });
+  assert.equal(selected.status, "selected");
+  assert.equal(selected.alternative.alternative_id, "retry-backoff");
 });
 
 test("does not repeat the same patch in a recovery task", () => {

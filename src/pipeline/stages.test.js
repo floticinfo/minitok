@@ -10,7 +10,7 @@ const { verifyCommand } = require("./check");
 const { plan } = require("./planner");
 const { implement } = require("./implementer");
 const { verify } = require("./verifier");
-const { buildRepairTask } = require("./repair");
+const { buildRepairTask, buildBlockerRepairTask } = require("./repair");
 const { approvalRequest, validateApprovalResponse, writeApprovalRequest, buildRoleOptions, summarizeRunOutcome } = require("./loop");
 
 describe("Pipeline stages", () => {
@@ -121,6 +121,13 @@ describe("Pipeline stages", () => {
     assert.match(task, /original goal/);
     assert.match(task, /fix this/);
     assert.match(task, /failed test/);
+  });
+
+  it("builds a redacted blocker repair task without executing an alternative", () => {
+    const task = buildBlockerRepairTask("original goal", { category: "verification_failure", stage: "verify", cause: "token=hidden", affected_step: "tests", recommended_alternative: "dry-run", alternatives: [{ alternative_id: "dry-run", description: "Run a dry-run", risk_level: "low", approval_required: false, reversible: true }] });
+    assert.match(task, /Blocker diagnosis: verification_failure/);
+    assert.match(task, /dry-run/);
+    assert.doesNotMatch(task, /hidden/);
   });
 
   it("rejects forged nonce and substituted run responses", () => {

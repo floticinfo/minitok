@@ -1,12 +1,13 @@
 "use strict";
 
 const { expandGoal } = require("./expansion");
+const { createBlockerReport } = require("./blocker");
 const { assertValidGoalSpec } = require("./validator");
 const { evaluateGoal: defaultEvaluator, evaluationIsComplete } = require("./evaluator");
 const { runTask: defaultTaskExecutor } = require("./task_executor");
 const { classifyFailure, failureSignature, patchSignature, detectStagnation, createTerminalResult } = require("./failure");
 const { routeRole } = require("./capabilities");
-const { recoveryFor, buildRecoveryTask } = require("./recovery");
+const { recoveryFor, selectBlockerRecovery, buildRecoveryTask } = require("./recovery");
 
 function currentTime(options) { return (options.now || (() => new Date().toISOString()))(); }
 function elapsedMs(startedAt, now) { return Math.max(0, new Date(now).getTime() - new Date(startedAt).getTime()); }
@@ -60,6 +61,7 @@ class GoalController {
     this.evaluator = options.evaluator || defaultEvaluator;
     this.taskExecutor = options.taskExecutor || defaultTaskExecutor;
     this.taskProposer = options.taskProposer || defaultTaskProposer;
+    this.escalationEngine = options.escalationEngine || null;
     this.startedAt = currentTime(options);
     const initial = options.initialState || options.session?.state || null;
     const progressState = initial?.progress_state && typeof initial.progress_state === "object" ? initial.progress_state : {};
@@ -84,6 +86,8 @@ class GoalController {
       if (failure.failure_category) this.failureCategoryCounts.set(failure.failure_category, (this.failureCategoryCounts.get(failure.failure_category) || 0) + 1);
     }
     this.recoveryHistory = Array.isArray(initial?.recovery_history) ? initial.recovery_history : [];
+    this.blockerReports = Array.isArray(initial?.blocker_reports) ? initial.blocker_reports : [];
+    this.alternativeHistory = Array.isArray(initial?.alternative_history) ? initial.alternative_history : [];
     this.activeRecovery = null;
     this.modelRouting = Array.isArray(initial?.model_routing) ? initial.model_routing : [];
     this.currentProgress = Number.isFinite(progressState.current_progress) ? progressState.current_progress : progressFromEvaluation(this.evaluation);
@@ -117,6 +121,8 @@ class GoalController {
     this.session.state.evidence_refs = this.evidence.map(item => item.evidence_id).filter(Boolean);
     this.session.state.failure_history = this.failureHistory;
     this.session.state.recovery_history = this.recoveryHistory;
+    this.session.state.blocker_reports = this.blockerReports;
+    this.session.state.alternative_history = this.alternativeHistory;
     this.session.state.model_routing = this.modelRouting;
     this.session.state.progress_state = { last_fingerprint: this.lastFingerprint, stagnant_cycles: this.stagnantCycles, current_progress: this.currentProgress || 0, previous_progress: this.previousProgress || 0 };
     this.session.state.token_usage = this.tokenUsage;
@@ -140,7 +146,9 @@ class GoalController {
   }
 
   checkEvaluation(evaluation) {
+    const alternativeEntry = this.alternativeHistory.at(-1);
     if (evaluationIsComplete(this.goal, evaluation)) {
+      if (alternativeEntry && ["running", "delegated_to_recovery"].includes(alternativeEntry.execution_status)) { alternativeEntry.execution_status = "completed"; alternativeEntry.verification_status = "passed"; }
       this.state = "completed";
       if (this.activeRecovery && this.activeRecovery.status === "executed") {
         this.activeRecovery.status = "completed";
@@ -173,7 +181,9 @@ class GoalController {
         this.activeRecovery.status = safeForced.valid ? "executed" : "failed";
         this.activeRecovery.recovery_status = this.activeRecovery.status;
       }
-      this.actionHistory.push({ cycle: this.cycleCount + 1, action: "recovery_task", recovery_action: forced.action, target_criteria: forced.target_criteria });
+      this.actionHistory.push({ cycle: this.cycleCount + 1, action: "recovery_task", recovery_action: forced.action, alternative_id: forced.alternative_id || null, target_criteria: forced.target_criteria });
+      const alternativeEntry = this.alternativeHistory.at(-1);
+      if (alternativeEntry && forced.alternative_id && alternativeEntry.alternative_id === forced.alternative_id) alternativeEntry.execution_status = safeForced.valid ? "running" : "rejected";
       return safeForced;
     }
     const proposal = await this.taskProposer(this.goal, remaining, this.evaluation, { cycle: this.cycleCount, history: this.taskHistory, goalExpansion: this.options.goalExpansion, expansion: this.options.expansion });
@@ -182,6 +192,34 @@ class GoalController {
     return safe;
   }
 
+
+  diagnoseBlocker(task, proposal, result, failureRecord) {
+    if (result?.success === true) return { report: null, selection: null };
+    const report = createBlockerReport({
+      category: failureRecord.failure_category === "verification_failure" ? undefined : failureRecord.failure_category,
+      stage: failureRecord.failure_stage || result?.stage || "environment",
+      cause: failureRecord.error || "task executor reported failure",
+      affected_step: task,
+      evidence: result?.evidence || result?.cycle_evidence || [],
+      retryable: failureRecord.failure_category === "timeout" || failureRecord.failure_category === "environment_failure",
+      execution_policy: this.options.execution_policy || this.goal.execution_policy,
+      command: result?.verification?.command,
+    });
+    this.blockerReports.push(report);
+    if (this.escalationEngine?.recordBlockerOutcome) {
+      const escalation = this.escalationEngine.recordBlockerOutcome(this.goal.goal_id, report);
+      if (escalation.humanEscalation) this.actionHistory.push({ cycle: this.cycleCount, action: "human_escalation_required", blocker_id: report.blocker_id, reason: escalation.reason });
+    }
+    const selection = selectBlockerRecovery(report, {
+      execution_policy: this.options.execution_policy || this.goal.execution_policy,
+      used_alternative_ids: this.alternativeHistory.map(item => item.alternative_id).filter(Boolean),
+      used_patch_signatures: this.taskHistory.map(item => item.patch_signature).filter(Boolean),
+    });
+    this.alternativeHistory.push({ blocker_id: report.blocker_id, alternative_id: selection.alternative?.alternative_id || null, status: selection.status, reason: selection.reason, execution_status: selection.status === "selected" ? "delegated_to_recovery" : selection.status, verification_status: "pending" });
+    this.actionHistory.push({ cycle: this.cycleCount, action: "blocker_diagnosed", blocker_id: report.blocker_id, category: report.category, recommended_alternative: report.recommended_alternative, selected_alternative: selection.alternative?.alternative_id || null, selection_status: selection.status, reason: selection.reason });
+    if (selection.status !== "selected") this.state = "escalate";
+    return { report, selection };
+  }
 
   async execute(task, proposal) {
     const count = (this.taskCounts.get(task) || 0) + 1;
@@ -198,6 +236,8 @@ class GoalController {
     const failureRecord = { task, status: result?.status || "failure", terminal_status: terminal.terminal_status, failure_stage: terminal.failure_stage, failure_category: failureCategory, verifier_id: proposal.expected_verification?.[0], error: result?.error || result?.verification?.error || result?.verification?.output, patch_signature: patchSignature(result), evidence_ids: [...(result?.evidence?.map(item => item.evidence_id).filter(Boolean) || []), ...(result?.cycle_evidence?.map(item => item.evidence_id).filter(Boolean) || [])] };
     const failureKey = failureSignature(failureRecord);
     if (!result?.success) { this.failureCounts.set(failureKey, (this.failureCounts.get(failureKey) || 0) + 1); this.failureCategoryCounts.set(failureCategory, (this.failureCategoryCounts.get(failureCategory) || 0) + 1); this.failureHistory.push({ ...failureRecord, signature: failureKey }); }
+    const blockerDecision = this.diagnoseBlocker(task, proposal, result, failureRecord);
+    const blockerAlternative = blockerDecision.selection?.status === "selected" ? blockerDecision.selection.alternative : null;
     const recovery = failureCategory ? recoveryFor(failureCategory) : null;
     if (result?.success && Array.isArray(result.changes?.changed_files)) {
       const changedFiles = result.changes.changed_files;
@@ -223,7 +263,8 @@ class GoalController {
       this.activeRecovery.status = "failed";
       this.activeRecovery.recovery_status = "failed";
     }
-    if (this.activeRecovery && result?.success === true && this.activeRecovery.previous_patch_signature && failureRecord.patch_signature === this.activeRecovery.previous_patch_signature) {
+    const recoveryChanges = result?.changes?.changes || result?.changes?.changed_files || [];
+    if (this.activeRecovery && result?.success === true && Array.isArray(recoveryChanges) && recoveryChanges.length > 0 && this.activeRecovery.previous_patch_signature && failureRecord.patch_signature === this.activeRecovery.previous_patch_signature) {
       this.activeRecovery.status = "failed";
       this.activeRecovery.recovery_status = "failed";
       this.activeRecovery.same_patch_repeated = true;
@@ -246,8 +287,8 @@ class GoalController {
         }
       }
       if (this.state !== "escalate" && (repeated || this.failureCounts.get(failureKey) <= this.limits().maxRetries)) {
-        const recoveryTask = buildRecoveryTask(failureRecord, { previous_tasks: this.taskHistory.map(item => item.task), previous_patch_signatures: this.taskHistory.map(item => item.patch_signature).filter(Boolean) });
-        this.forcedTask = { task: recoveryTask, target_criteria: proposal.target_criteria, expected_verification: proposal.expected_verification, rationale: effectiveRecovery.detail, action: effectiveRecovery.action };
+        const recoveryTask = blockerAlternative ? `Recovery alternative ${blockerAlternative.alternative_id}: ${blockerAlternative.description}. ${blockerAlternative.rationale}` : buildRecoveryTask(failureRecord, { previous_tasks: this.taskHistory.map(item => item.task), previous_patch_signatures: this.taskHistory.map(item => item.patch_signature).filter(Boolean) });
+        this.forcedTask = { task: recoveryTask, target_criteria: proposal.target_criteria, expected_verification: proposal.expected_verification, rationale: blockerAlternative?.rationale || effectiveRecovery.detail, action: effectiveRecovery.action, alternative_id: blockerAlternative?.alternative_id || null };
         const recoveryEntry = { failure_category: failureCategory, recovery_action: effectiveRecovery.action, recovery_task: recoveryTask, previous_task: task, previous_patch_signature: failureRecord.patch_signature, recovery_patch_signature: null, model_before: modelBefore, model_after: selectedModel?.model || this.options.model || this.session?.state?.model || null, recovery_status: "scheduled", status: "scheduled", same_patch_repeated: false, same_patch_rejected: false, pipeline_internal_recovery: pipelineInternalRecovery, controller_recovery: true, action: effectiveRecovery.action, task: recoveryTask, model: selectedModel?.model || this.options.model || null };
         this.recoveryHistory.push(recoveryEntry);
         this.activeRecovery = recoveryEntry;
@@ -294,7 +335,7 @@ class GoalController {
     const terminal = createTerminalResult({ ...legacy, completed: this.state === "completed", blocked: this.state === "blocked", humanEscalation: ["escalate", "escalated"].includes(this.state), recovery_scheduled: this.recoveryHistory.some(item => item.status === "scheduled" && this.state === "running"), recovery_failed: this.state === "recover" && this.failureHistory.length > 0, stagnantCycles: this.stagnantCycles }, { state: this.state, stagnantCycles: this.stagnantCycles, valid_evidence: this.state === "completed" && evaluationIsComplete(this.goal, this.evaluation) });
     const approved = this.failureHistory.some(item => item.status === "success");
     const partial = this.state !== "completed" && approved;
-    return { ...legacy, ...terminal, partial, approved };
+    return { ...legacy, ...terminal, partial, approved, blocker_reports: this.blockerReports, alternative_history: this.alternativeHistory };
   }
 }
 

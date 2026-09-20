@@ -10,6 +10,7 @@ const {
   serializeBlockerReport,
   deserializeBlockerReport,
   normalizeAlternative,
+  selectAlternative,
 } = require("./blocker");
 
 test("classifies supported blocker categories and creates structured alternatives", () => {
@@ -71,4 +72,22 @@ test("serializes and redacts blocker evidence and commands", () => {
   const restored = deserializeBlockerReport(serialized);
   assert.equal(validateBlockerReport(restored).valid, true);
   assert.throws(() => deserializeBlockerReport("not-json"), /invalid JSON/i);
+});
+
+test("selects only safe alternatives under the current policy", () => {
+  const report = createBlockerReport({ category: "network_failure", stage: "verify", cause: "connection reset", affected_step: "remote-check" });
+  const selected = selectAlternative(report, { execution_policy: "safe" });
+  assert.equal(selected.status, "selected");
+  assert.equal(selected.alternative.alternative_id, "retry-backoff");
+  const denied = selectAlternative(createBlockerReport({ category: "authentication_failure", stage: "work", cause: "authentication failed", affected_step: "provider" }), { execution_policy: "safe" });
+  assert.equal(denied.status, "selected");
+  assert.equal(denied.alternative.alternative_id, "local-validation");
+  assert.notEqual(denied.alternative.alternative_id, "approval-credential");
+});
+
+test("does not repeat an alternative or patch signature", () => {
+  const report = createBlockerReport({ category: "verification_failure", stage: "verify", cause: "test failed", affected_step: "tests" });
+  const selected = selectAlternative(report, { execution_policy: "safe", used_alternative_ids: ["alternate-strategy", "dry-run"] });
+  assert.equal(selected.status, "escalate");
+  assert.equal(selected.alternative, null);
 });
