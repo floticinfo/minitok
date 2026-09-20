@@ -1,10 +1,11 @@
 "use strict";
 
-const { createGoalPlan, validateGoalPlan, EXECUTION_POLICIES } = require("./plan");
+const { createGoalPlan, validateGoalPlan, EXECUTION_POLICIES, capabilitiesForSteps, detectSideEffects } = require("./plan");
 const { redactValue } = require("./evidence");
 
 const RELEASE_PATTERN = /\b(release|publish|package|version\s*bump|tag|npm\s+publish|ship)\b/i;
 const FILE_CHANGE_PATTERN = /\b(file|module|function|class|bug|feature|fix|refactor|documentation|readme|test)\b/i;
+const DEPLOY_PATTERN = /\b(deploy|deployment|staging|production)\b/i;
 const ONLY_GOAL_PATTERN = /\b(only|just|goal\s+only)\b|목표만|목표만\s*달성/i;
 const PATH_PATTERN = /(?:^|\s)((?:[A-Za-z0-9._-]+[\\/])+[A-Za-z0-9._-]+)/g;
 
@@ -47,7 +48,7 @@ function releaseSteps(criteria, onlyGoal) {
 function fileSteps(objective, criteria) {
   const ids = [...criteria];
   const paths = extractPaths(objective);
-  return [step("goal-change", objective.trim(), { target_criteria: ids, rationale: "This step directly represents the user's explicit objective and does not add release or deployment work.", verification: { type: "goal_criteria", paths } })];
+  return [step("goal-change", objective.trim(), { target_criteria: ids, rationale: "This step directly represents the user's explicit objective and does not add unrelated work.", verification: { type: "goal_criteria", paths } })];
 }
 function candidateScopeViolations(steps, scope) {
   return steps.flatMap(item => asArray(item.paths || item.scope_paths || item.verification?.paths).filter(file => !pathAllowed(file, scope)).map(file => ({ step_id: item.id, path: file })));
@@ -107,7 +108,7 @@ function expandGoal(input = {}) {
   if (!objective) questions.push("Provide a non-empty objective before expanding the goal");
   if (missing.length) questions.push(...missing);
   if (!scope.allow_external && RELEASE_PATTERN.test(objective)) questions.push("Release follow-up includes tag/publication confirmation; approve any external mutation separately before execution");
-  const inferred = RELEASE_PATTERN.test(objective) ? releaseSteps(ids, onlyGoal) : FILE_CHANGE_PATTERN.test(objective) ? fileSteps(objective, ids) : [];
+  const inferred = RELEASE_PATTERN.test(objective) ? releaseSteps(ids, onlyGoal) : FILE_CHANGE_PATTERN.test(objective) && !DEPLOY_PATTERN.test(objective) ? fileSteps(objective, ids) : [];
   const violations = candidateScopeViolations(inferred, scope);
   if (violations.length) questions.push("One or more inferred steps reference paths outside the repository ODD");
   const safeInferred = inferred.filter(item => !violations.some(violation => violation.step_id === item.id));
@@ -117,8 +118,13 @@ function expandGoal(input = {}) {
   if (RELEASE_PATTERN.test(objective)) confidence = ids.size > 0 ? 0.9 : 0.4;
   confidence = Math.max(0, confidence - environment.confidence_penalty);
   if (violations.length) confidence = Math.min(confidence, 0.25);
-  const requiresConfirmation = questions.length > 0 || confidence < 0.6 || safeInferred.some(item => item.execution_policy === "authorized_external") || safeInferred.some(item => item.status === "deferred");
-  const planInput = { objective, explicit_steps: [], inferred_steps: safeInferred, dependencies: safeInferred.flatMap(item => item.depends_on.length ? [{ step_id: item.id, depends_on: item.depends_on }] : []), success_criteria: criteria, scope_boundary: scope, risk_level: safeInferred.some(item => item.risk === "critical") ? "critical" : safeInferred.some(item => item.risk === "high") ? "high" : "low", approval_requirements: [], assumptions, execution_policy: policyMode(value.execution_policy) };
+  const effectivePolicy = policyMode(value.execution_policy);
+  const requestedCapabilities = [...new Set([...capabilitiesForSteps(safeInferred), ...(safeInferred.some(item => detectSideEffects({ description: item.description, verification: item.verification }).includes("file_change") || Array.isArray(item.verification?.paths) && item.verification.paths.length > 0) ? ["workspace_write"] : [])])];
+  const alwaysBlockedActions = safeInferred.filter(item => ["never_autonomous", "always_blocked"].includes(item.execution_policy)).map(item => item.id);
+  const grantedCapabilities = Array.isArray(value.granted_capabilities) ? value.granted_capabilities : effectivePolicy === "unrestricted" ? [] : requestedCapabilities.filter(capability => ["read", "inspect", "verify"].includes(capability));
+  const deniedCapabilities = requestedCapabilities.filter(capability => !grantedCapabilities.includes(capability));
+  const requiresConfirmation = questions.length > 0 || confidence < 0.6 || requestedCapabilities.some(capability => !["read", "inspect", "verify", "workspace_write"].includes(capability)) || safeInferred.some(item => item.status === "deferred");
+  const planInput = { objective, explicit_steps: [], inferred_steps: safeInferred, dependencies: safeInferred.flatMap(item => item.depends_on.length ? [{ step_id: item.id, depends_on: item.depends_on }] : []), success_criteria: criteria, scope_boundary: scope, risk_level: safeInferred.some(item => item.risk === "critical") ? "critical" : safeInferred.some(item => item.risk === "high") ? "high" : "low", approval_requirements: [], assumptions, execution_policy: effectivePolicy, requested_capabilities: requestedCapabilities, granted_capabilities: grantedCapabilities, denied_capabilities: deniedCapabilities, requires_explicit_confirmation: effectivePolicy === "unrestricted" || requiresConfirmation, always_blocked_actions: alwaysBlockedActions };
   let goalPlan = null;
   if (!missing.length && objective && !violations.length) {
     const candidate = createGoalPlan(planInput);
@@ -126,7 +132,8 @@ function expandGoal(input = {}) {
     if (validation.valid) goalPlan = candidate;
     else questions.push("The inferred plan did not pass GoalPlan validation and requires clarification");
   }
-  return { goal_plan: goalPlan, inferred_steps: goalPlan?.inferred_steps || [], assumptions, missing_information: [...environment.missing_information, ...missing, ...violations.map(item => `Path is outside the repository ODD: ${normalizePath(item.path)}`)], expansion_confidence: confidence, requires_user_confirmation: requiresConfirmation || environment.missing_information.length > 0 || environment.questions.length > 0 || !goalPlan, questions, optional_steps: (goalPlan?.inferred_steps || []).filter(item => item.required === false), out_of_scope_candidates: violations.map(item => ({ step_id: item.step_id, path: normalizePath(item.path), status: "not_added", reason: "repository_odd_scope" })), only_goal: onlyGoal };
+  const optionalSteps = (goalPlan?.inferred_steps || []).filter(item => item.required === false).map(item => ({ ...item, capability_status: item.execution_policy === "never_autonomous" || item.execution_policy === "always_blocked" ? "always_blocked" : item.execution_policy === "safe" ? "safe" : effectivePolicy === "unrestricted" ? "unrestricted_eligible" : "approval_required" }));
+  return { goal_plan: goalPlan, inferred_steps: goalPlan?.inferred_steps || [], assumptions, missing_information: [...environment.missing_information, ...missing, ...violations.map(item => `Path is outside the repository ODD: ${normalizePath(item.path)}`)], expansion_confidence: confidence, requires_user_confirmation: requiresConfirmation || environment.missing_information.length > 0 || environment.questions.length > 0 || !goalPlan, requested_capabilities: goalPlan?.requested_capabilities || requestedCapabilities, granted_capabilities: goalPlan?.granted_capabilities || grantedCapabilities, denied_capabilities: goalPlan?.denied_capabilities || deniedCapabilities, requires_explicit_confirmation: goalPlan?.requires_explicit_confirmation === true || effectivePolicy === "unrestricted", questions, optional_steps: optionalSteps, out_of_scope_candidates: violations.map(item => ({ step_id: item.step_id, path: normalizePath(item.path), status: "not_added", reason: "repository_odd_scope" })), only_goal: onlyGoal };
 }
 
 module.exports = { expandGoal, pathAllowed, scopeFrom, extractPaths, onlyGoalRequested };

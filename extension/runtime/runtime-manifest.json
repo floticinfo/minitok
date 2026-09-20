@@ -241,8 +241,8 @@
       "embedded": "d000c1e18deb30bf6b45a48eb0879538d99e67e39ed9b4fd3a01cc16ed2e6233"
     },
     "goal/expansion.js": {
-      "source": "24a3136418d49ef41e990f21ffdcf27ebbc137cb883c745c539c7b6e043ae655",
-      "embedded": "24a3136418d49ef41e990f21ffdcf27ebbc137cb883c745c539c7b6e043ae655"
+      "source": "5df7b31a86bf770ab118e0a75e5fd060ca8c1dbb67d79ca4b3a9662ca86b76ab",
+      "embedded": "5df7b31a86bf770ab118e0a75e5fd060ca8c1dbb67d79ca4b3a9662ca86b76ab"
     },
     "goal/failure.js": {
       "source": "2b6d0dd416212750ae6501c716a2ec416fe67af939eaa629784bc140df1454c9",
@@ -253,8 +253,8 @@
       "embedded": "614567cbad38a201959c91bb43c31e09e9bef1fad54b20a807df8b7d5072c22b"
     },
     "goal/plan.js": {
-      "source": "f4a501579f0c7cf5ee0db11bff1f2522b228a1ea1c4e5648486f9982a9ac15b5",
-      "embedded": "f4a501579f0c7cf5ee0db11bff1f2522b228a1ea1c4e5648486f9982a9ac15b5"
+      "source": "f27297a5dcf37dd50780afa908941de38a84126e09e3e242c08a47ecaf696870",
+      "embedded": "f27297a5dcf37dd50780afa908941de38a84126e09e3e242c08a47ecaf696870"
     },
     "goal/recovery.js": {
       "source": "8cadd386951bf02984c18cc028e489185f3352d2544006adf3103af2a87cc747",
