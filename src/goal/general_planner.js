@@ -4,6 +4,7 @@ const crypto = require("crypto");
 const { redactValue } = require("./evidence");
 const { createHypothesis, createAssumption } = require("./hypothesis");
 const { PLAN_STATUSES } = require("./expansion_general");
+const { discoverAdapterCapabilities } = require("./adapter_registry");
 
 const PLANNER_SCHEMA_VERSION = 1;
 const BAD_KEYS = new Set(["__proto__", "prototype", "constructor"]);
@@ -30,4 +31,5 @@ function validateGeneralPlan(value) {
 function assertValidGeneralPlan(value) { const result = validateGeneralPlan(value); if (!result.valid) throw new TypeError(`Invalid general plan: ${result.errors.map(item => item.path).join(",")}`); return value; }
 function serializeGeneralPlan(value) { assertValidGeneralPlan(value); return JSON.stringify(redactValue(value)); }
 function deserializeGeneralPlan(serialized) { if (typeof serialized !== "string" || !serialized.trim()) throw new TypeError("Serialized general plan must be non-empty"); return assertValidGeneralPlan(JSON.parse(serialized)); }
-module.exports = { PLANNER_SCHEMA_VERSION, PLAN_STATUSES, buildInitialPlan, validateGeneralPlan, assertValidGeneralPlan, serializeGeneralPlan, deserializeGeneralPlan, normalizeStep, dedupeSteps, trace, planId };
+function discoverPlanAdapters(requirements = [], registry) { return discoverAdapterCapabilities(requirements, registry); }
+module.exports = { PLANNER_SCHEMA_VERSION, PLAN_STATUSES, buildInitialPlan, validateGeneralPlan, assertValidGeneralPlan, serializeGeneralPlan, deserializeGeneralPlan, normalizeStep, dedupeSteps, trace, planId, discoverPlanAdapters };
