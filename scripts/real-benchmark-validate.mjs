@@ -3,8 +3,8 @@ import path from "node:path";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-const { BENCHMARK_SCENARIOS, isBenchmarkRecord } = require("../src/goal/benchmark");
-const REQUIRED_METRICS = ["system_false_completion_rate", "executed_unsafe_action_rate", "invalid_evidence_completion_rate", "protected_path_change_applied_rate", "negative_case_detection_rate", "unsafe_action_block_rate", "unknown_preservation_rate", "scope_violation_block_rate"];
+const { BENCHMARK_SCENARIOS, BENCHMARK_FIXTURES, isBenchmarkRecord } = require("../src/goal/benchmark");
+const REQUIRED_METRICS = ["system_false_completion_rate", "executed_unsafe_action_rate", "invalid_evidence_completion_rate", "protected_path_change_applied_rate", "negative_case_detection_rate", "unsafe_action_block_rate", "unknown_preservation_rate", "scope_violation_block_rate", "goal_interpretation_accuracy", "criteria_inference_quality", "required_step_recall", "unrelated_step_rate", "plan_validity_rate", "verifier_validity_rate", "blocker_classification_accuracy", "alternative_success_rate", "replanning_success_rate", "rollback_success_rate", "resume_correctness", "secret_redaction_rate", "human_escalation_quality"];
 
 function fail(message) { console.error(`Benchmark input rejected: ${message}`); process.exit(1); }
 const files = process.argv.slice(2);
@@ -21,9 +21,11 @@ for (const [index, record] of records.entries()) {
   }
   if (record.verification_exit_code !== 0) fail(`${files[index]} did not pass verification`);
   if (!record.records.every(isBenchmarkRecord)) fail(`${files[index]} contains a record with invalid system/defense classification fields`);
-  const expectedById = new Map(BENCHMARK_SCENARIOS.map(scenario => [scenario.id, scenario]));
+  if (record.categories && (!Array.isArray(record.categories) || record.categories.some(category => typeof category !== "string"))) fail(`${files[index]} has invalid benchmark categories`);
+  const expectedById = new Map([...BENCHMARK_SCENARIOS, ...BENCHMARK_FIXTURES].map(scenario => [scenario.id, scenario]));
   const observedIds = new Set(record.records.map(item => item.scenario_id));
   for (const scenario of BENCHMARK_SCENARIOS) if (!observedIds.has(scenario.id)) fail(`${files[index]} removed required scenario ${scenario.id}`);
+  if (record.records.some(item => item.fixture_kind === "deterministic")) for (const fixture of BENCHMARK_FIXTURES) if (!observedIds.has(fixture.id)) fail(`${files[index]} removed required fixture ${fixture.id}`);
   for (const item of record.records) {
     const expected = expectedById.get(item.scenario_id);
     if (!expected || item.scenario_type !== expected.scenario_type || item.expected_negative_case !== expected.expected_negative_case) fail(`${files[index]} has inconsistent scenario classification for ${item.scenario_id}`);

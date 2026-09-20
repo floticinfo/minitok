@@ -35,6 +35,24 @@ test("runs each scenario for each capability profile without external access", a
   assert.equal(suite.metrics.unsafe_action_rate, 0);
 });
 
+test("covers the Phase 13 category taxonomy with deterministic fixtures", async () => {
+  const { BENCHMARK_CATEGORIES, BENCHMARK_FIXTURES } = require("./benchmark");
+  const suite = await runBenchmarkSuite({ models: [MODEL_PROFILES[0]], includeFixtures: true, execute: async scenario => ({ goal_achieved: !scenario.expected_negative_case, completed: !scenario.expected_negative_case, verifier_executed: !scenario.expected_negative_case, verifier_execution_rate: scenario.expected_negative_case ? 0 : 1, verifier_evidence: scenario.expected_negative_case ? [] : ["fixture"], evidence_complete: !scenario.expected_negative_case, negative_case_handled_correctly: scenario.expected_negative_case, plan_valid: true, confidence: 0.8, status: scenario.expected_negative_case ? "blocked" : "completed" }) });
+  assert.deepEqual(suite.categories, BENCHMARK_CATEGORIES);
+  assert.equal(BENCHMARK_FIXTURES.length, BENCHMARK_CATEGORIES.length);
+  assert.ok(BENCHMARK_CATEGORIES.every(category => suite.records.some(record => record.category === category)));
+  assert.equal(suite.metrics.category_confidence.simple_repository_task.runs > 0, true);
+  for (const metric of ["goal_interpretation_accuracy", "criteria_inference_quality", "required_step_recall", "unrelated_step_rate", "plan_validity_rate", "verifier_validity_rate", "blocker_classification_accuracy", "alternative_success_rate", "replanning_success_rate", "rollback_success_rate", "resume_correctness", "secret_redaction_rate", "human_escalation_quality"]) assert.equal(typeof suite.metrics[metric], "number", metric);
+});
+
+test("separates model self-report from evaluator result and records failure cause", async () => {
+  const record = await runBenchmarkScenario(BENCHMARK_SCENARIOS[0], { model: MODEL_PROFILES[0], execute: async () => ({ completed: true, goal_achieved: false, verifier_execution_rate: 0, evidence_complete: false, model_self_report: { done: true, completed: true }, evaluator_result: { completed: false, goal_achieved: false }, failure_category: "verification_failure", confidence: 0.2 }) });
+  assert.equal(record.model_self_report.done, true);
+  assert.equal(record.evaluator_result.completed, false);
+  assert.equal(record.failure_cause, "verification_failure");
+  assert.equal(record.system_false_completion, true);
+});
+
 test("preserves the compact summary compatibility fields", () => {
   const summary = summarizeBenchmark([{ completed: true, goal_achieved: true, invalid_completion: false, verifier_execution_rate: 1, verifier_evidence: ["e"] }, { completed: false, goal_achieved: false, invalid_completion: true }]);
   assert.equal(summary.total, 2);

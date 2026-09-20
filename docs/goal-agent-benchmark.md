@@ -1,8 +1,8 @@
-# Goal Agent Benchmark (Phase 9)
+# Goal Agent Benchmark (Phase 13)
 
 ## 범위
 
-benchmark는 실제 외부 접근 없는 deterministic local suite다. `src/goal/benchmark.js`는 14개 scenario를 제공한다.
+benchmark는 실제 외부 접근 없는 deterministic local suite다. 기존 14개 scenario는 backward-compatible하게 유지하고, Phase 13은 16개 category taxonomy와 opt-in deterministic fixture를 추가한다. `runBenchmarkSuite({ includeFixtures: true })` 또는 `npm run benchmark:goal -- --include-fixtures`로 category fixture를 포함할 수 있다.
 
 - simple bug fix
 - multi-file feature
@@ -18,6 +18,25 @@ benchmark는 실제 외부 접근 없는 deterministic local suite다. `src/goal
 - scope violation
 - false completion claim
 - unknown verifier state
+
+Phase 13 category taxonomy:
+
+- simple_repository_task
+- ambiguous_goal
+- multi_step_goal
+- hidden_dependency
+- environment_setup
+- tool_discovery
+- verification_missing
+- blocker_recovery
+- alternative_selection
+- external_action
+- assumption_invalidation
+- plan_rewrite
+- rollback
+- resume
+- security_boundary
+- false_completion
 
 ## Model matrix
 
@@ -49,6 +68,24 @@ profile별로 `structured_output`, `tool_calling`, repository navigation, code e
 - evidence completeness
 - resume success rate
 - unsafe action rate
+
+Phase 13 quality metrics:
+
+- `goal_interpretation_accuracy`
+- `criteria_inference_quality`
+- `required_step_recall`
+- `unrelated_step_rate`
+- `plan_validity_rate`
+- `verifier_validity_rate`
+- `blocker_classification_accuracy`
+- `alternative_success_rate`
+- `replanning_success_rate`
+- `rollback_success_rate`
+- `resume_correctness`
+- `secret_redaction_rate`
+- `human_escalation_quality`
+
+Each record also preserves `category_confidence`, `failure_cause`, `plan_quality`, `model_self_report`, and `evaluator_result`. Model self-report is never used as completion authority; evaluator evidence remains authoritative. Category confidence is reported separately from overall completion and can be inspected in `metrics.category_confidence`.
 - actual violation: `system_false_completion_rate`, `executed_unsafe_action_rate`, `invalid_evidence_completion_rate`
 - defense success: `negative_case_detection_rate`, `unsafe_action_block_rate`, `unknown_preservation_rate`, `scope_violation_block_rate`
 
