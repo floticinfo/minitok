@@ -40,8 +40,10 @@
     "goal/controller.js",
     "goal/evaluator.js",
     "goal/evidence.js",
+    "goal/expansion.js",
     "goal/failure.js",
     "goal/odd.js",
+    "goal/plan.js",
     "goal/recovery.js",
     "goal/session.js",
     "goal/spec.js",
@@ -217,8 +219,8 @@
       "embedded": "675521fbbe443483de7780574dfe66761384ffcb97901b5ea8365a5a32fead16"
     },
     "goal/controller.js": {
-      "source": "1b58e9cb50f04d7a1b43f14a5ba03e51d36299440e14c9bf8057db76138c6936",
-      "embedded": "1b58e9cb50f04d7a1b43f14a5ba03e51d36299440e14c9bf8057db76138c6936"
+      "source": "eac8ded599a3ffabb1a63a4e5dc75e1e0121145d42c9a2b1d5c49939590af4cd",
+      "embedded": "eac8ded599a3ffabb1a63a4e5dc75e1e0121145d42c9a2b1d5c49939590af4cd"
     },
     "goal/evaluator.js": {
       "source": "216d25cf150aeeedc4a0c5640ba11dae2870337fcf2ab0f8fb834f3b8860573c",
@@ -228,6 +230,10 @@
       "source": "606af720d67dca41bf546683688601cd935f95dab4e30546160f58233c1eae29",
       "embedded": "606af720d67dca41bf546683688601cd935f95dab4e30546160f58233c1eae29"
     },
+    "goal/expansion.js": {
+      "source": "0b87e79249d77e9f9a59e69ea8d284d95aa8df84057597ece70c44dce0e3c475",
+      "embedded": "0b87e79249d77e9f9a59e69ea8d284d95aa8df84057597ece70c44dce0e3c475"
+    },
     "goal/failure.js": {
       "source": "2b6d0dd416212750ae6501c716a2ec416fe67af939eaa629784bc140df1454c9",
       "embedded": "2b6d0dd416212750ae6501c716a2ec416fe67af939eaa629784bc140df1454c9"
@@ -235,6 +241,10 @@
     "goal/odd.js": {
       "source": "614567cbad38a201959c91bb43c31e09e9bef1fad54b20a807df8b7d5072c22b",
       "embedded": "614567cbad38a201959c91bb43c31e09e9bef1fad54b20a807df8b7d5072c22b"
+    },
+    "goal/plan.js": {
+      "source": "e55c633767eb984b33b27d66125f0c9bd1762d718e90108b1f2b8df4ac8aba16",
+      "embedded": "e55c633767eb984b33b27d66125f0c9bd1762d718e90108b1f2b8df4ac8aba16"
     },
     "goal/recovery.js": {
       "source": "ceced3a58b097bf569934c7ff3beed10e073b220e4a874af1f0b63bddf383536",
@@ -301,8 +311,8 @@
       "embedded": "29917089ebc1b4f156729078ed75b867cffd41c29fbc77e6c701159f39edfbad"
     },
     "pipeline/next_task.js": {
-      "source": "d319a3b34dc5d80f4ce9e74e3e0805d2d4ee79aa4cfda8bc9be3dcaf8d9ce583",
-      "embedded": "d319a3b34dc5d80f4ce9e74e3e0805d2d4ee79aa4cfda8bc9be3dcaf8d9ce583"
+      "source": "4e488cd64eaa7c819c40015f82c7ec0e9b59cb42e879a05611f2244e71b2f405",
+      "embedded": "4e488cd64eaa7c819c40015f82c7ec0e9b59cb42e879a05611f2244e71b2f405"
     },
     "pipeline/planner.js": {
       "source": "cc1f16bff302e0fc0fac02239b6d1c8c6048c5aad7b9ec9e259c805f4467c1e0",

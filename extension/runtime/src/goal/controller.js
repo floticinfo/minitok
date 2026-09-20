@@ -1,5 +1,6 @@
 "use strict";
 
+const { expandGoal } = require("./expansion");
 const { assertValidGoalSpec } = require("./validator");
 const { evaluateGoal: defaultEvaluator, evaluationIsComplete } = require("./evaluator");
 const { runTask: defaultTaskExecutor } = require("./task_executor");
@@ -175,7 +176,7 @@ class GoalController {
       this.actionHistory.push({ cycle: this.cycleCount + 1, action: "recovery_task", recovery_action: forced.action, target_criteria: forced.target_criteria });
       return safeForced;
     }
-    const proposal = await this.taskProposer(this.goal, remaining, this.evaluation, { cycle: this.cycleCount, history: this.taskHistory });
+    const proposal = await this.taskProposer(this.goal, remaining, this.evaluation, { cycle: this.cycleCount, history: this.taskHistory, goalExpansion: this.options.goalExpansion, expansion: this.options.expansion });
     const safe = safeTaskProposal(proposal, remaining);
     this.actionHistory.push({ cycle: this.cycleCount + 1, action: "propose_task", proposal: { ...safe, model_done: proposal?.done === true } });
     return safe;
@@ -297,7 +298,13 @@ class GoalController {
   }
 }
 
-async function defaultTaskProposer(_goal, remaining) {
+async function defaultTaskProposer(goal, remaining, _evaluation, options = {}) {
+  const expansionInput = options.goalExpansion || options.expansion;
+  if (expansionInput) {
+    const expansion = expansionInput.goal_plan ? expansionInput : expandGoal({ objective: goal.objective, success_criteria: goal.success_criteria, repository_context: { repository_odd: goal.constraints.repository_odd || {} }, execution_policy: goal.execution_policy, ...expansionInput });
+    const candidate = expansion.inferred_steps.find(step => step.required === true && step.status !== "deferred" && step.target_criteria.some(id => remaining.some(item => item.id === id)));
+    if (candidate) return { next_task: candidate.description, target_criteria: candidate.target_criteria, expected_verification: candidate.verification?.id ? [candidate.verification.id] : [], rationale: candidate.rationale, goal_plan: expansion.goal_plan, inferred_step_id: candidate.id, requires_user_confirmation: expansion.requires_user_confirmation };
+  }
   const criterion = remaining[0];
   return { next_task: `Address criterion: ${criterion.description}`, target_criteria: [criterion.id], expected_verification: [criterion.verifier.id], rationale: "Work on the first remaining criterion" };
 }

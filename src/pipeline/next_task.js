@@ -1,5 +1,7 @@
 "use strict";
 
+const { expandGoal } = require("../goal/expansion");
+
 /**
  * NextTaskGenerator — generates the next task based on review feedback.
  *
@@ -27,7 +29,7 @@ Otherwise respond with:
  * @param {Array} completedCycles - previous cycle results
  * @param {object} latestReview - latest review/verify result
  * @param {object} options
- * @returns {Promise<{ done: boolean, next_task?: string, summary?: string, remaining_goals?: string[], tokens?: { input: number, output: number } }>}
+ * @returns {Promise<{ done: boolean, next_task?: string, summary?: string, remaining_goals?: string[], tokens?: { input: number, output: number }, goal_plan?: object|null, inferred_steps?: object[], assumptions?: string[], missing_information?: string[], expansion_confidence?: number, requires_user_confirmation?: boolean, optional_steps?: object[], out_of_scope_candidates?: object[] }>}
  */
 async function generateNextTask(provider, goal, completedCycles, latestReview, options = {}) {
   const cycleSummaries = completedCycles.map((c, i) => {
@@ -61,13 +63,16 @@ async function generateNextTask(provider, goal, completedCycles, latestReview, o
   const { parsed: jsonParsed, valid } = parseResponseJSON(result.text, { done: false, next_task: goal });
   parsed = valid ? jsonParsed : { done: false, next_task: goal };
 
-  return {
+  const legacyResult = {
     done: Boolean(parsed.done),
     next_task: parsed.next_task,
     summary: parsed.summary,
     remaining_goals: parsed.remaining_goals || [],
     tokens: result.tokens,
   };
+  if (!options.goalExpansion && !options.expandGoal) return legacyResult;
+  const expansion = options.goalExpansion?.goal_plan ? options.goalExpansion : expandGoal({ objective: goal, success_criteria: options.success_criteria || [], repository_context: options.repository_context || {}, execution_policy: options.execution_policy, only_goal: options.only_goal });
+  return { ...legacyResult, goal_plan: expansion.goal_plan, inferred_steps: expansion.inferred_steps, assumptions: expansion.assumptions, missing_information: expansion.missing_information, expansion_confidence: expansion.expansion_confidence, requires_user_confirmation: expansion.requires_user_confirmation, optional_steps: expansion.optional_steps, out_of_scope_candidates: expansion.out_of_scope_candidates };
 }
 
 module.exports = { generateNextTask, GENERATE_NEXT_PROMPT };
