@@ -41,6 +41,7 @@
     "goal/controller.js",
     "goal/evaluator.js",
     "goal/evidence.js",
+    "goal/general_response.js",
     "goal/execution_audit.js",
     "goal/execution_policy.js",
     "goal/expansion.js",
@@ -243,10 +244,7 @@
       "source": "c5670ddafe9634438a05d8665c28e62e237d013eecc2e90c3e089d553f8866a2",
       "embedded": "c5670ddafe9634438a05d8665c28e62e237d013eecc2e90c3e089d553f8866a2"
     },
-    "goal/execution_policy.js": {
-      "source": "d000c1e18deb30bf6b45a48eb0879538d99e67e39ed9b4fd3a01cc16ed2e6233",
-      "embedded": "d000c1e18deb30bf6b45a48eb0879538d99e67e39ed9b4fd3a01cc16ed2e6233"
-    },
+    "goal/execution_policy.js": "d494ee1936af5c67c86aa1bffc92ee79de1ae82e15fddb1a9d36e2188b41b392",
     "goal/expansion.js": {
       "source": "5df7b31a86bf770ab118e0a75e5fd060ca8c1dbb67d79ca4b3a9662ca86b76ab",
       "embedded": "5df7b31a86bf770ab118e0a75e5fd060ca8c1dbb67d79ca4b3a9662ca86b76ab"
@@ -255,10 +253,7 @@
       "source": "2b6d0dd416212750ae6501c716a2ec416fe67af939eaa629784bc140df1454c9",
       "embedded": "2b6d0dd416212750ae6501c716a2ec416fe67af939eaa629784bc140df1454c9"
     },
-    "goal/integration.js": {
-      "source": "848c4d7df78a18c4fe4e96b48e292a301d0622972a36906bd55cb2637f50b735",
-      "embedded": "848c4d7df78a18c4fe4e96b48e292a301d0622972a36906bd55cb2637f50b735"
-    },
+    "goal/integration.js": "9c9265f1fcd57104bae9d8e0975b859716554ef1582360e247d2d30946083596",
     "goal/odd.js": {
       "source": "614567cbad38a201959c91bb43c31e09e9bef1fad54b20a807df8b7d5072c22b",
       "embedded": "614567cbad38a201959c91bb43c31e09e9bef1fad54b20a807df8b7d5072c22b"
@@ -299,18 +294,12 @@
       "source": "57c2d171d131f56b7227fae0417a0412ce713d5280bcd6da5298c289ca3c013e",
       "embedded": "57c2d171d131f56b7227fae0417a0412ce713d5280bcd6da5298c289ca3c013e"
     },
-    "mcp/goal-tools.js": {
-      "source": "ce7b674965b6c2bef1e046e156e9da329eda61f4dd0b173b3f5b6bf124c6a053",
-      "embedded": "ce7b674965b6c2bef1e046e156e9da329eda61f4dd0b173b3f5b6bf124c6a053"
-    },
+    "mcp/goal-tools.js": "d88a3c5c57045af4978c8fee333d971d2ff5892e778cbbdcfaf94e753fa46333",
     "mcp/runtime-token.js": {
       "source": "d07663e879ad91f12b327101f7b747e8bfc527bed6abc8aa2018ee393f4382d4",
       "embedded": "d07663e879ad91f12b327101f7b747e8bfc527bed6abc8aa2018ee393f4382d4"
     },
-    "mcp/tools.js": {
-      "source": "d5d535df9ef08959ddef819d10576be6c456b787e22ef302ef66b767991219c6",
-      "embedded": "d5d535df9ef08959ddef819d10576be6c456b787e22ef302ef66b767991219c6"
-    },
+    "mcp/tools.js": "147b58c62f8ad5663bb8d409d79fb0294f82d480d69c3f1d073a6d4c59153d6a",
     "pipeline/authorization.js": {
       "source": "b6b7eb34e7a4d9790820d8a4b9828bf4ee965af1476b5d5c4522768b1d4aae4e",
       "embedded": "b6b7eb34e7a4d9790820d8a4b9828bf4ee965af1476b5d5c4522768b1d4aae4e"
@@ -430,6 +419,7 @@
     "workspace/manager.js": {
       "source": "f05c755fc21149e7325aec39422cc05d0e493da387189ed7602a0775feefc901",
       "embedded": "f05c755fc21149e7325aec39422cc05d0e493da387189ed7602a0775feefc901"
-    }
+    },
+    "goal/general_response.js": "69b5773bbe9dc4bbbf35fce9fb13d93ca42ce290e53e7f7d13d1b4337bcb9a6a"
   }
 }

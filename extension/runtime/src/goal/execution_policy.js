@@ -101,7 +101,7 @@ function resolveExecutionPolicy(input = {}) {
   if (["unrestricted", "unrestricted_general"].includes(normalized.mode) && configuredPolicy) {
     if (configuredPolicy.enabled !== true) return { ...baseDecision(normalized.mode, requested, context), allowed: false, denied_capabilities: [normalized.mode === "unrestricted_general" ? "unrestricted_general_disabled" : "unrestricted_disabled"], reason: `${normalized.mode} mode is disabled by configuration` };
     const allowlist = Array.isArray(configuredPolicy.capabilities) ? configuredPolicy.capabilities : [];
-    const outsideAllowlist = requested.filter(capability => !allowlist.includes(capability));
+    const outsideAllowlist = requested.filter(capability => !allowlist.includes(capability) && !SAFE_CAPABILITIES.includes(capability));
     if (outsideAllowlist.length) return { ...baseDecision(normalized.mode, requested, context), allowed: false, denied_capabilities: outsideAllowlist, reason: "one or more capabilities are outside the configured allowlist" };
     if (configuredPolicy.require_explicit_confirmation !== false && input.explicit_confirmation !== true) return { ...baseDecision(normalized.mode, requested, context), allowed: false, denied_capabilities: ["explicit_confirmation"], reason: "explicit confirmation is required by configuration" };
     if (configuredPolicy.require_auto_accept !== false && input.auto_accept !== true) return { ...baseDecision(normalized.mode, requested, context), allowed: false, denied_capabilities: ["auto_accept"], reason: "auto_accept is required by configuration" };

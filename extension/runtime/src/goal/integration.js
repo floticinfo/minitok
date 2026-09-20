@@ -1,7 +1,9 @@
 "use strict";
 
 const { compileGoal, compileModelGoal, goalIdFor } = require("./compiler");
-const { DEFAULT_CONSTRAINTS } = require("./spec");
+const { createGoalSpec, DEFAULT_CONSTRAINTS } = require("./spec");
+const { interpretNaturalLanguageGoal } = require("./intent");
+const { expandGoalGeneral } = require("./expansion_general");
 const { assertValidGoalSpec } = require("./validator");
 const { expandGoal } = require("./expansion");
 const { createGoalPlan, validateGoalPlan, capabilitiesForSteps } = require("./plan");
@@ -15,7 +17,17 @@ function contextOf(input, spec) {
   const odd = spec?.constraints?.repository_odd || {};
   return { repository_odd: { allowed_paths: list(odd.allowed_paths || spec?.constraints?.allowed_paths), blocked_paths: list(odd.blocked_paths || spec?.constraints?.blocked_paths), protected_paths: list(odd.protected_paths), allow_external: odd.allow_external === true } };
 }
+function compileGeneralInput(input) {
+  if (!text(input.objective)) return { status: "clarification_required", objective: "", questions: ["Provide a non-empty objective before preparing general goal execution"] };
+  const intent = interpretNaturalLanguageGoal({ objective: input.objective });
+  const expansion = expandGoalGeneral(intent, { ...contextOf(input), mode: "unrestricted_general", execution_policy: { mode: "unrestricted_general" }, objective: input.objective, environment_state: input.environment_state });
+  if (!expansion.goal_plan) return { status: "clarification_required", objective: input.objective, questions: expansion.missing_information || ["General goal interpretation did not produce a valid plan"], intent, expansion };
+  const criteria = (expansion.goal_plan.success_criteria || []).map(item => ({ ...item, verifier: item.verifier || { type: "custom", id: `general-${item.id}`, config: { criterion: item.id, source: "general_inference" } } }));
+  const spec = createGoalSpec({ schema_version: 1, goal_id: input.goal_id || goalIdFor(input.objective.trim()), objective: input.objective.trim(), success_criteria: criteria, constraints: { ...DEFAULT_CONSTRAINTS, ...(input.constraints || {}), repository_odd: input.repository_context?.repository_odd || DEFAULT_CONSTRAINTS.repository_odd }, execution_policy: { mode: "unrestricted_general" } });
+  return { status: "ready", spec, source: "general-inference", intent, expansion };
+}
 function compileInput(input) {
+  if (input.mode === "unrestricted_general" && input.general_inference === true && text(input.objective || input.goal_spec?.objective)) return compileGeneralInput({ ...input, objective: input.objective || input.goal_spec.objective });
   if (input.goal_spec && typeof input.goal_spec === "object") return { status: "ready", spec: input.goal_spec, source: "goal-spec" };
   if (text(input.objective) && Array.isArray(input.success_criteria)) {
     const constraints = { ...DEFAULT_CONSTRAINTS, ...(input.constraints || {}) };
@@ -52,6 +64,9 @@ function prepareGoalExecution(input = {}) {
     if (list(existing.success_criteria).some(item => item?.id && !criterionIds.has(item.id))) return invalid([{ path: "goal_plan.success_criteria", code: "PLAN_CRITERIA_MISMATCH", message: "Existing GoalPlan contains a criterion outside the GoalSpec" }], { goal_spec: goalSpec });
     plan = existing;
     expansion = { goal_plan: plan, inferred_steps: list(plan.inferred_steps), optional_steps: list(plan.inferred_steps).filter(step => step.required === false), assumptions: list(plan.assumptions), requested_capabilities: list(plan.requested_capabilities), granted_capabilities: list(plan.granted_capabilities), denied_capabilities: list(plan.denied_capabilities), questions: [], missing_information: [], out_of_scope_candidates: [], expansion_confidence: 1, requires_user_confirmation: plan.requires_explicit_confirmation === true, already_expanded: true };
+  } else if (compiled.source === "general-inference" && compiled.expansion) {
+    expansion = compiled.expansion;
+    plan = expansion.goal_plan;
   } else {
     expansion = expandGoal({ objective: goalSpec.objective, success_criteria: goalSpec.success_criteria, repository_context: contextOf(input, goalSpec), environment_state: input.environment_state, execution_policy: modeOf(input, goalSpec), only_goal: input.only_goal });
     if (!expansion.goal_plan) return clarification(expansion, { goal_spec: goalSpec, missing_information: list(expansion.missing_information), out_of_scope_candidates: list(expansion.out_of_scope_candidates) });
@@ -61,29 +76,31 @@ function prepareGoalExecution(input = {}) {
   }
 
   const allCapabilities = [...new Set(list(plan.requested_capabilities))];
+  const generalCapabilities = modeOf(input, goalSpec, plan) === "unrestricted_general" && (compiled.source === "general-inference" || input.general_inference === true) ? ["goal_inference", "criteria_inference", "plan_expansion", "replanning"] : [];
   const requiredSteps = list(plan.inferred_steps).filter(step => step.required !== false && step.status !== "deferred");
   const optionalSteps = list(plan.inferred_steps).filter(step => step.required === false);
   const optionalCapabilities = capabilitiesForSteps(optionalSteps);
   const requiredCapabilities = allCapabilities.filter(capability => !optionalCapabilities.includes(capability));
   const mode = modeOf(input, goalSpec, plan);
-  const policyCapabilities = requiredCapabilities.length ? requiredCapabilities : [];
+  const policyCapabilities = [...new Set([...(requiredCapabilities.length ? requiredCapabilities : []), ...generalCapabilities])];
   /** @type {any} */ const requiredDecision = decision(input, mode, policyCapabilities);
   /** @type {any} */ const optionalDecision = optionalCapabilities.length ? decision(input, mode, optionalCapabilities) : { allowed: true, approval_required: false, capabilities: [], granted_capabilities: [], denied_capabilities: [], mode: requiredDecision.mode, reason: "no optional capabilities requested" };
   const missingRequired = requiredCapabilities.filter(capability => !(requiredDecision.capabilities || []).includes(capability));
   const granted = [...new Set([...(requiredDecision.allowed ? requiredCapabilities : requiredDecision.granted_capabilities || []), ...(optionalDecision.allowed ? optionalCapabilities : optionalDecision.granted_capabilities || [])])];
   const denied = [...new Set([...(requiredDecision.denied_capabilities || []), ...(optionalDecision.denied_capabilities || []), ...missingRequired])];
-  const finalPolicy = { ...requiredDecision, capabilities: allCapabilities, requested_capabilities: allCapabilities, granted_capabilities: granted.filter(capability => allCapabilities.includes(capability)), denied_capabilities: denied, allowed: requiredDecision.allowed, approval_required: requiredDecision.approval_required, optional_policy_decision: optionalDecision };
+  const planGranted = granted.filter(capability => allCapabilities.includes(capability));
+  const finalPolicy = { ...requiredDecision, capabilities: [...new Set([...allCapabilities, ...generalCapabilities])], requested_capabilities: [...new Set([...allCapabilities, ...generalCapabilities])], granted_capabilities: [...new Set([...planGranted, ...generalCapabilities])], denied_capabilities: denied, allowed: requiredDecision.allowed, approval_required: requiredDecision.approval_required, optional_policy_decision: optionalDecision };
   const requiredNeedsConfirmation = requiredDecision.approval_required || denied.some(capability => requiredCapabilities.includes(capability));
   const expansionNeedsClarification = list(expansion.missing_information).length > 0 || list(expansion.out_of_scope_candidates).length > 0;
   const requiresUserConfirmation = requiredNeedsConfirmation || expansionNeedsClarification || (requiredSteps.length === 0 && expansion.requires_user_confirmation === true);
 
   if (!existing) {
-    plan = createGoalPlan({ ...plan, granted_capabilities: finalPolicy.granted_capabilities, denied_capabilities: finalPolicy.denied_capabilities, requires_explicit_confirmation: finalPolicy.mode === "unrestricted" || requiresUserConfirmation });
+    plan = createGoalPlan({ ...plan, granted_capabilities: planGranted, denied_capabilities: denied.filter(capability => allCapabilities.includes(capability)), requires_explicit_confirmation: finalPolicy.mode === "unrestricted" || requiresUserConfirmation });
     const validation = validateGoalPlan(plan);
     if (!validation.valid) return invalid(validation.errors, { goal_spec: goalSpec, expansion });
     expansion = { ...expansion, goal_plan: plan, inferred_steps: plan.inferred_steps, requested_capabilities: allCapabilities, granted_capabilities: plan.granted_capabilities, denied_capabilities: plan.denied_capabilities };
   }
-  return { status: "ready", goal_spec: goalSpec, goal_plan: plan, expansion, execution_policy: finalPolicy, requested_capabilities: allCapabilities, granted_capabilities: finalPolicy.granted_capabilities, denied_capabilities: finalPolicy.denied_capabilities, questions: list(expansion.questions), requires_user_confirmation: requiresUserConfirmation, optional_steps: optionalSteps, inferred_steps: list(plan.inferred_steps), out_of_scope_candidates: list(expansion.out_of_scope_candidates), missing_information: list(expansion.missing_information), expansion_confidence: expansion.expansion_confidence };
+  return { status: "ready", goal_spec: goalSpec, goal_plan: plan, expansion, interpretation: compiled.intent || null, hypotheses: list(expansion.hypotheses), assumptions: list(expansion.assumptions), candidate_criteria: list(expansion.candidate_criteria), provisional_criteria: list(expansion.candidate_criteria).filter(item => item?.provisional === true), planning_trace: list(expansion.planning_trace), execution_policy: finalPolicy, requested_capabilities: [...new Set([...allCapabilities, ...generalCapabilities])], granted_capabilities: finalPolicy.granted_capabilities, denied_capabilities: finalPolicy.denied_capabilities, questions: list(expansion.questions), requires_user_confirmation: requiresUserConfirmation, optional_steps: optionalSteps, inferred_steps: list(plan.inferred_steps), out_of_scope_candidates: list(expansion.out_of_scope_candidates), missing_information: list(expansion.missing_information), expansion_confidence: expansion.expansion_confidence ?? expansion.confidence ?? null };
 }
 
 module.exports = { prepareGoalExecution };
