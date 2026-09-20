@@ -325,7 +325,9 @@ describe("goal session official pause/release/resume lifecycle", () => {
       const resumed = resumeGoalSession(root, "goal-session-test");
       assert.equal(resumed.resumeCheck.checkpoint_changed, true);
       assert.equal(resumed.resumeCheck.requires_verification, true);
+      assert.equal(resumed.resumeCheck.safe_to_resume, false);
       assert.equal(resumed.state.resume_check.requires_verification, true);
+      assert.equal(resumed.state.status, "verification_required");
       releaseGoalSessionLock(resumed);
     } finally { clean(root); }
   });

@@ -224,8 +224,8 @@
       "embedded": "675521fbbe443483de7780574dfe66761384ffcb97901b5ea8365a5a32fead16"
     },
     "goal/controller.js": {
-      "source": "013352308d373804717f3b6e457bb5fcb11bb8a35b31ac90a7e787ab0fd37d62",
-      "embedded": "013352308d373804717f3b6e457bb5fcb11bb8a35b31ac90a7e787ab0fd37d62"
+      "source": "c7f0ac10e088ca8c12af79e80083cfd745edcc0b5baaebbfdfa7d9b01ecb59e3",
+      "embedded": "c7f0ac10e088ca8c12af79e80083cfd745edcc0b5baaebbfdfa7d9b01ecb59e3"
     },
     "goal/evaluator.js": {
       "source": "216d25cf150aeeedc4a0c5640ba11dae2870337fcf2ab0f8fb834f3b8860573c",
@@ -256,8 +256,8 @@
       "embedded": "8cadd386951bf02984c18cc028e489185f3352d2544006adf3103af2a87cc747"
     },
     "goal/session.js": {
-      "source": "e121411a9c00938752a5c9bfabe5772e5579753be4d67c78e9a50a07d4657e6f",
-      "embedded": "e121411a9c00938752a5c9bfabe5772e5579753be4d67c78e9a50a07d4657e6f"
+      "source": "2b8b9a35da37f71da46efcfddcad7ceded8ce3f03bb6663cb5ee2c10107d2cb3",
+      "embedded": "2b8b9a35da37f71da46efcfddcad7ceded8ce3f03bb6663cb5ee2c10107d2cb3"
     },
     "goal/spec.js": {
       "source": "1ea7f6ec46937b734385eeb0bc322c21a56f5db93d464e1957f31ace0734628a",
@@ -280,8 +280,8 @@
       "embedded": "57c2d171d131f56b7227fae0417a0412ce713d5280bcd6da5298c289ca3c013e"
     },
     "mcp/goal-tools.js": {
-      "source": "f81a59cd6fa4a17041ce02d05b178bd43bcc879b97173c5c40008d9916da5847",
-      "embedded": "f81a59cd6fa4a17041ce02d05b178bd43bcc879b97173c5c40008d9916da5847"
+      "source": "f4a6ccc425bbfd55b48700acd5813fd021addff8490e8a4199ddf4d4b912b7d8",
+      "embedded": "f4a6ccc425bbfd55b48700acd5813fd021addff8490e8a4199ddf4d4b912b7d8"
     },
     "mcp/runtime-token.js": {
       "source": "d07663e879ad91f12b327101f7b747e8bfc527bed6abc8aa2018ee393f4382d4",

@@ -52,6 +52,8 @@ test("goal start and status use persistent GoalState and evaluator completion", 
     assert.ok(Object.prototype.hasOwnProperty.call(status, "current_state"));
     assert.ok(Object.prototype.hasOwnProperty.call(status, "alternatives"));
     assert.ok(Object.prototype.hasOwnProperty.call(status, "approval_required"));
+    assert.ok(Object.prototype.hasOwnProperty.call(status, "verification_required"));
+    assert.ok(Object.prototype.hasOwnProperty.call(status, "resume_check"));
     assert.ok(Object.prototype.hasOwnProperty.call(status, "resume_action"));
   } finally { box.clean(); }
 });

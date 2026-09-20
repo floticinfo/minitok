@@ -26,6 +26,8 @@ test("CLI goal status exposes additive blocker and resume fields", () => {
     const response = sessionResponse(require("../src/goal/session").loadGoalSession(repo, "cli-goal", { lock: false }));
     assert.equal(response.state, "running");
     assert.equal(response.approval_required, true);
+    assert.equal(response.verification_required, false);
+    assert.equal(response.resume_check.requires_verification, false);
     assert.equal(response.recommended_action, "user-approval");
     assert.match(response.resume_action, /goal resume/);
   } finally { fs.rmSync(repo, { recursive: true, force: true }); }

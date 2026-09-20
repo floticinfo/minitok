@@ -380,6 +380,50 @@ test("GoalController releases an owned session lock after an executor exception"
   } finally { session.lock?.release?.(); fs.rmSync(root, { recursive: true, force: true }); }
 });
 
+test("fails closed after resume when re-verification evidence is missing", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-controller-resume-gate-"));
+  const goal = spec([criterion("a")]);
+  const session = createGoalSession({ workspaceRoot: root, goalSpec: goal });
+  let executed = 0;
+  session.state.resume_check = { safe_to_resume: false, checkpoint_changed: true, requires_verification: true, reason: "tracked file changed", verified_at: null, verification_evidence_ids: [] };
+  try {
+    const controller = new GoalController(goal, {
+      session,
+      evaluator: async () => result(goal.goal_id, [["a", "unknown"]], { evidence: [{ evidence_id: "e-a-unknown", valid: false, executed: false, execution: { executed: false } }] }),
+      taskProposer: async () => ({ next_task: "must not run", target_criteria: ["a"] }),
+      taskExecutor: async () => { executed += 1; return { success: true, status: "success", tokens: {} }; },
+      releaseSessionOnExit: true,
+    });
+    const output = await controller.run();
+    assert.equal(output.state, "verification_required");
+    assert.equal(output.completed, false);
+    assert.equal(executed, 0);
+    assert.equal(session.state.resume_check.requires_verification, true);
+    assert.equal(session.state.final_outcome.state, "verification_required");
+  } finally { session.lock?.release?.(); fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("clears the resume gate only after passed executed evidence", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-controller-resume-pass-"));
+  const goal = spec([criterion("a")]);
+  const session = createGoalSession({ workspaceRoot: root, goalSpec: goal });
+  session.state.resume_check = { safe_to_resume: false, checkpoint_changed: true, requires_verification: true, reason: "tracked file changed", verified_at: null, verification_evidence_ids: [] };
+  try {
+    const controller = new GoalController(goal, {
+      session,
+      evaluator: async () => result(goal.goal_id, [["a", "passed"]]),
+      taskProposer: async () => ({ next_task: "must not run", target_criteria: ["a"] }),
+      taskExecutor: async () => { throw new Error("task execution must not be needed"); },
+      releaseSessionOnExit: true,
+    });
+    const output = await controller.run();
+    assert.equal(output.completed, true);
+    assert.equal(session.state.resume_check.requires_verification, false);
+    assert.equal(session.state.resume_check.safe_to_resume, true);
+    assert.deepEqual(session.state.resume_check.verification_evidence_ids, ["e-a-passed"]);
+  } finally { session.lock?.release?.(); fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test("persists blocker and goal evidence fields through a Goal Session", async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-controller-evidence-"));
   const goal = spec([criterion("a")], { max_cycles: 2 });

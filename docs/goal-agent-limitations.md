@@ -5,7 +5,7 @@
 - 모델 주장보다 deterministic evaluator와 evidence를 우선한다.
 - 필수 criterion, valid evidence, repository scope가 모두 충족되지 않으면 completed가 되지 않는다.
 - path traversal, protected path, unsafe verifier command, dangerous GoalSpec field를 거부한다.
-- session lock, atomic persistence, corrupt state detection, checkpoint 변경 감지를 제공한다.
+- session lock, atomic persistence, corrupt state detection, checkpoint 변경 감지와 변경 후 fail-closed 재검증 gate를 제공한다.
 - external access는 repository ODD에서 기본 차단한다.
 - Phase 8 application adapter는 mock/injected driver 중심이며 redaction과 allowlist를 적용한다.
 

@@ -182,8 +182,11 @@ minitok_run_get
 - checkpoint 이후 tracked file이 변경되지 않았는지
 - 변경되었다면 verifier를 먼저 수행했는지
 - blocker 승인이나 operator 조치가 완료되었는지
+- checkpoint 이후 변경된 경우 `resume_check.requires_verification`이 해제되었는지
 
-MCP에서는 `resume_action` 또는 `minitok_goal_resume`를 사용한다. CLI에서는 `goal resume --goal-id ...`를 사용한다. resume도 완료를 보장하지 않으며 evaluator evidence가 다시 필요하다.
+tracked file이 checkpoint 이후 변경되면 resume 상태는 `verification_required`로 유지되며 task executor를 호출하지 않는다. 모든 required criterion에 대해 `passed`, `valid`, `executed`인 evaluator evidence가 확인된 후에만 resume gate가 해제된다.
+
+MCP에서는 `resume_action` 또는 `minitok_goal_resume`를 사용한다. CLI에서는 `goal resume --goal-id ...`를 사용한다. 응답에는 `verification_required`와 `resume_check`를 포함할 수 있다. resume도 완료를 보장하지 않으며 evaluator evidence가 다시 필요하다.
 
 ## 8. Evidence 확인
 

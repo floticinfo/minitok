@@ -139,7 +139,7 @@ class GoalController {
     this.session.state.token_usage = this.tokenUsage;
     this.session.state.model = this.options.model || this.session.state.model;
     this.session.state.provider = this.options.provider || this.session.state.provider;
-    this.session.state.final_outcome = this.state === "completed" || ["escalate", "blocked", "failed", "timeout", "token_limit", "stagnation", "repetition"].includes(this.state) ? { state: this.state, completed: this.state === "completed", cycle_count: this.cycleCount, selected_alternative: this.alternativeHistory.at(-1)?.alternative_id || null } : this.session.state.final_outcome || null;
+    this.session.state.final_outcome = this.state === "completed" || ["escalate", "blocked", "failed", "timeout", "token_limit", "stagnation", "repetition", "verification_required"].includes(this.state) ? { state: this.state, completed: this.state === "completed", cycle_count: this.cycleCount, selected_alternative: this.alternativeHistory.at(-1)?.alternative_id || null } : this.session.state.final_outcome || null;
     saveGoalSession(this.session);
     appendGoalEvent(this.session, { type: eventType, state: this.session.state.status, cycle: this.cycleCount, current_task: this.currentTask });
   }
@@ -155,6 +155,27 @@ class GoalController {
     this.currentProgress = progress;
     this.persistSession("evaluation_recorded");
     return this.evaluation;
+  }
+
+  resumeVerification(evaluation) {
+    const resumeCheck = this.session?.state?.resume_check;
+    if (!resumeCheck?.requires_verification) return true;
+    const evidence = new Map((Array.isArray(evaluation?.evidence) ? evaluation.evidence : []).map(item => [item.evidence_id, item]));
+    const verified = this.goal.success_criteria.filter(criterion => criterion.required).every(criterion => {
+      const result = evaluation?.criteria?.find(item => item.id === criterion.id);
+      return result?.status === "passed" && Array.isArray(result.evidence_ids) && result.evidence_ids.length > 0 && result.evidence_ids.every(id => evidence.get(id)?.valid === true && evidence.get(id)?.executed === true && evidence.get(id)?.execution?.executed === true);
+    });
+    if (!verified) {
+      this.state = "verification_required";
+      this.actionHistory.push({ action: "resume_verification_required", reason: resumeCheck.reason || "Read-only verifier evidence is required before resumed actions" });
+      return false;
+    }
+    const completedAt = currentTime(this.options);
+    const updated = { ...resumeCheck, safe_to_resume: true, requires_verification: false, verified_at: completedAt, verification_evidence_ids: [...evidence.keys()] };
+    this.session.state.resume_check = updated;
+    this.session.resumeCheck = updated;
+    this.actionHistory.push({ action: "resume_verification_passed", verification_evidence_ids: updated.verification_evidence_ids });
+    return true;
   }
 
   checkEvaluation(evaluation) {
@@ -321,6 +342,7 @@ class GoalController {
       while (this.state !== "completed") {
         const evaluation = await this.observe();
         if (this.state === "timeout") break;
+        if (!this.resumeVerification(evaluation)) break;
         if (this.checkEvaluation(evaluation)) break;
         if (this.checkLimits()) break;
         const remaining = selectRemaining(this.goal, evaluation || {});
