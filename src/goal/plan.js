@@ -69,11 +69,19 @@ function detectSideEffects(step) {
   return [...detected];
 }
 function approvalRequirementsFor(sideEffects) { return sideEffects.filter(effect => APPROVAL_REQUIREMENTS.includes(effect)); }
-function policyFor(sideEffects, requested) { return EXECUTION_POLICIES.includes(requested) ? requested : sideEffects.length > 0 ? "supervised" : "safe"; }
+const NEVER_AUTONOMOUS_PATTERN = /(?:private\s+key|secret\s+(?:output|export|extract|reveal)|extract(?:ing)?\s+(?:a\s+)?private\s+key|force\s+push|tag\s+overwrite|overwrite\s+tag|approval\s+bypass|bypass\s+approval|destructive\s+(?:database|db)|drop\s+(?:database|table)|delete\s+from)/i;
+function policyFor(sideEffects, requested, text = "") {
+  if (requested === "never_autonomous" || NEVER_AUTONOMOUS_PATTERN.test(text)) return "never_autonomous";
+  if (sideEffects.some(effect => ["publish", "deploy", "credential", "database_mutation", "external_call"].includes(effect))) return "authorized_external";
+  if (requested === "authorized_external") return requested;
+  if (requested === "supervised" || sideEffects.includes("file_change")) return "supervised";
+  return "safe";
+}
 function normalizeStep(step, source) {
   const value = redactValue(step || {});
   const sideEffects = detectSideEffects(value);
-  return { id: value.id, description: value.description, source, required: value.required !== false, depends_on: Array.isArray(value.depends_on) ? [...value.depends_on] : [], target_criteria: Array.isArray(value.target_criteria) ? [...value.target_criteria] : [], risk: value.risk || (sideEffects.length ? "medium" : "low"), side_effects: sideEffects, verification: value.verification === undefined ? {} : value.verification, status: value.status || "proposed", rationale: value.rationale, execution_policy: policyFor(sideEffects, value.execution_policy) };
+  const policyText = `${value.description || ""} ${value.rationale || ""} ${typeof value.verification === "string" ? value.verification : JSON.stringify(value.verification || {})}`;
+  return { id: value.id, description: value.description, source, required: value.required !== false, depends_on: Array.isArray(value.depends_on) ? [...value.depends_on] : [], target_criteria: Array.isArray(value.target_criteria) ? [...value.target_criteria] : [], risk: value.risk || (sideEffects.length ? "medium" : "low"), side_effects: sideEffects, verification: value.verification === undefined ? {} : value.verification, status: value.status || "proposed", rationale: value.rationale, execution_policy: policyFor(sideEffects, value.execution_policy, policyText) };
 }
 function createGoalPlan(input = {}) {
   if (!isPlainObject(input)) throw new TypeError("GoalPlan must be an object");
@@ -84,7 +92,7 @@ function createGoalPlan(input = {}) {
   const approvals = new Set(Array.isArray(value.approval_requirements) ? value.approval_requirements : []);
   steps.forEach(step => approvalRequirementsFor(step.side_effects).forEach(item => approvals.add(item)));
   const scope = value.scope_boundary || {};
-  return { plan_version: value.plan_version === undefined ? PLAN_VERSION : value.plan_version, objective: value.objective, explicit_steps: explicit, inferred_steps: inferred, dependencies: Array.isArray(value.dependencies) ? value.dependencies : [], success_criteria: Array.isArray(value.success_criteria) ? value.success_criteria : [], scope_boundary: { allowed_paths: scope.allowed_paths || [], blocked_paths: scope.blocked_paths || [], protected_paths: scope.protected_paths || [], allow_external: scope.allow_external === true }, risk_level: value.risk_level || "low", approval_requirements: [...approvals], assumptions: Array.isArray(value.assumptions) ? value.assumptions : [], execution_policy: policyFor(steps.flatMap(step => step.side_effects), value.execution_policy) };
+  return { plan_version: value.plan_version === undefined ? PLAN_VERSION : value.plan_version, objective: value.objective, explicit_steps: explicit, inferred_steps: inferred, dependencies: Array.isArray(value.dependencies) ? value.dependencies : [], success_criteria: Array.isArray(value.success_criteria) ? value.success_criteria : [], scope_boundary: { allowed_paths: scope.allowed_paths || [], blocked_paths: scope.blocked_paths || [], protected_paths: scope.protected_paths || [], allow_external: scope.allow_external === true }, risk_level: value.risk_level || "low", approval_requirements: [...approvals], assumptions: Array.isArray(value.assumptions) ? value.assumptions : [], execution_policy: steps.some(step => step.execution_policy === "never_autonomous") ? "never_autonomous" : steps.some(step => step.execution_policy === "authorized_external") ? "authorized_external" : policyFor(steps.flatMap(step => step.side_effects), value.execution_policy) };
 }
 
 function validateScope(value, errors) {

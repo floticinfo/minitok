@@ -67,8 +67,30 @@ test("automatically requires approval for side-effecting steps", () => {
   }));
   assert.ok(plan.approval_requirements.includes("publish"));
   assert.ok(plan.approval_requirements.includes("external_call"));
-  assert.equal(plan.execution_policy, "supervised");
+  assert.equal(plan.execution_policy, "authorized_external");
+  assert.equal(plan.explicit_steps[0].execution_policy, "authorized_external");
   assert.ok(plan.explicit_steps[0].side_effects.includes("publish"));
+});
+
+test("promotes forbidden operations to never_autonomous regardless of requested policy", () => {
+  const plan = createGoalPlan(planInput({
+    explicit_steps: [{ id: "forbidden", description: "Force push and overwrite tag; expose private key", required: true, target_criteria: ["tests"], verification: { command: "local check" }, execution_policy: "supervised", status: "proposed" }],
+    inferred_steps: [],
+  }));
+  assert.equal(plan.explicit_steps[0].execution_policy, "never_autonomous");
+  assert.equal(plan.execution_policy, "never_autonomous");
+});
+
+test("keeps workspace mutation supervised and local verification safe", () => {
+  const plan = createGoalPlan(planInput({
+    explicit_steps: [
+      { id: "edit", description: "Modify a workspace file", required: true, target_criteria: ["tests"], verification: { command: "npm test" }, status: "proposed" },
+      { id: "check", description: "Run local lint and typecheck", required: true, target_criteria: ["tests"], verification: { command: "npm run lint" }, status: "proposed" },
+    ],
+    inferred_steps: [],
+  }));
+  assert.equal(plan.explicit_steps[0].execution_policy, "supervised");
+  assert.equal(plan.explicit_steps[1].execution_policy, "safe");
 });
 
 test("requires rationale and a goal relationship for inferred steps", () => {

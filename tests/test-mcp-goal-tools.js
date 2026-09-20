@@ -33,6 +33,13 @@ test("goal start returns clarification_required without creating a session", asy
     const response = await box.call("minitok_goal_start", { goal: "Improve the architecture", repo: box.root, mode: "safe" });
     const value = payload(response);
     assert.equal(value.state, "clarification_required");
+    assert.equal(value.current_state, "clarification_required");
+    assert.equal(value.blocker, null);
+    assert.deepEqual(value.alternatives, []);
+    assert.equal(value.recommended_action, "Provide clarification");
+    assert.equal(value.approval_required, false);
+    assert.equal(value.resume_command, null);
+    assert.equal(value.resume_action, "Provide clarification before starting the goal");
     assert.ok(Array.isArray(value.questions));
     assert.equal(fs.existsSync(path.join(box.root, ".minitok", "goals")), false);
   } finally { box.clean(); }
