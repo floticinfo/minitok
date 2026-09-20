@@ -300,16 +300,16 @@
       "embedded": "57c2d171d131f56b7227fae0417a0412ce713d5280bcd6da5298c289ca3c013e"
     },
     "mcp/goal-tools.js": {
-      "source": "d98927fa3307fe309d9696a7bda049fa95a5d44398bee57cfa9cff622446a831",
-      "embedded": "d98927fa3307fe309d9696a7bda049fa95a5d44398bee57cfa9cff622446a831"
+      "source": "ce7b674965b6c2bef1e046e156e9da329eda61f4dd0b173b3f5b6bf124c6a053",
+      "embedded": "ce7b674965b6c2bef1e046e156e9da329eda61f4dd0b173b3f5b6bf124c6a053"
     },
     "mcp/runtime-token.js": {
       "source": "d07663e879ad91f12b327101f7b747e8bfc527bed6abc8aa2018ee393f4382d4",
       "embedded": "d07663e879ad91f12b327101f7b747e8bfc527bed6abc8aa2018ee393f4382d4"
     },
     "mcp/tools.js": {
-      "source": "b7bb5c24bb0305ed65b04d6b09417c00c57e5f7b64de9797264e371caadd939f",
-      "embedded": "b7bb5c24bb0305ed65b04d6b09417c00c57e5f7b64de9797264e371caadd939f"
+      "source": "d5d535df9ef08959ddef819d10576be6c456b787e22ef302ef66b767991219c6",
+      "embedded": "d5d535df9ef08959ddef819d10576be6c456b787e22ef302ef66b767991219c6"
     },
     "pipeline/authorization.js": {
       "source": "b6b7eb34e7a4d9790820d8a4b9828bf4ee965af1476b5d5c4522768b1d4aae4e",
