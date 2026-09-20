@@ -64,8 +64,18 @@ function _windowsPermissionCommands(filePath, username) {
  *
  * This is the closest equivalent to POSIX 0o600 on Windows NTFS.
  */
+function currentWindowsPrincipal() {
+  try {
+    const principal = execFileSync("whoami", { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 5000 }).trim();
+    if (principal) return principal;
+  } catch {}
+  const username = typeof process.env.USERNAME === "string" ? process.env.USERNAME.trim() : "";
+  if (!username) throw new Error("Unable to resolve the current Windows principal");
+  const domain = typeof process.env.USERDOMAIN === "string" ? process.env.USERDOMAIN.trim() : "";
+  return domain ? `${domain}\\${username}` : username;
+}
 function _setWindowsPermissions(filePath) {
-  const username = execFileSync("whoami", { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 5000 }).trim();
+  const username = currentWindowsPrincipal();
   const [[, inheritArgs], [, removeArgs], [, grantArgs]] = _windowsPermissionCommands(filePath, username);
   // Each step is independent: a missing principal to remove, or a lock held by
   // another process, must not skip the grant that follows.

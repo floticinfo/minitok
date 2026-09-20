@@ -288,8 +288,8 @@
       "embedded": "d07663e879ad91f12b327101f7b747e8bfc527bed6abc8aa2018ee393f4382d4"
     },
     "mcp/tools.js": {
-      "source": "1ccd9423283651f7a088be9f15bac13599f8201bc59d95d8272130c674e67a09",
-      "embedded": "1ccd9423283651f7a088be9f15bac13599f8201bc59d95d8272130c674e67a09"
+      "source": "9160dd6724cf9db628d1b7b2cf9339123b943ca107f7305b14c3e0baa482c62b",
+      "embedded": "9160dd6724cf9db628d1b7b2cf9339123b943ca107f7305b14c3e0baa482c62b"
     },
     "pipeline/authorization.js": {
       "source": "b6b7eb34e7a4d9790820d8a4b9828bf4ee965af1476b5d5c4522768b1d4aae4e",
@@ -396,8 +396,8 @@
       "embedded": "7a2bf5656dad325561b60a91a9421aea83fdcf6bec752fe8348c9b575bc71a17"
     },
     "utils/file-permissions.js": {
-      "source": "857fdde926aae950cbfab73dd25adb0a415f958eb10d2cc44dd36c1d0a5eda57",
-      "embedded": "857fdde926aae950cbfab73dd25adb0a415f958eb10d2cc44dd36c1d0a5eda57"
+      "source": "423327474863ea1d368d3b500fd16e0f8bd968b4c21107ec4b249b8ba710b436",
+      "embedded": "423327474863ea1d368d3b500fd16e0f8bd968b4c21107ec4b249b8ba710b436"
     },
     "utils/temp-cleanup.js": {
       "source": "849aedd9715de90f9187d31df677d3ae44ae682ae84aa86f1e5e6d6642d5dea6",

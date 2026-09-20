@@ -43,6 +43,28 @@ test("tool results expose stable structured success and error contracts", async 
   assert.equal(failure.structuredContent.error.code, "TOOL_NOT_FOUND");
 });
 
+test("run_get exposes goal evidence fields and redacts sensitive values", async () => {
+  const result = await getToolHandler("minitok_run_get", { run_id: "goal-run" }, {}, {
+    safeResult: true,
+    runs: new Map([["goal-run", { runId: "goal-run", state: "blocked", controller: new AbortController(), result: {
+      blocker: { category: "authentication_failure", cause: "token=hidden" },
+      alternatives: [{ alternative_id: "local-validation", description: "local" }],
+      evidence: [{ evidence_id: "e1", stderr: "api_key=hidden" }],
+      final_outcome: { state: "blocked" },
+      approval_requests: [{ description: "credential token=hidden" }],
+      resolution_attempts: [{ status: "approval_required", reason: "secret=hidden" }],
+    } }]]),
+  });
+  const payload = JSON.parse(result.content[0].text);
+  assert.equal(payload.state, "blocked");
+  assert.ok(payload.blocker);
+  assert.ok(Array.isArray(payload.evidence));
+  assert.ok(Array.isArray(payload.approval_requests));
+  assert.ok(Array.isArray(payload.resolution_attempts));
+  assert.deepEqual(payload.final_outcome, { state: "blocked" });
+  assert.doesNotMatch(JSON.stringify(payload), /hidden/);
+});
+
 test("MCP config writes remove stale locks and leave owner-only config", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-mcp-config-"));
   try {

@@ -95,6 +95,10 @@ test("a client-supplied run_id reaches minitok_run_get and minitok_run_cancel", 
     const got = await box.call(4, "minitok_run_get", { run_id: runId });
     assert.equal(got.error, undefined, `minitok_run_get must accept run_id: ${JSON.stringify(got.error)}`);
     assert.deepEqual([box.payload(got).run_id, box.payload(got).state], [runId, "running"]);
+    assert.ok(Array.isArray(box.payload(got).evidence));
+    assert.deepEqual(box.payload(got).approval_requests, []);
+    assert.deepEqual(box.payload(got).resolution_attempts, []);
+    assert.equal(box.payload(got).final_outcome, null);
 
     const cancelled = await box.call(5, "minitok_run_cancel", { run_id: runId });
     assert.equal(cancelled.error, undefined, `minitok_run_cancel must accept run_id: ${JSON.stringify(cancelled.error)}`);
