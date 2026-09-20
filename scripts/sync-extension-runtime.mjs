@@ -19,7 +19,25 @@ function resolveModule(file, request) {
 }
 
 function collectFiles() {
-  const pending = [entry, path.join(sourceRoot, "runtime", "server.js"), path.join(sourceRoot, "runtime", "entitlement.js"), path.join(sourceRoot, "mcp", "tools.js"), path.join(sourceRoot, "entitlement", "trial.js")];
+  const pending = [
+    entry,
+    path.join(sourceRoot, "runtime", "server.js"),
+    path.join(sourceRoot, "runtime", "entitlement.js"),
+    path.join(sourceRoot, "mcp", "tools.js"),
+    path.join(sourceRoot, "entitlement", "trial.js"),
+    // General autonomy is consumed by CLI/MCP goal integrations and has a
+    // separate source/runtime parity contract, even when the stdio entrypoint
+    // does not statically import every planning module.
+    ...[
+      "adapter_registry.js",
+      "dynamic_verifier.js",
+      "environment_observer.js",
+      "general_loop.js",
+      "general_planner.js",
+      "replanner.js",
+      "tool_registry.js",
+    ].map(file => path.join(sourceRoot, "goal", file)),
+  ];
   const files = new Set();
   while (pending.length) {
     const file = pending.pop();
