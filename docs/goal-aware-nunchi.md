@@ -201,6 +201,15 @@ MCP에서는 `resume_action` 또는 `minitok_goal_resume`를 사용한다. CLI�
 
 모든 저장·응답 evidence는 token, password, API key, secret, private key, authorization header를 redaction한다. 모델의 `done`, `completed`, review `APPROVE`만으로 완료를 주장하지 않는다.
 
+CLI에서는 다음처럼 상태와 evidence를 확인한다.
+
+```text
+minitok goal status --repo <repository> --goal-id <goal_id> --json
+minitok runs show <run_id> --repo <repository> --json
+```
+
+MCP에서는 `minitok_goal_status` 또는 `minitok_run_get` 응답의 `evidence`, `blocker`, `alternatives`, `approval_requests`, `resolution_attempts`, `final_outcome`을 확인한다. 원본 로그나 provider 출력이 필요하더라도 secret 값을 복구하거나 출력하지 않으며, redacted response와 session state를 evidence의 권위 있는 표현으로 취급한다.
+
 ## 9. Backward compatibility
 
 기존 계약은 유지된다.
@@ -253,7 +262,7 @@ npm run readiness:all
 - force push
 - approval 우회
 
-## 6. Blocker 처리 순서
+## 12. Blocker 처리 순서
 
 1. 오류를 blocker category로 분류한다.
 2. redacted evidence와 함께 원인을 기록한다.
@@ -266,7 +275,7 @@ npm run readiness:all
 
 자동 선택되더라도 verifier 통과 없이는 Goal 완료로 판정하지 않는다.
 
-## 7. CLI workflow
+## 13. CLI workflow
 
 ```text
 minitok goal start "Prepare a release" --repo <repository> --json
