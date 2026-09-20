@@ -376,7 +376,7 @@ class GoalController {
 async function defaultTaskProposer(goal, remaining, _evaluation, options = {}) {
   const expansionInput = options.goalExpansion || options.expansion;
   if (expansionInput) {
-    const expansion = expansionInput.goal_plan ? expansionInput : expandGoal({ objective: goal.objective, success_criteria: goal.success_criteria, repository_context: { repository_odd: goal.constraints.repository_odd || {} }, execution_policy: goal.execution_policy, ...expansionInput });
+    const expansion = expansionInput.goal_plan ? expansionInput : expandGoal({ objective: goal.objective, success_criteria: goal.success_criteria, repository_context: { repository_odd: goal.constraints.repository_odd || {} }, environment_state: options.environmentState, execution_policy: goal.execution_policy, ...expansionInput });
     const candidate = expansion.inferred_steps.find(step => step.required === true && step.status !== "deferred" && step.target_criteria.some(id => remaining.some(item => item.id === id)));
     if (candidate) return { next_task: candidate.description, target_criteria: candidate.target_criteria, expected_verification: candidate.verification?.id ? [candidate.verification.id] : [], rationale: candidate.rationale, goal_plan: expansion.goal_plan, inferred_step_id: candidate.id, requires_user_confirmation: expansion.requires_user_confirmation };
   }

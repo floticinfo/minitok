@@ -45,6 +45,36 @@ test("simple file changes do not expand into release or deployment work", () => 
   assert.equal(result.requires_user_confirmation, false);
 });
 
+test("environment state turns unavailable prerequisites into confirmation questions without exposing raw values", () => {
+  const result = expandGoal(input("Fix the bug in src/parser.js", {
+    environment_state: {
+      repository_clean: false,
+      repository_status: "dirty",
+      missing_commands: ["C:\\tools\\npm.cmd"],
+      filesystem_writable: false,
+      verifier_available: false,
+      provider_ready: false,
+      network_available: false,
+      API_KEY: "do-not-record",
+      token: "do-not-record",
+    },
+  }));
+  assert.equal(result.requires_user_confirmation, true);
+  assert.ok(result.missing_information.some(item => /verifier|workspace|provider|commands/i.test(item)));
+  assert.ok(result.questions.length >= 3);
+  assert.ok(result.assumptions.some(item => /pre-existing|network/i.test(item)));
+  assert.ok(result.expansion_confidence < 0.82);
+  assert.doesNotMatch(JSON.stringify(result), /do-not-record|API_KEY|token/);
+});
+
+test("omitting environment state preserves the existing expansion contract", () => {
+  const baseline = expandGoal(input("Fix the bug in src/parser.js"));
+  const explicitDefaults = expandGoal(input("Fix the bug in src/parser.js", { environment_state: {} }));
+  assert.deepEqual(explicitDefaults.inferred_steps, baseline.inferred_steps);
+  assert.deepEqual(explicitDefaults.missing_information, baseline.missing_information);
+  assert.equal(explicitDefaults.requires_user_confirmation, baseline.requires_user_confirmation);
+});
+
 test("missing criteria creates a clarification request instead of an executable plan", () => {
   const result = expandGoal({ objective: "Improve the parser", success_criteria: [], repository_context: { repository_odd: { allowed_paths: ["src"], blocked_paths: [], protected_paths: [], allow_external: false } } });
   assert.equal(result.goal_plan, null);
@@ -82,6 +112,13 @@ test("GoalController uses required inferred steps only when expansion context is
   const proposal = await controller.taskProposer(goal, goal.success_criteria, null, { goalExpansion: controller.options.goalExpansion });
   assert.equal(proposal.inferred_step_id, "release-version");
   assert.equal(/tag|publish/i.test(proposal.next_task), false);
+});
+
+test("next_task expansion passes environment state without changing legacy responses", async () => {
+  const provider = { complete: async () => ({ text: JSON.stringify({ done: false, next_task: "continue", remaining_goals: ["x"] }), tokens: { input: 1, output: 1 } }) };
+  const expanded = await generateNextTask(provider, "Fix src/parser.js", [], null, { expandGoal: true, success_criteria: [{ id: "fix", description: "Fixed", required: true }], environment_state: { verifier_available: false } });
+  assert.equal(expanded.requires_user_confirmation, true);
+  assert.ok(expanded.missing_information.some(item => /verifier/i.test(item)));
 });
 
 test("next_task preserves its legacy shape unless expansion is explicitly requested", async () => {

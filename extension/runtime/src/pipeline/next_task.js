@@ -71,7 +71,7 @@ async function generateNextTask(provider, goal, completedCycles, latestReview, o
     tokens: result.tokens,
   };
   if (!options.goalExpansion && !options.expandGoal) return legacyResult;
-  const expansion = options.goalExpansion?.goal_plan ? options.goalExpansion : expandGoal({ objective: goal, success_criteria: options.success_criteria || [], repository_context: options.repository_context || {}, execution_policy: options.execution_policy, only_goal: options.only_goal });
+  const expansion = options.goalExpansion?.goal_plan ? options.goalExpansion : expandGoal({ objective: goal, success_criteria: options.success_criteria || [], repository_context: options.repository_context || {}, environment_state: options.environment_state, execution_policy: options.execution_policy, only_goal: options.only_goal });
   return { ...legacyResult, goal_plan: expansion.goal_plan, inferred_steps: expansion.inferred_steps, assumptions: expansion.assumptions, missing_information: expansion.missing_information, expansion_confidence: expansion.expansion_confidence, requires_user_confirmation: expansion.requires_user_confirmation, optional_steps: expansion.optional_steps, out_of_scope_candidates: expansion.out_of_scope_candidates };
 }
 

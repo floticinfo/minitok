@@ -53,6 +53,46 @@ function candidateScopeViolations(steps, scope) {
   return steps.flatMap(item => asArray(item.paths || item.scope_paths || item.verification?.paths).filter(file => !pathAllowed(file, scope)).map(file => ({ step_id: item.id, path: file })));
 }
 function missingCriteria(criteria) { return criteria.length === 0 ? ["Provide at least one observable success criterion before automatic goal expansion"] : []; }
+function environmentSummary(environmentState = {}) {
+  if (!environmentState || typeof environmentState !== "object" || Array.isArray(environmentState)) return { missing_information: [], questions: [], assumptions: [], confidence_penalty: 0 };
+  const state = /** @type {Record<string, any>} */ (environmentState);
+  const missingInformation = [];
+  const questions = [];
+  const assumptions = [];
+  let confidencePenalty = 0;
+  const unavailableCommands = [...new Set([...asArray(state.missing_commands)].filter(nonEmptyString).map(command => command.replace(/.*[\\/]/, "").slice(0, 64)))];
+  if (unavailableCommands.length > 0) {
+    missingInformation.push("One or more required environment commands are unavailable");
+    questions.push("Confirm or install the required local verification commands before execution");
+    confidencePenalty = Math.max(confidencePenalty, 0.2);
+  }
+  if (state.filesystem_writable === false) {
+    missingInformation.push("The workspace is not writable");
+    questions.push("Provide a writable workspace or approve an operator action to restore write access");
+    confidencePenalty = Math.max(confidencePenalty, 0.25);
+  }
+  if (state.verifier_available === false) {
+    missingInformation.push("The configured verifier is unavailable");
+    questions.push("Provide an available deterministic verifier before execution");
+    confidencePenalty = Math.max(confidencePenalty, 0.2);
+  }
+  if (state.repository_clean === false || ["dirty", "changed", "modified"].includes(String(state.repository_status || "").toLowerCase())) {
+    assumptions.push("The workspace contains pre-existing changes; scope and ownership must be confirmed before file changes");
+    questions.push("Confirm that pre-existing workspace changes are in scope");
+    confidencePenalty = Math.max(confidencePenalty, 0.1);
+  }
+  if (state.network_available === false) {
+    assumptions.push("External network access is unavailable; external follow-up cannot be verified locally");
+    if (state.provider_ready === false) questions.push("Confirm the local provider and network state before any external verification");
+    confidencePenalty = Math.max(confidencePenalty, 0.1);
+  }
+  if (state.provider_ready === false) {
+    missingInformation.push("The configured provider is not ready");
+    questions.push("Configure or select an authorized provider before model-assisted execution");
+    confidencePenalty = Math.max(confidencePenalty, 0.15);
+  }
+  return { missing_information: missingInformation, questions, assumptions, confidence_penalty: confidencePenalty };
+}
 
 function expandGoal(input = {}) {
   const value = redactValue(input);
@@ -62,7 +102,8 @@ function expandGoal(input = {}) {
   const scope = scopeFrom(value.repository_context || {});
   const onlyGoal = onlyGoalRequested(value, objective);
   const missing = missingCriteria(criteria);
-  const questions = [];
+  const environment = environmentSummary(value.environment_state);
+  const questions = [...environment.questions];
   if (!objective) questions.push("Provide a non-empty objective before expanding the goal");
   if (missing.length) questions.push(...missing);
   if (!scope.allow_external && RELEASE_PATTERN.test(objective)) questions.push("Release follow-up includes tag/publication confirmation; approve any external mutation separately before execution");
@@ -70,10 +111,11 @@ function expandGoal(input = {}) {
   const violations = candidateScopeViolations(inferred, scope);
   if (violations.length) questions.push("One or more inferred steps reference paths outside the repository ODD");
   const safeInferred = inferred.filter(item => !violations.some(violation => violation.step_id === item.id));
-  const assumptions = ["Only repository-local, deterministic verification is autonomous", "Optional release follow-up is deferred unless explicitly approved"];
+  const assumptions = ["Only repository-local, deterministic verification is autonomous", "Optional release follow-up is deferred unless explicitly approved", ...environment.assumptions];
   if (scope.allowed_paths.length) assumptions.push("Inferred file work is limited to the configured allowed paths");
   let confidence = objective && ids.size > 0 ? 0.82 : 0.35;
   if (RELEASE_PATTERN.test(objective)) confidence = ids.size > 0 ? 0.9 : 0.4;
+  confidence = Math.max(0, confidence - environment.confidence_penalty);
   if (violations.length) confidence = Math.min(confidence, 0.25);
   const requiresConfirmation = questions.length > 0 || confidence < 0.6 || safeInferred.some(item => item.execution_policy === "authorized_external") || safeInferred.some(item => item.status === "deferred");
   const planInput = { objective, explicit_steps: [], inferred_steps: safeInferred, dependencies: safeInferred.flatMap(item => item.depends_on.length ? [{ step_id: item.id, depends_on: item.depends_on }] : []), success_criteria: criteria, scope_boundary: scope, risk_level: safeInferred.some(item => item.risk === "critical") ? "critical" : safeInferred.some(item => item.risk === "high") ? "high" : "low", approval_requirements: [], assumptions, execution_policy: policyMode(value.execution_policy) };
@@ -84,7 +126,7 @@ function expandGoal(input = {}) {
     if (validation.valid) goalPlan = candidate;
     else questions.push("The inferred plan did not pass GoalPlan validation and requires clarification");
   }
-  return { goal_plan: goalPlan, inferred_steps: goalPlan?.inferred_steps || [], assumptions, missing_information: [...missing, ...violations.map(item => `Path is outside the repository ODD: ${normalizePath(item.path)}`)], expansion_confidence: confidence, requires_user_confirmation: requiresConfirmation || !goalPlan, questions, optional_steps: (goalPlan?.inferred_steps || []).filter(item => item.required === false), out_of_scope_candidates: violations.map(item => ({ step_id: item.step_id, path: normalizePath(item.path), status: "not_added", reason: "repository_odd_scope" })), only_goal: onlyGoal };
+  return { goal_plan: goalPlan, inferred_steps: goalPlan?.inferred_steps || [], assumptions, missing_information: [...environment.missing_information, ...missing, ...violations.map(item => `Path is outside the repository ODD: ${normalizePath(item.path)}`)], expansion_confidence: confidence, requires_user_confirmation: requiresConfirmation || environment.missing_information.length > 0 || environment.questions.length > 0 || !goalPlan, questions, optional_steps: (goalPlan?.inferred_steps || []).filter(item => item.required === false), out_of_scope_candidates: violations.map(item => ({ step_id: item.step_id, path: normalizePath(item.path), status: "not_added", reason: "repository_odd_scope" })), only_goal: onlyGoal };
 }
 
 module.exports = { expandGoal, pathAllowed, scopeFrom, extractPaths, onlyGoalRequested };
