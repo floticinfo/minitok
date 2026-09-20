@@ -192,6 +192,7 @@ class GoalController {
     this.session.state.recovery_history = this.recoveryHistory;
     this.session.state.blocker_reports = this.blockerReports;
     this.session.state.alternative_history = this.alternativeHistory;
+    this.session.state.terminal_resolution = this.session.state.terminal_resolution || (this.alternativeHistory.at(-1)?.status === "escalate" || this.alternativeHistory.at(-1)?.status === "approval_required" ? { blocker: this.blockerReports.at(-1) || null, attempted_alternatives: this.alternativeHistory.map(item => item.alternative_id).filter(Boolean), recommended_alternative: this.blockerReports.at(-1)?.recommended_alternative || null, why_not_selected: this.alternativeHistory.at(-1)?.why_not_selected || [], required_external_action: this.blockerReports.at(-1)?.required_external_action || null, resume_conditions: this.blockerReports.at(-1)?.resume_conditions || "Provide new evidence and resume after the blocker clears", next_user_action: this.blockerReports.at(-1)?.next_user_action || "Review the blocker and choose an approved alternative" } : null);
     this.session.state.model_routing = this.modelRouting;
     this.session.state.execution_policy = this.policyDecision;
     this.session.state.session_id = this.session.state.session_id || `session_${this.goal.goal_id}`;
@@ -299,6 +300,19 @@ class GoalController {
       retryable: failureRecord.failure_category === "timeout" || failureRecord.failure_category === "environment_failure",
       execution_policy: this.options.mode || this.options.execution_policy || this.goal.execution_policy,
       command: result?.verification?.command,
+      alternatives: result?.alternatives,
+      planner_alternatives: proposal?.planner_alternatives || this.options.planner_alternatives,
+      environment_alternatives: result?.environment_alternatives || this.options.environment_alternatives,
+      environment_workarounds: result?.environment_workarounds || this.options.environment_workarounds,
+      local_fallbacks: result?.local_fallbacks || this.options.local_fallbacks,
+      reduced_scope_alternatives: result?.reduced_scope_alternatives || this.options.reduced_scope_alternatives,
+      deferred_alternatives: result?.deferred_alternatives || this.options.deferred_alternatives,
+      user_decision_alternatives: result?.user_decision_alternatives || this.options.user_decision_alternatives,
+      evidence_complete: Array.isArray(result?.evidence) && result.evidence.length > 0 && result.evidence.every(item => item?.valid === true && (item?.executed === true || item?.execution?.executed === true)),
+      rollback_failure: result?.rollback?.success === false || result?.rollback_failure === true,
+      required_external_action: result?.required_external_action,
+      resume_conditions: result?.resume_conditions,
+      next_user_action: result?.next_user_action,
     });
     this.blockerReports.push(report);
     if (this.escalationEngine?.recordBlockerOutcome) {
@@ -313,11 +327,19 @@ class GoalController {
       config: this.options.config,
       used_alternative_ids: this.alternativeHistory.map(item => item.alternative_id).filter(Boolean),
       used_patch_signatures: this.taskHistory.map(item => item.patch_signature).filter(Boolean),
+      used_external_targets: this.alternativeHistory.map(item => item.external_target).filter(Boolean),
+      runtime_permission: this.policyDecision.audit_context?.runtime_permission === true,
+      audit_persisted: this.policyDecision.audit_context?.audit_persisted === true,
+      integrity_preflight: this.policyDecision.audit_context?.integrity_preflight === true,
+      require_evidence: true,
     });
     const selectionDecision = selection.alternative ? resolveExecutionPolicy({ mode: this.policyDecision.mode, capabilities: capabilitiesForSideEffects(selection.alternative.side_effects), explicit_confirmation: this.options.explicit_confirmation === true, auto_accept: this.options.auto_accept === true || this.options.autoAccept === true, actor: this.options.actor, config: this.options.config, source: this.options.source || "internal", ...generalPolicyFields(this.options) }) : this.policyDecision;
-    this.alternativeHistory.push({ blocker_id: report.blocker_id, alternative_id: selection.alternative?.alternative_id || null, execution_policy: selection.alternative?.execution_policy || null, status: selection.status, reason: selection.reason, approval_request: selection.approval_request || null, resume_action: selection.approval_request?.resume_action || (selection.status === "selected" ? "Run verifier after the alternative completes" : "Call minitok_goal_resume after approval and required operator checks"), execution_status: selection.status === "selected" ? "delegated_to_recovery" : selection.status, verification_status: "pending", ...executionEvidence(selectionDecision, "pending", selection.auto_approved === true) });
+    this.alternativeHistory.push({ blocker_id: report.blocker_id, alternative_id: selection.alternative?.alternative_id || null, source: selection.alternative?.source || null, patch_signature: selection.alternative?.patch_signature || null, external_target: selection.alternative?.external_target || null, execution_policy: selection.alternative?.execution_policy || null, status: selection.status, reason: selection.reason, why_not_selected: selection.why_not_selected || [], approval_request: selection.approval_request || null, resume_action: selection.approval_request?.resume_action || (selection.status === "selected" ? "Run verifier after the alternative completes" : "Call minitok_goal_resume after approval and required operator checks"), execution_status: selection.status === "selected" ? "delegated_to_recovery" : selection.status, verification_status: "pending", rollback_failure: report.rollback_failure === true, evidence_complete: report.evidence_complete === true, ...executionEvidence(selectionDecision, "pending", selection.auto_approved === true) });
     this.actionHistory.push({ cycle: this.cycleCount, action: "blocker_diagnosed", blocker_id: report.blocker_id, category: report.category, recommended_alternative: report.recommended_alternative, selected_alternative: selection.alternative?.alternative_id || null, selection_status: selection.status, reason: selection.reason });
-    if (selection.status !== "selected") this.state = "escalate";
+    if (selection.status !== "selected") {
+      this.state = "escalate";
+      this.session && (this.session.state.terminal_resolution = { blocker: report, attempted_alternatives: report.attempted_alternatives, recommended_alternative: report.recommended_alternative, why_not_selected: selection.why_not_selected || [], required_external_action: report.required_external_action || report.terminal_reason?.required_external_action || null, resume_conditions: report.resume_conditions || report.terminal_reason?.resume_conditions || null, next_user_action: report.next_user_action || report.terminal_reason?.next_user_action || "Review the blocker and select an approved alternative" });
+    }
     return { report, selection };
   }
 
