@@ -8,6 +8,7 @@ const { runGoal } = require("../../goal/controller");
 const { redactValue } = require("../../goal/evidence");
 const { resolveExecutionPolicy } = require("../../goal/execution_policy");
 const { loadConfig, redactGoalExecutionConfig } = require("../../config/loader");
+const { prepareGoalExecution } = require("../../goal/integration");
 
 function repoPath(options = {}) { return path.resolve(options.repo || process.cwd()); }
 function capabilityOptions(options = {}) {
@@ -48,9 +49,11 @@ async function cmdGoalStart(goal, options = {}) {
   if (autoAccept && requestedMode !== "unrestricted") { output({ state: "policy_denied", reason: "--auto-accept is only valid with --mode unrestricted" }, options); return 1; }
   const policyDecision = resolveExecutionPolicy({ mode: requestedMode, capabilities: capabilityOptions(options), explicit_confirmation: confirmation, auto_accept: autoAccept, source: "cli", actor: options.actor, config });
   if (!policyDecision.allowed && !policyDecision.approval_required) { output({ state: "policy_denied", ...policyResponse(policyDecision), policy: policyDecision, config: redactGoalExecutionConfig(config) }, options); return 1; }
+  const prepared = prepareGoalExecution({ goal_spec: goalSpec, mode: policyDecision.mode, capabilities: policyDecision.capabilities, explicit_confirmation: confirmation, auto_accept: autoAccept, actor: options.actor, config, source: "cli" });
+  if (prepared.status !== "ready") { output({ state: prepared.status, objective: goalSpec.objective, questions: prepared.questions || [], errors: prepared.errors || [], ...prepared }, options); return prepared.status === "clarification_required" ? 2 : 1; }
   warnUnrestricted(options, policyDecision);
   const session = createGoalSession({ workspaceRoot: repoPath(options), goalSpec, model: options.model, provider: options.provider, approvalState: policyDecision.approval_required ? "approval_required" : "not_requested" });
-  try { const result = await runGoal(goalSpec, { session, releaseSessionOnExit: true, mode: policyDecision.mode, capabilities: policyDecision.capabilities, explicit_confirmation: confirmation, auto_accept: autoAccept, actor: options.actor, source: "cli", config, policyDecision }); const response = sessionResponse(session, { result, ...policyResponse(policyDecision) }); options.json ? output(response, options) : printHuman(response); return result.completed ? 0 : 1; } finally { session.lock?.release?.(); }
+  try { const result = await runGoal(goalSpec, { session, goalPlan: prepared.goal_plan, goalExpansion: prepared.expansion, releaseSessionOnExit: true, mode: policyDecision.mode, capabilities: policyDecision.capabilities, explicit_confirmation: confirmation, auto_accept: autoAccept, actor: options.actor, source: "cli", config, policyDecision }); const response = sessionResponse(session, { result, goal_plan: prepared.goal_plan, inferred_steps: prepared.inferred_steps, optional_steps: prepared.optional_steps, out_of_scope_candidates: prepared.out_of_scope_candidates, expansion_confidence: prepared.expansion_confidence, requires_user_confirmation: prepared.requires_user_confirmation, ...policyResponse(policyDecision) }); options.json ? output(response, options) : printHuman(response); return result.completed ? 0 : 1; } finally { session.lock?.release?.(); }
 }
 function cmdGoalStatus(goalId, options = {}) { if (!goalId) { console.error("goal_id is required"); return 1; } const session = loadGoalSession(repoPath(options), goalId, { lock: false }); const response = sessionResponse(session); options.json ? output(response, options) : printHuman(response); return 0; }
 async function cmdGoalResume(goalId, options = {}) { return cmdGoalContinue(goalId, options); }
@@ -67,9 +70,11 @@ async function cmdGoalContinue(goalId, options = {}) {
   if (autoAccept && requestedMode !== "unrestricted") { output({ state: "policy_denied", reason: "--auto-accept is only valid with --mode unrestricted" }, options); return 1; }
   const policyDecision = resolveExecutionPolicy({ mode: requestedMode, capabilities: capabilityOptions(options), explicit_confirmation: confirmation, auto_accept: autoAccept, source: "cli", actor: options.actor, config });
   if (!policyDecision.allowed && !policyDecision.approval_required) { output({ state: "policy_denied", ...policyResponse(policyDecision), policy: policyDecision, config: redactGoalExecutionConfig(config) }, options); return 1; }
-  warnUnrestricted(options, policyDecision);
   const session = resumeGoalSession(repoPath(options), goalId, { model: options.model, provider: options.provider, migrate: true });
-  try { const result = await runGoal(session.goalSpec, { session, releaseSessionOnExit: true, mode: policyDecision.mode, capabilities: policyDecision.capabilities, explicit_confirmation: confirmation, auto_accept: autoAccept, actor: options.actor, source: "cli", config, policyDecision }); const response = sessionResponse(session, { result, ...policyResponse(policyDecision) }); options.json ? output(response, options) : printHuman(response); return result.completed ? 0 : 1; } finally { session.lock?.release?.(); }
+  const prepared = prepareGoalExecution({ goal_spec: session.goalSpec, existing_goal_plan: session.state.goal_plan, mode: policyDecision.mode, capabilities: policyDecision.capabilities, explicit_confirmation: confirmation, auto_accept: autoAccept, actor: options.actor, config, source: "cli" });
+  if (prepared.status !== "ready") { session.lock?.release?.(); output({ state: prepared.status, objective: session.goalSpec.objective, questions: prepared.questions || [], errors: prepared.errors || [], ...prepared }, options); return prepared.status === "clarification_required" ? 2 : 1; }
+  warnUnrestricted(options, policyDecision);
+  try { const result = await runGoal(session.goalSpec, { session, goalPlan: prepared.goal_plan, goalExpansion: prepared.expansion, releaseSessionOnExit: true, mode: policyDecision.mode, capabilities: policyDecision.capabilities, explicit_confirmation: confirmation, auto_accept: autoAccept, actor: options.actor, source: "cli", config, policyDecision }); const response = sessionResponse(session, { result, goal_plan: prepared.goal_plan, inferred_steps: prepared.inferred_steps, optional_steps: prepared.optional_steps, out_of_scope_candidates: prepared.out_of_scope_candidates, expansion_confidence: prepared.expansion_confidence, requires_user_confirmation: prepared.requires_user_confirmation, ...policyResponse(policyDecision) }); options.json ? output(response, options) : printHuman(response); return result.completed ? 0 : 1; } finally { session.lock?.release?.(); }
 }
 function register(program) {
   const goal = program.command("goal").description("Manage persistent goal sessions");

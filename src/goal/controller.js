@@ -163,7 +163,12 @@ class GoalController {
     this.session.state.status = this.state === "created" ? "running" : this.state;
     this.session.state.original_objective = this.goal.objective;
     this.session.state.explicit_steps = this.options.goalPlan?.explicit_steps || this.session.state.explicit_steps || [];
+    this.session.state.goal_plan = this.options.goalPlan || this.session.state.goal_plan || null;
     this.session.state.inferred_steps = this.options.goalExpansion?.inferred_steps || this.session.state.inferred_steps || [];
+    this.session.state.optional_steps = this.options.goalExpansion?.optional_steps || this.session.state.optional_steps || [];
+    this.session.state.out_of_scope_candidates = this.options.goalExpansion?.out_of_scope_candidates || this.session.state.out_of_scope_candidates || [];
+    this.session.state.missing_information = this.options.goalExpansion?.missing_information || this.session.state.missing_information || [];
+    this.session.state.expansion_confidence = this.options.goalExpansion?.expansion_confidence ?? this.session.state.expansion_confidence ?? null;
     this.session.state.assumptions = this.options.goalExpansion?.assumptions || this.session.state.assumptions || [];
     this.session.state.blockers = this.blockerReports;
     this.session.state.alternatives = this.alternativeHistory;
