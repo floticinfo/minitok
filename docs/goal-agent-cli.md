@@ -179,3 +179,77 @@ continue/resume은 저장된 `state.goal_plan`과 expansion history를 재사용
 inferred step failure는 기존 BlockerReport, AlternativePlan, recovery 정책을 사용한다. safe alternative만 자동 선택하며 approval이 필요한 변경/외부 작업은 approval request와 resume action으로 멈춘다. always-blocked operation은 모든 mode에서 escalation된다.
 
 세션은 `<repository>/.minitok/goals/<goal_id>/`에, 일반 audit는 `~/.minitok/audit.jsonl`에 redacted 형태로 저장된다. `stage2:parity`, mock/injected E2E와 packed-install은 local contract 검증이며 실제 production publish/deploy를 검증하지 않는다. live production 검증은 별도 승인된 harness가 필요하다.
+
+
+## Phase 14: 자연어 General Agent CLI
+
+### Mode 선택
+
+CLI의 기본 mode는 계속 `safe`다. mode별 의미는 다음과 같다.
+
+- `safe`: read/inspect/verify/dry-run. write와 external side effect는 실행하지 않는다.
+- `supervised`: workspace/local mutation을 approval 후 실행한다.
+- `authorized_external`: 명시 confirmation, scope, capability와 credential presence가 있는 외부 작업만 실행한다.
+- `unrestricted`: 기존 정형 목표에서 allowlist된 capability를 자동 실행한다.
+- `unrestricted_general`: 자연어 목표를 해석하고 criteria, dependency, Plan DAG, 도구 관찰, blocker 대안과 replanning을 추론한다.
+- `always_blocked`: 어떤 mode에서도 실행하지 않는 시스템 무결성 작업이다.
+
+`unrestricted_general`은 기본 비활성이다. repository 설정의 `goal.unrestricted_general.enabled: true`, `--mode unrestricted_general`, `--confirm-unrestricted-general`, `--allow-unrestricted-general`, `--auto-accept`, general capability allowlist와 budget이 모두 필요하다. 설정이 요구하지 않는 flag라도 명시적 confirmation과 runtime gate가 없으면 거부된다.
+
+### 자연어 목표 처리
+
+```text
+objective
+→ intent/범위 해석
+→ explicit requirement와 inferred requirement 구분
+→ assumptions/provisional criteria 기록
+→ Plan DAG와 verifier 후보 생성
+→ 관찰/실행
+→ blocker/AlternativePlan
+→ replanning
+→ verifier evidence 또는 escalation
+```
+
+명시된 요구는 `explicit_steps`/기준으로, 필요한 연관 작업은 rationale과 `target_criteria`를 가진 `inferred_steps`로 저장한다. optional follow-up은 자동 완료와 분리해 deferred로 남긴다. scope 밖 작업은 `out_of_scope_candidates`로 반환한다. 성공 기준 또는 verifier를 결정적으로 만들 수 없으면 `clarification_required`이며 임의 기준으로 완료하지 않는다.
+
+### General start 예시
+
+```text
+minitok goal start "Make the service production-ready" --repo <repository> \
+  --mode unrestricted_general \
+  --confirm-unrestricted-general \
+  --allow-unrestricted-general \
+  --capability goal_inference \
+  --capability criteria_inference \
+  --capability plan_expansion \
+  --capability replanning \
+  --capability tool_discovery \
+  --capability workspace_write \
+  --auto-accept --json
+```
+
+상태와 계획을 확인한다.
+
+```text
+minitok goal status --repo <repository> --goal-id <goal_id> --json
+minitok goal continue --repo <repository> --goal-id <goal_id> --mode safe --json
+minitok goal resume --repo <repository> --goal-id <goal_id> --mode safe --json
+```
+
+`goal_plan`, `assumptions`, `provisional_success_criteria`, `replanning_trace`, `blocker`, `alternatives`, `verification_status`, `execution_audits`, `resume_action`을 확인한다.
+
+### Capability와 안전
+
+General planning capability(`goal_inference`, `criteria_inference`, `plan_expansion`, `replanning`, `tool_discovery`)와 side-effect capability(`workspace_write`, `external_call`, `credential_use`, `publish`, `deploy`, `database_mutation`, `force_push`, `tag_overwrite`)는 독립적으로 allowlist된다. 하나를 허용해도 다른 capability는 허용되지 않는다. path traversal, workspace escape, dangerous object key, protected path/verifier tampering, approval bypass, private key·credential·password·token 원문 출력과 secret logging은 `always_blocked`다.
+
+### 완료, blocker, resume
+
+`completed`는 required criterion의 실행된 valid verifier evidence와 독립 evaluator가 모두 확인할 때만 반환한다. 모델의 `done`, `completed`, `APPROVE`는 권한이 아니다. blocker 발생 시 benefit/risk/permission/cost/reversibility/verification을 비교해 현재 policy에서 실행 가능한 최소 위험 대안을 선택하고, 외부/승인 대안은 request와 resume action으로 멈춘다. replanning은 blocker나 assumption invalidation 후 plan version과 evidence를 남기며, 변경 전 rollback/checkpoint를 만든다.
+
+resume은 저장된 unrestricted 정책을 자동 사용하지 않는다. 새 요청에서 mode, confirmation, capability와 auto-accept를 다시 전달해야 하고, checkpoint 이후 tracked file이 바뀌면 read-only verifier 전에는 executor를 호출하지 않는다.
+
+### Audit, 한계와 safe 복귀
+
+세션 evidence는 `<repository>/.minitok/goals/<goal_id>/`에, 기본 audit는 `~/.minitok/audit.jsonl`에 있다. credential 값, private key, authorization header, password, token, URL query/userinfo와 raw adapter response는 출력하거나 저장하지 않는다.
+
+deterministic benchmark/mock 결과는 production publish/deploy/database/browser/SCM의 성공을 증명하지 않는다. 모호한 목표에서 모델이 만든 provisional criteria는 실제 사용자 의도와 다를 수 있으므로 중요한 작업은 clarification, supervised 또는 authorized_external로 낮춘다. 위험하면 즉시 pause/cancel 후 새 요청을 `--mode safe`로 실행하고 general capability, confirmation, `--auto-accept`를 제거한다.

@@ -92,3 +92,37 @@ inferred step에서 blocker가 발생하면 기존 BlockerReport, AlternativePla
 ```
 
 local/mock/injected 테스트와 `stage2:parity`는 구현 계약과 보안 경계를 검증하지만 실제 production registry, cloud, database, browser, SCM 가용성·권한·롤백·비용을 증명하지 않는다. live production 검증은 별도 승인, dry-run, credential 운영 및 rollback 계획이 필요하다.
+
+
+## Phase 14: General mode의 운영 한계
+
+`unrestricted_general`은 기본 비활성이다. `minitok.yml`의 `goal.unrestricted_general.enabled: true`, 명시적 mode, `confirm_unrestricted_general`, `unrestricted_general_autonomous` runtime permission, auto-accept, capability allowlist, plan/replan/assumption budget, audit persistence와 integrity preflight를 모두 통과해야 한다. `unrestricted` 설정이나 `auto_accept`만으로 general mode가 켜지지 않는다.
+
+### Mode 차이
+
+- `safe`: read/inspect/verify/dry-run만 자동 실행한다.
+- `supervised`: local mutation을 승인 후 실행한다.
+- `authorized_external`: 승인된 external adapter와 credential presence를 사용한다.
+- `unrestricted`: 정형 목표에서 명시된 allowlist 작업을 자동 실행한다.
+- `unrestricted_general`: 자연어 intent, 누락 criteria, 관련 step, 도구, 대안과 replanning을 추론하되 모든 일반 mode gate를 다시 통과한다.
+- `always_blocked`: 어떤 mode나 approval에서도 실행하지 않는다.
+
+항상 차단되는 범위는 path traversal, workspace escape, dangerous object key, protected path와 verifier tampering, approval bypass, private key/credential/password/token 원문 노출과 secret logging이다.
+
+### 해석과 잘못된 기준의 위험
+
+general agent는 explicit requirement와 inferred requirement를 구분하고, inference의 rationale·confidence·dependency를 저장한다. 정보가 부족하면 assumption ledger와 provisional success criteria를 만들 수 있지만 이는 사용자 요구가 아니다. 모호한 목표, 관찰 불가능한 결과, 결정적 verifier가 없는 목표는 clarification/unsupported로 남겨야 한다. 모델이 만든 기준을 실제 완료 기준으로 승격하면 false completion과 scope expansion이 발생할 수 있으므로 evaluator evidence와 사용자 확인이 우선이다.
+
+replanning은 blocker, 환경 관찰, assumption invalidation, verifier failure 때만 기존 목표와 검증된 step을 보존하면서 수행한다. 반복 patch와 동일 alternative는 금지하며, 대안이 없거나 외부 승인이 필요하면 escalation한다. 변경에는 rollback plan과 checkpoint가 필요하고 rollback 실패는 completed가 아니다. resume은 checkpoint 변경을 read-only verifier로 확인하고 이전 unrestricted 권한을 자동 상속하지 않는다.
+
+### 완료와 검증의 한계
+
+모델의 `done`, `completed`, `APPROVE`는 완료 권한이 아니다. required criterion 전체에 대해 실행된 valid verifier evidence와 evaluator 판정이 있어야 한다. verifier 미실행, timeout, 환경 불가, evidence 누락은 unknown/blocked다.
+
+세션은 `<repository>/.minitok/goals/<goal_id>/` 아래에, 기본 audit는 `~/.minitok/audit.jsonl`에 redacted 형태로 남는다. credential 값, private key, authorization header, password, token, URL query/userinfo와 raw adapter response는 저장하지 않는다.
+
+### Production 구분과 safe 복귀
+
+benchmark와 mock/injected E2E는 local contract와 방어 경계만 검증한다. production publish/deploy/database/browser/SCM 성공, 가용성, 권한, 비용과 rollback은 별도 승인된 live integration에서 확인해야 한다.
+
+위험 신호가 있으면 pause/cancel하고 새 CLI/MCP 요청에 `mode: safe`를 명시한다. `unrestricted_general` confirmation, runtime permission, side-effect capability와 `auto_accept`를 제거하고 read-only verifier를 실행한 다음 필요하면 supervised approval로 전환한다.

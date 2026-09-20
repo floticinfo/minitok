@@ -96,3 +96,69 @@ npm run test:packed-install
 ```
 
 `stage2:parity`와 기본 E2E는 production에 접속하지 않는다. production evidence가 필요하면 별도 승인된 harness와 명시적인 live gate를 사용하고, 그 결과를 mock 검증 결과와 혼동하지 않는다.
+
+
+## Phase 14: General Autonomous 운영 Runbook
+
+### Mode 선택과 사전 조건
+
+| mode | 운영 의미 |
+| --- | --- |
+| `safe` | 기본값. read/inspect/verify/dry-run만 수행 |
+| `supervised` | local mutation을 operator 승인 후 수행 |
+| `authorized_external` | scope·confirmation·capability·credential presence가 확인된 외부 작업 |
+| `unrestricted` | 정형 목표에서 allowlist 작업을 자동 수행 |
+| `unrestricted_general` | 자연어 목표를 해석하고 criteria, 의존성, Plan, 도구, blocker 대안과 replanning을 수행 |
+| `always_blocked` | 모든 mode에서 차단되는 무결성 보호 작업 |
+
+`unrestricted_general`은 기본 비활성이다. 시작 전 `goal.unrestricted_general.enabled`, 명시 mode, `confirm_unrestricted_general`, `unrestricted_general_autonomous` permission, auto-accept, capability allowlist, `max_plan_depth`/`max_replan_count`/`max_assumption_count`, audit persistence와 integrity preflight를 확인한다. 설정되지 않은 capability는 실행하지 않는다.
+
+### General 목표 운영 순서
+
+1. 목표를 자연어 그대로 기록하고 repository scope를 확인한다.
+2. explicit requirement와 inferred requirement를 구분한다.
+3. assumptions, confidence, provisional criteria와 invalidation signal을 기록한다.
+4. dependency DAG와 각 step의 verifier/rollback을 확인한다.
+5. safe read-only observation을 먼저 수행한다.
+6. 현재 mode와 capability에서 실행 가능한 step만 실행한다.
+7. 결과 evidence를 수집하고 blocker category를 분류한다.
+8. 대안을 risk, side effect, permission, cost, reversibility, verification으로 비교한다.
+9. 선택 후 verifier를 실행하고 실패하면 plan version을 증가시켜 replanning한다.
+10. completed, blocked, escalated, clarification_required, unknown을 구분해 종료한다.
+
+모델이 만든 inferred requirement나 provisional criterion은 사용자 요구와 동등하지 않다. 모호하거나 관찰할 verifier가 없는 목표는 clarification/unsupported로 멈추고, scope 밖 후보는 실행하지 않는다.
+
+### Blocker, rollback, resume
+
+동일 task/failure/patch의 반복은 중단한다. 현재 policy에서 실행 가능한 최소 위험 대안만 자동 선택하고, external/approval 대안은 operator에게 `approval_required`와 `resume_action`을 제공한다. always-blocked 작업은 대안으로 우회하지 않는다.
+
+mutation 전 checkpoint와 rollback plan을 저장한다. rollback 실패, verifier 미실행, timeout, 환경 불가, evidence 누락은 completed가 아니다. resume 시 checkpoint 이후 tracked file 변경 여부를 확인하고, 변경되었으면 read-only verifier 통과 전 executor를 호출하지 않는다. 이전 unrestricted/general 권한은 자동 상속하지 않으며 새 요청에서 mode, confirmation, capability, runtime permission과 auto-accept를 재확인한다.
+
+### Capability와 항상 차단되는 작업
+
+General planning capability는 `goal_inference`, `criteria_inference`, `plan_expansion`, `replanning`, `tool_discovery`다. side-effect capability는 `workspace_write`, `external_call`, `credential_use`, `publish`, `deploy`, `database_mutation`, `force_push`, `tag_overwrite`이며 각각 독립 allowlist다.
+
+path traversal, workspace 경계 탈출, dangerous object key, protected path 또는 verifier tampering, approval bypass, private key/credential/password/token 원문 노출과 secret logging은 `always_blocked`다. 권한이 높아도 실행하지 않고 evidence와 escalation만 남긴다.
+
+### Audit와 완료 판정
+
+다음 evidence를 확인한다.
+
+```text
+<repository>/.minitok/goals/<goal_id>/goal.json
+<repository>/.minitok/goals/<goal_id>/state.json
+<repository>/.minitok/goals/<goal_id>/events.jsonl
+<repository>/.minitok/goals/<goal_id>/checkpoints/
+<repository>/.minitok/goals/<goal_id>/evidence/
+~/.minitok/audit.jsonl
+```
+
+`completed`는 모든 required criterion에 대해 실행된 valid verifier evidence와 evaluator 판정이 있을 때만 인정한다. 모델의 `done`, `completed`, `APPROVE`, approval 기록 또는 capability grant만으로 완료하지 않는다. audit에는 안전한 path/target, policy decision, capability, verification/final outcome만 저장하며 credential 값, private key, authorization header, password, token, URL query/userinfo와 raw adapter response는 redaction한다.
+
+### Benchmark와 production
+
+Phase benchmark와 mock/injected E2E는 deterministic local contract, evaluator, redaction, policy 경계를 검증한다. production publish/deploy/database/browser/SCM의 실제 성공·권한·비용·가용성·rollback은 검증하지 않는다. production adapter는 별도 승인, dry-run, live gate, observability, credential 운영과 rollback 계획을 통과해야 한다.
+
+### 중지와 safe mode 복귀
+
+무관한 변경, 반복 실패, 예상 밖 외부 대상, redaction 누락, verifier 불일치가 보이면 즉시 pause/cancel한다. 새 CLI 요청은 `--mode safe`, MCP 요청은 `"mode": "safe"`와 빈 capability로 실행한다. `confirm_unrestricted_general`, general runtime permission, side-effect capability와 `auto-accept`를 제거하고 read-only verifier를 먼저 수행한 뒤 필요하면 supervised approval로 전환한다.

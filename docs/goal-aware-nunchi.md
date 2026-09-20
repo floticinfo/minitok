@@ -644,3 +644,91 @@ state에는 `goal_plan`, `inferred_steps`, `optional_steps`, blocker/alternative
 ### 자연어와 검증 한계
 
 모든 자연어 목표를 무제한으로 해석하지 않는 이유는 목표 의미, 성공 조건, verifier, repository scope가 서로 다르기 때문이다. deterministic하게 관찰 가능한 목표만 자동 ready가 될 수 있고, 나머지는 clarification 또는 unsupported로 남는다. `stage2:parity`, 기본 E2E와 packed-install은 local/mock contract 검증이며 실제 production registry, cloud, database, browser, SCM 동작을 검증하지 않는다. live production 검증은 별도 승인된 harness와 rollback/credential 계획이 필요하다.
+
+
+## 16. Phase 14: General Autonomous Agent 운영 계약
+
+### 16.1 Mode와 기본 안전 경계
+
+지원 mode는 `safe`, `supervised`, `authorized_external`, `unrestricted`, `unrestricted_general`, `always_blocked`다.
+
+| mode | 기본 상태 | 자동 범위 | 승인/권한 | 일반적인 사용 |
+| --- | --- | --- | --- | --- |
+| `safe` | 기본값 | read, inspect, verify, dry-run | mutation과 external action은 차단 또는 approval request | 관찰, 검증, clarification |
+| `supervised` | 명시 선택 | safe + 승인된 local mutation | workspace write 승인 필요 | 사람이 각 변경을 감독 |
+| `authorized_external` | 명시 선택 | 승인된 local/external 작업 | confirmation, scope, capability, credential presence | 승인된 외부 adapter 사용 |
+| `unrestricted` | opt-in | allowlist에 있는 기존 작업의 자동 실행 | mode, confirmation, capability, auto-accept, audit/integrity | 정형 목표의 bounded 자동화 |
+| `unrestricted_general` | **기본 비활성, 명시 opt-in** | 자연어 해석, 기준 추론, Plan 확장, 도구 관찰, replanning | enabled, general confirmation, runtime permission, auto-accept, allowlist, budget, audit/integrity | 정형 입력 없이 실행 가능한 일반 목표 |
+| `always_blocked` | 정책 고정 | 없음 | 어떤 승인도 우회하지 못함 | 시스템 무결성 보호 |
+
+`unrestricted_general`은 `unrestricted`의 별칭이 아니다. 설정이 없거나 `enabled: false`이면 거부되며, CLI/MCP 요청에서 mode와 general confirmation을 다시 제출해야 한다. legacy alias나 `auto_accept`만으로 활성화되지 않는다. 모든 mode에서 path traversal, workspace 경계 탈출, dangerous object key, protected path/verifier tampering, private key·credential·password·token 원문 노출, secret logging, approval bypass는 `always_blocked`다.
+
+### 16.2 자연어 목표 해석과 요구사항 provenance
+
+general loop는 다음 순서로 처리한다.
+
+```text
+자연어 objective → intent/범위 해석 → explicit requirement 추출
+→ inferred requirement와 의존성 가설 → assumptions/provisional criteria
+→ Plan DAG/검증기 후보 → 관찰·실행 → blocker/AlternativePlan
+→ verifier → plan version 증가와 replanning → verified completion 또는 escalation
+```
+
+- **Explicit requirement**는 사용자가 직접 제공한 목표, 경로, 제약, 성공 조건이다.
+- **Inferred requirement**는 목표 달성에 필요한 연관 작업이다. rationale, 대상 criterion, dependency, verification을 가져야 한다.
+- **Optional follow-up**은 완료에 필수라고 증명되지 않은 작업이며 자동 완료 조건에서 분리한다.
+- **Assumption**은 부족한 정보로 진행하기 위한 가설이며 confidence, 영향 step, invalidation signal을 기록한다.
+- **Provisional criterion**은 관찰 가능한 후보일 뿐 확정된 사용자 요구가 아니다.
+
+scope 밖 작업은 `out_of_scope_candidates`로 반환한다. confidence가 낮거나 안전한 기준/verifier를 만들 수 없으면 `clarification_required` 또는 `unsupported`로 멈춘다. 모델이 만든 기준을 사용자 요구와 동일하게 취급하지 않는다.
+
+### 16.3 Plan, blocker, replanning, rollback
+
+Plan은 dependency DAG로 저장하며 변경 때마다 `plan_version`, 변경 이유, 폐기 step, 새 assumption과 evidence를 남긴다. blocker, verifier failure, assumption invalidation, stagnation 또는 새 정보와 기존 scope/criterion 충돌이 있을 때만 replanning한다. 검증된 step은 반복하지 않고 동일 task/failure/patch signature를 다시 실행하지 않으며 budget 초과 시 escalation한다.
+
+Blocker 대안은 benefit, risk, side effect, permission, cost, reversibility, verification plan으로 비교한다. 현재 mode와 allowlist에서 실행 가능한 최소 위험 대안을 선택하고, external/approval 대안은 실행하지 않고 approval request와 `resume_action`으로 반환한다. `always_blocked`는 대안으로 우회하지 않는다.
+
+변경 전 rollback plan과 checkpoint를 만들고 실행 후 verifier evidence를 저장한다. rollback 실패는 completed가 아니다. resume은 checkpoint 이후 변경을 read-only verifier로 확인하고 이전 unrestricted 정책을 자동 상속하지 않는다.
+
+### 16.4 완료 판정과 evidence
+
+`completed`는 required criterion이 모두 확인되고 각 criterion의 verifier가 실제 실행되었으며 evidence가 `passed`, `valid`, `executed`이고 scope와 일치할 때만 반환한다. evaluator가 model self-report와 독립적으로 판정해야 하며 모델의 `done`, `completed`, `APPROVE`는 완료 권한이 아니다. verifier 미실행, timeout, 환경 불가, evidence 누락은 `unknown`/blocked다.
+
+세션과 redacted audit 위치:
+
+```text
+<repository>/.minitok/goals/<goal_id>/{goal.json,state.json,events.jsonl}
+<repository>/.minitok/goals/<goal_id>/{checkpoints,evidence}/
+~/.minitok/audit.jsonl
+```
+
+audit/evidence에는 credential 값, private key, authorization header, password, token, secret environment value, URL query/userinfo와 raw adapter response를 저장하지 않는다. 필요한 경우 presence boolean, 안전한 host/path, policy decision, verifier 결과와 redacted reference만 저장한다.
+
+
+
+### 16.5 CLI/MCP, capability allowlist와 운영 한계
+
+CLI general 실행 예시:
+
+```text
+minitok goal start "Make the service production-ready" --repo <repository> \
+  --mode unrestricted_general \
+  --confirm-unrestricted-general \
+  --allow-unrestricted-general \
+  --capability goal_inference \
+  --capability criteria_inference \
+  --capability plan_expansion \
+  --capability replanning \
+  --capability workspace_write \
+  --auto-accept --json
+```
+
+MCP에서는 `mode: "unrestricted_general"`, `confirm_unrestricted_general: true`, general runtime permission, 필요한 capabilities를 함께 제출한다. status/continue/resume 응답에서 `goal_plan`, `assumptions`, `provisional_success_criteria`, `replanning_trace`, `blocker`, `alternatives`, `verification_status`, `execution_audits`를 확인한다.
+
+`goal_inference`, `criteria_inference`, `plan_expansion`, `replanning`, `tool_discovery`는 general planning capability이며 `workspace_write`, `external_call`, `credential_use`, `publish`, `deploy`, `database_mutation`, `force_push`, `tag_overwrite`는 side-effect capability다. 모두 독립 allowlist이며 하나를 허용해도 다른 capability가 암묵적으로 허용되지 않는다.
+
+“무제한”은 무제한 추측의 정확성을 보장하지 않는다. 모호한 목표는 여러 의미와 기준을 가질 수 있고, 모델이 임의로 만든 provisional criterion은 실제 사용자 의도와 다를 수 있다. 중요한 외부 작업은 clarification, supervised 또는 authorized_external로 낮춘다.
+
+benchmark와 production 검증은 분리한다. deterministic local/mock benchmark는 taxonomy, quality metric, policy와 evaluator 계약을 검증할 뿐 실제 provider, publish, deploy, database, browser, SCM의 가용성·권한·비용·롤백을 증명하지 않는다. production adapter는 별도 승인, dry-run, observability, credential 운영, rollback 계획과 live gate가 필요하다.
+
+위험 신호가 있으면 즉시 pause/cancel하고 새 요청에 `mode: safe`를 명시한다. general confirmation, unrestricted capability, auto-accept를 제거하고 read-only verifier를 먼저 실행한 뒤 필요할 때만 supervised approval로 재개한다.

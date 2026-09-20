@@ -183,3 +183,74 @@ continue/resume은 저장된 GoalPlan을 재사용하여 duplicate expansion을 
 inferred step failure는 기존 BlockerReport → AlternativePlan → policy/capability → recovery 또는 approval/escalation 흐름을 사용한다. safe 대안만 자동 선택하며 외부 side effect/permission 대안은 approval request와 resume action으로 반환된다. session은 `<repository>/.minitok/goals/<goal_id>/`에, redacted audit는 `~/.minitok/audit.jsonl`에 저장된다.
 
 `stage2:parity`, 기본 E2E, packed-install과 injected/mock adapter는 local contract 검증이며 production registry/cloud/database/browser/SCM에 접속하지 않는다. live production 검증은 별도 승인된 integration harness와 rollback 계획이 필요하다.
+
+
+## Phase 14: MCP General Agent 계약
+
+### Mode와 명시적 활성화
+
+MCP 기본 mode는 `safe`다. `supervised`는 local mutation 승인, `authorized_external`은 승인된 external adapter, `unrestricted`는 정형 목표의 allowlist 실행, `unrestricted_general`은 자연어 목표의 general loop, `always_blocked`는 영구 차단을 뜻한다.
+
+`unrestricted_general`은 기본 비활성이다. 요청은 `mode: "unrestricted_general"`와 `confirm_unrestricted_general: true`를 포함해야 하며 runtime permission `unrestricted_general_autonomous`, auto-accept, repository `goal.unrestricted_general.enabled`, capability allowlist, budget, audit persistence와 integrity preflight가 모두 필요하다. `unrestricted_autonomous` permission이나 `confirm_unrestricted`만으로 general mode를 활성화하지 않는다.
+
+```json
+{
+  "goal": "Make the service production-ready",
+  "repo": "C:\\repo",
+  "mode": "unrestricted_general",
+  "confirm_unrestricted_general": true,
+  "capabilities": [
+    "goal_inference",
+    "criteria_inference",
+    "plan_expansion",
+    "replanning",
+    "tool_discovery",
+    "workspace_write"
+  ]
+}
+```
+
+### 자연어 해석 response
+
+MCP는 다음 흐름을 사용한다.
+
+```text
+goal
+→ intent/범위 해석
+→ explicit requirement 추출
+→ inferred requirement/dependency
+→ assumptions와 provisional criteria
+→ Plan DAG/verifier 후보
+→ 관찰·실행
+→ blocker/alternative
+→ replanning
+→ evaluator evidence 또는 escalation
+```
+
+explicit requirement는 사용자가 직접 준 계약이고, inferred requirement는 rationale·target criterion·verification이 있는 필수 연관 작업이다. optional follow-up은 `optional_steps`와 `deferred`로 분리한다. 모호하거나 deterministic verifier가 없는 목표는 `clarification_required`/`unsupported`로 반환하며 임의 completion criteria를 확정하지 않는다. `goal_plan`, `inferred_steps`, `assumptions`, `provisional_success_criteria`, `replanning_trace`, `out_of_scope_candidates`를 응답에서 확인한다.
+
+### Capability, blocker, rollback/resume
+
+General capability(`goal_inference`, `criteria_inference`, `plan_expansion`, `replanning`, `tool_discovery`)와 side-effect capability(`workspace_write`, `external_call`, `credential_use`, `publish`, `deploy`, `database_mutation`, `force_push`, `tag_overwrite`)는 독립 allowlist다. path traversal, workspace escape, dangerous object key, protected path/verifier tampering, approval bypass, private key·credential·password·token 원문 및 secret logging은 `always_blocked`다.
+
+blocker는 risk, benefit, permission, cost, reversibility와 verification을 비교해 현재 policy에서 가능한 최소 위험 대안을 선택한다. 외부/승인 대안은 실행하지 않고 `approval_required`, `alternatives`, `resume_action`으로 반환한다. replanning은 blocker, verifier failure 또는 assumption invalidation 후 plan version과 evidence를 남긴다. mutation 전 rollback plan/checkpoint를 만들며 rollback failure는 completed가 아니다.
+
+continue/resume은 저장된 general permission을 자동 상속하지 않는다. 새 요청에서 mode, `confirm_unrestricted_general`, capabilities, runtime permission과 auto-accept를 재확인한다. checkpoint 변경 시 read-only verifier가 통과하기 전에는 executor를 호출하지 않는다. 완료는 required criterion의 실행된 valid evidence와 evaluator 판정으로만 결정하며 모델의 `done`, `completed`, `APPROVE`는 권한이 아니다.
+
+### Audit와 production 한계
+
+세션은 `<repository>/.minitok/goals/<goal_id>/`에, audit는 기본 `~/.minitok/audit.jsonl`에 redacted 형태로 저장한다. MCP response/evidence에는 credential 값, private key, authorization header, password, token, URL query/userinfo와 raw adapter response를 포함하지 않는다.
+
+benchmark, `stage2:parity`, mock/injected adapter와 E2E는 local 계약 검증이다. production registry/cloud/database/browser/SCM의 성공, 권한, 비용, 가용성, rollback을 증명하지 않으며 live 연결은 별도 승인 harness와 rollback 계획이 필요하다. 모델이 만든 provisional criteria가 실제 의도와 다를 수 있으므로 모호한 목표는 clarification 또는 supervised로 낮춘다.
+
+위험하면 pause/cancel 후 다음처럼 safe로 되돌린다.
+
+```json
+{
+  "goal_id": "goal_123",
+  "mode": "safe",
+  "capabilities": []
+}
+```
+
+general confirmation, runtime permission, side-effect capability와 auto-accept를 제거한 새 요청이어야 한다.
