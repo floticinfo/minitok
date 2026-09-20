@@ -80,6 +80,29 @@ test("unrestricted rejects protected path writes even with explicit authorizatio
   assert.deepEqual(result.always_blocked_capabilities, ["protected_path_write"]);
 });
 
+test("configuration disables unrestricted and enforces its allowlist", () => {
+  const disabled = resolveExecutionPolicy({ mode: "unrestricted", capabilities: ["publish"], explicit_confirmation: true, auto_accept: true, config: { goal: { unrestricted: { enabled: false, capabilities: ["publish"] } } } });
+  assert.equal(disabled.allowed, false);
+  assert.deepEqual(disabled.denied_capabilities, ["unrestricted_disabled"]);
+  const outside = resolveExecutionPolicy({ mode: "unrestricted", capabilities: ["deploy"], explicit_confirmation: true, auto_accept: true, config: { goal: { unrestricted: { enabled: true, capabilities: ["publish"] } } } });
+  assert.equal(outside.allowed, false);
+  assert.deepEqual(outside.denied_capabilities, ["deploy"]);
+  const allowed = resolveExecutionPolicy({ mode: "unrestricted", capabilities: ["publish"], explicit_confirmation: true, auto_accept: true, config: { goal: { unrestricted: { enabled: true, capabilities: ["publish"] } } } });
+  assert.equal(allowed.allowed, true);
+});
+
+test("configured allowlist is used when unrestricted capabilities are omitted", () => {
+  const allowed = resolveExecutionPolicy({ mode: "unrestricted", explicit_confirmation: true, auto_accept: true, config: { goal: { unrestricted: { enabled: true, capabilities: ["publish"] } } } });
+  assert.deepEqual(allowed.capabilities, ["publish"]);
+  assert.equal(allowed.allowed, true);
+});
+
+test("configured unrestricted requirements remain fail-closed", () => {
+  const result = resolveExecutionPolicy({ mode: "unrestricted", capabilities: ["publish"], config: { goal: { unrestricted: { enabled: true, capabilities: ["publish"], require_explicit_confirmation: true, require_auto_accept: true } } } });
+  assert.equal(result.allowed, false);
+  assert.deepEqual(result.denied_capabilities, ["explicit_confirmation"]);
+});
+
 test("CLI run exposes the same resolver contract without implicit unrestricted access", () => {
   const { cmdRun } = require("../src/cli/commands/run");
   return cmdRun("policy test", { mode: "unrestricted", capabilities: ["publish"], explicitConfirmation: true }).then(code => assert.equal(code, 1));

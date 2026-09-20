@@ -5,6 +5,7 @@ const { runPipeline } = require("../../pipeline/loop");
 const { normalizeProvider } = require("../../auth/aliases");
 const { PREAUTHORIZED } = require("../../pipeline/authorization");
 const { resolveExecutionPolicy } = require("../../goal/execution_policy");
+const { loadConfig } = require("../../config/loader");
 const path = require("path");
 
 function classifyProviderHealth(name, available, health) {
@@ -17,11 +18,8 @@ function classifyProviderHealth(name, available, health) {
 
 async function cmdRun(task, opts = {}) {
   const requestedCapabilities = typeof opts.capabilities === "string" ? opts.capabilities.split(",").map(item => item.trim()).filter(Boolean) : opts.capabilities;
-  const policyDecision = opts.mode ? resolveExecutionPolicy({ mode: opts.mode, capabilities: requestedCapabilities, explicit_confirmation: opts.explicitConfirmation === true, auto_accept: opts.autoAccept === true, source: "cli", actor: opts.actor }) : null;
-  if (policyDecision && !policyDecision.allowed && !policyDecision.approval_required) {
-    console.error(`Execution policy denied: ${policyDecision.reason}`);
-    return 1;
-  }
+  let config;
+  let policyDecision = null;
   if (!task) {
     console.error("Error: Task description required.\n\nUsage: minitok run \"Fix authentication bug\"");
     return 1;
@@ -39,6 +37,14 @@ async function cmdRun(task, opts = {}) {
       console.log(`Workspace: ${ws.name} (${repoRoot})`);
     } catch (e) {
       console.error(`Error: ${e.message}`);
+      return 1;
+    }
+  }
+  if (opts.mode) {
+    config = loadConfig(path.join(repoRoot, "minitok.yml"), { repoRoot });
+    policyDecision = resolveExecutionPolicy({ mode: opts.mode, capabilities: requestedCapabilities, explicit_confirmation: opts.explicitConfirmation === true, auto_accept: opts.autoAccept === true, source: "cli", actor: opts.actor, config });
+    if (!policyDecision.allowed && !policyDecision.approval_required) {
+      console.error(`Execution policy denied: ${policyDecision.reason}`);
       return 1;
     }
   }

@@ -11,12 +11,14 @@ const os = require("os");
 const yaml = require("js-yaml");
 const { ConfigError } = require("../core/errors");
 const { normalizeProvider } = require("../auth/aliases");
+const { EXECUTION_POLICY_MODES } = require("../goal/execution_policy");
+const { EXECUTION_CAPABILITIES, isAlwaysBlockedCapability } = require("../goal/capabilities");
 
 const ENV_ALLOWLIST = new Set([
   "minitok_offline", "minitok_default_provider", "minitok_model", "minitok_server_url",
   "minitok_plan_provider", "minitok_plan_model", "minitok_review_provider", "minitok_review_model",
   "minitok_work_provider", "minitok_work_model", "minitok_intel_provider", "minitok_intel_model",
-  "minitok_project_name", "minitok_project_stack",
+  "minitok_project_name", "minitok_project_stack", "minitok_goal_default_mode", "minitok_goal_unrestricted_enabled", "minitok_goal_unrestricted_require_explicit_confirmation", "minitok_goal_unrestricted_require_auto_accept", "minitok_goal_unrestricted_capabilities",
   "minitok_budget_max_cycles", "minitok_budget_token_budget", "minitok_budget_max_cycles_hard_limit",
   "minitok_budget_token_hard_limit", "minitok_budget_stagnation_limit",
   "minitok_execution_max_retries", "minitok_execution_timeout_sec", "minitok_execution_retry_hard_limit",
@@ -30,6 +32,7 @@ const DEFAULTS = {
   offline: false,
   default_provider: "",
   project: { name: "unknown", stack: "generic" },
+  goal: { default_mode: "safe", unrestricted: { enabled: false, require_explicit_confirmation: true, require_auto_accept: true, capabilities: [] } },
   roles: {
     plan: { provider: "", adapter: "claude", model: "", effort: "medium", reasoning: null, thinking_budget: 0, fallback_model: "", fallback: [], timeout_sec: 300 },
     review: { provider: "", adapter: "claude", model: "", effort: "medium", reasoning: null, thinking_budget: 0, fallback_model: "", fallback: [], timeout_sec: 300 },
@@ -104,6 +107,11 @@ function loadEnvVars() {
     intel_model: ["intel", "model"],
     project_name: ["project", "name"],
     project_stack: ["project", "stack"],
+    goal_default_mode: ["goal", "default_mode"],
+    goal_unrestricted_enabled: ["goal", "unrestricted", "enabled"],
+    goal_unrestricted_require_explicit_confirmation: ["goal", "unrestricted", "require_explicit_confirmation"],
+    goal_unrestricted_require_auto_accept: ["goal", "unrestricted", "require_auto_accept"],
+    goal_unrestricted_capabilities: ["goal", "unrestricted", "capabilities"],
     budget_max_cycles: ["budget", "max_cycles"],
     budget_token_budget: ["budget", "token_budget"],
     budget_max_cycles_hard_limit: ["budget", "max_cycles_hard_limit"],
@@ -132,7 +140,7 @@ function loadEnvVars() {
       if (!nested[parts[i]] || typeof nested[parts[i]] !== "object") nested[parts[i]] = {};
       nested = nested[parts[i]];
     }
-    nested[parts[parts.length - 1]] = coerceValue(value);
+    nested[parts[parts.length - 1]] = parts.at(-1) === "capabilities" ? String(value).split(",").map(item => item.trim()).filter(Boolean) : coerceValue(value);
 
     if (_ROLE_KEYS.has(parts[0])) {
       if (!result.roles) result.roles = {};
@@ -233,7 +241,44 @@ function validateConfig(config) {
   assertSafeProviderName(config.default_provider, "default_provider");
   if (config.validation?.script_path !== undefined && typeof config.validation.script_path !== "string") throw new ConfigError("validation.script_path must be a string");
   if (config.security?.blocked_extensions !== undefined && (!Array.isArray(config.security.blocked_extensions) || config.security.blocked_extensions.some(value => typeof value !== "string"))) throw new ConfigError("security.blocked_extensions must be an array of strings");
+  validateGoalExecutionConfig(config.goal);
   return config;
+}
+
+function validateGoalExecutionConfig(goal) {
+  if (goal === undefined) return;
+  if (!goal || typeof goal !== "object" || Array.isArray(goal)) throw new ConfigError("goal must be a mapping");
+  for (const key of Object.keys(goal)) if (!["default_mode", "unrestricted"].includes(key)) throw new ConfigError(`Unknown goal configuration field: ${key}`);
+  const allowedModes = EXECUTION_POLICY_MODES.filter(mode => mode !== "always_blocked");
+  if (goal.default_mode !== undefined && !allowedModes.includes(goal.default_mode)) throw new ConfigError(`goal.default_mode must be one of: ${allowedModes.join(", ")}`);
+  const unrestricted = goal.unrestricted;
+  if (unrestricted === undefined) return;
+  if (!unrestricted || typeof unrestricted !== "object" || Array.isArray(unrestricted)) throw new ConfigError("goal.unrestricted must be a mapping");
+  for (const key of Object.keys(unrestricted)) if (!["enabled", "require_explicit_confirmation", "require_auto_accept", "capabilities"].includes(key)) throw new ConfigError(`Unknown goal.unrestricted configuration field: ${key}`);
+  for (const key of ["enabled", "require_explicit_confirmation", "require_auto_accept"]) if (unrestricted[key] !== undefined && typeof unrestricted[key] !== "boolean") throw new ConfigError(`goal.unrestricted.${key} must be a boolean`);
+  if (unrestricted.capabilities !== undefined) {
+    if (!Array.isArray(unrestricted.capabilities) || unrestricted.capabilities.some(value => typeof value !== "string" || !value.trim())) throw new ConfigError("goal.unrestricted.capabilities must be an array of non-empty strings");
+    const duplicates = unrestricted.capabilities.filter((value, index, values) => values.indexOf(value) !== index);
+    if (duplicates.length) throw new ConfigError(`goal.unrestricted.capabilities contains duplicate capability: ${duplicates[0]}`);
+    for (const capability of unrestricted.capabilities) {
+      if (!EXECUTION_CAPABILITIES.includes(capability)) throw new ConfigError(`goal.unrestricted.capabilities contains unknown capability: ${capability}`);
+      if (isAlwaysBlockedCapability(capability)) throw new ConfigError(`goal.unrestricted.capabilities cannot enable always-blocked capability: ${capability}`);
+    }
+  }
+}
+
+function redactGoalExecutionConfig(config = {}) {
+  const goal = config.goal || DEFAULTS.goal;
+  const unrestricted = goal.unrestricted || DEFAULTS.goal.unrestricted;
+  return {
+    default_mode: goal.default_mode || "safe",
+    unrestricted: {
+      enabled: unrestricted.enabled === true,
+      require_explicit_confirmation: unrestricted.require_explicit_confirmation !== false,
+      require_auto_accept: unrestricted.require_auto_accept !== false,
+      capabilities: Array.isArray(unrestricted.capabilities) ? [...unrestricted.capabilities] : [],
+    },
+  };
 }
 
 function globalConfigPaths() {
@@ -298,4 +343,4 @@ function loadConfig(configPath, overrides) {
   return validateConfig(config);
 }
 
-module.exports = { loadConfig, deepMerge, coerceValue, resolveProviderName, validateConfig, normalizeProviderConfig, DEFAULTS };
+module.exports = { loadConfig, deepMerge, coerceValue, resolveProviderName, validateConfig, validateGoalExecutionConfig, redactGoalExecutionConfig, normalizeProviderConfig, DEFAULTS };

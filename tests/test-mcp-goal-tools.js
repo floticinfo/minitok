@@ -13,6 +13,7 @@ function validSpec(id = "goal-mcp-test") {
 }
 function sandbox() {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-goal-mcp-"));
+  fs.writeFileSync(path.join(root, "minitok.yml"), "goal:\n  default_mode: safe\n  unrestricted:\n    enabled: true\n    require_explicit_confirmation: true\n    require_auto_accept: true\n    capabilities: [workspace_write]\n");
   const services = { entitlement: { status: async () => ({ allowed: true, state: "ALLOWED" }) } };
   const runtime = { workspaceRoot: root, permissions: new Set(["read", "write", "verify_exec"]), services, model: "test-model", safeResult: true };
   const call = (name, args) => getToolHandler(name, args, services, runtime);

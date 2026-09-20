@@ -5,6 +5,7 @@ const path = require("path");
 const { runPipeline } = require("../pipeline/loop");
 const { redactValue } = require("../goal/evidence");
 const { resolveExecutionPolicy } = require("../goal/execution_policy");
+const { loadConfig, redactGoalExecutionConfig } = require("../config/loader");
 const goalTools = require("./goal-tools");
 
 const MCP_ERROR_CODES = Object.freeze({ INVALID_PARAMS: -32602, AUTH_REQUIRED: -32001, PERMISSION_DENIED: -32003, NOT_FOUND: -32004, RUN_LIMIT_REACHED: -32005, TOOL_ERROR: -32000 });
@@ -202,8 +203,9 @@ async function _getToolHandler(name, args, services, runtimeOptions = {}) {
       if (!repoRoot && args.workspace) { const { WorkspaceManager } = require("../workspace/manager"); repoRoot = new WorkspaceManager().resolve(args.workspace).repository_root; }
       repoRoot = requireWorkspacePath(repoRoot || process.cwd(), runtimeOptions.workspaceRoot || process.cwd(), "repo");
       if (args.auto_accept && !runtimeOptions.permissions?.has?.("auto_accept")) throw Object.assign(new Error("auto_accept requires explicit auto_accept permission"), { code: "AUTO_ACCEPT_DENIED" });
-      const policyDecision = args.mode ? resolveExecutionPolicy({ mode: args.mode, capabilities: args.capabilities, explicit_confirmation: args.explicit_confirmation === true, auto_accept: args.auto_accept === true && runtimeOptions.permissions?.has?.("auto_accept"), source: "mcp", actor: runtimeOptions.actor }) : null;
-      if (policyDecision && !policyDecision.allowed && !policyDecision.approval_required) throw Object.assign(new Error(policyDecision.reason), { code: policyDecision.always_blocked_capabilities.length ? "ALWAYS_BLOCKED" : "EXECUTION_POLICY_DENIED", policy: policyDecision });
+      const config = args.mode ? loadConfig(path.join(repoRoot, "minitok.yml"), { repoRoot }) : null;
+      const policyDecision = args.mode ? resolveExecutionPolicy({ mode: args.mode, capabilities: args.capabilities, explicit_confirmation: args.explicit_confirmation === true, auto_accept: args.auto_accept === true && runtimeOptions.permissions?.has?.("auto_accept"), source: "mcp", actor: runtimeOptions.actor, config }) : null;
+      if (policyDecision && !policyDecision.allowed && !policyDecision.approval_required) throw Object.assign(new Error(policyDecision.reason), { code: policyDecision.always_blocked_capabilities.length ? "ALWAYS_BLOCKED" : "EXECUTION_POLICY_DENIED", policy: policyDecision, config: redactGoalExecutionConfig(config) });
       const approvalFile = args.approval_file ? requireApprovalPath(args.approval_file, runtimeOptions.workspaceRoot || process.cwd()) : undefined;
       const pipelineRunner = runtimeOptions.runPipeline || runPipeline;
       acquireStdoutGuard();

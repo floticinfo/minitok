@@ -5,7 +5,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { validateConfig, loadConfig, DEFAULTS } = require("./loader");
+const { validateConfig, loadConfig, DEFAULTS, redactGoalExecutionConfig } = require("./loader");
 
 describe("config: malformed configuration files", () => {
   const sandbox = () => fs.mkdtempSync(path.join(os.tmpdir(), "mt-cfg-"));
@@ -81,5 +81,55 @@ describe("config: provider name validation", () => {
     // left the provider without credentials and without a message.
     assert.throws(() => validateConfig({ providers: { openrouter: { base_url: "https://openrouter.ai/api/v1", api_key_env: "sk-or-literal-key" } } }), /api_key_env must name an environment variable/);
     assert.throws(() => validateConfig({ providers: { openrouter: { base_url: "https://openrouter.ai/api/v1", api_key_env: "" } } }), /api_key_env must name an environment variable/);
+  });
+});
+
+describe("config: explicit unrestricted goal policy", () => {
+  it("defaults to safe and keeps unrestricted disabled", () => {
+    assert.equal(DEFAULTS.goal.default_mode, "safe");
+    assert.equal(DEFAULTS.goal.unrestricted.enabled, false);
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mt-goal-cfg-"));
+    try {
+      const config = loadConfig(path.join(dir, "missing.yml"));
+      assert.equal(config.goal.default_mode, "safe");
+      assert.equal(config.goal.unrestricted.enabled, false);
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it("validates goal mode, booleans, capability allowlist, and always-blocked floor", () => {
+    assert.doesNotThrow(() => validateConfig({ goal: { default_mode: "safe", unrestricted: { enabled: true, capabilities: ["publish"] } } }));
+    assert.throws(() => validateConfig({ goal: { default_mode: "always_blocked" } }), /goal.default_mode/);
+    assert.throws(() => validateConfig({ goal: { unrestricted: { enabled: "yes" } } }), /must be a boolean/);
+    assert.throws(() => validateConfig({ goal: { unrestricted: { capabilities: ["unknown"] } } }), /unknown capability/);
+    assert.throws(() => validateConfig({ goal: { unrestricted: { capabilities: ["protected_path_write"] } } }), /always-blocked/);
+    assert.throws(() => validateConfig({ goal: { unexpected: true } }), /Unknown goal configuration field/);
+    assert.throws(() => validateConfig({ goal: { unrestricted: { unexpected: true } } }), /Unknown goal\.unrestricted configuration field/);
+  });
+
+  it("redacts configuration to policy metadata only", () => {
+    const config = validateConfig({ goal: { default_mode: "safe", unrestricted: { enabled: true, capabilities: ["publish"] } }, providers: { openai: { api_key: "secret-value" } } });
+    const safe = redactGoalExecutionConfig(config);
+    assert.deepEqual(safe, { default_mode: "safe", unrestricted: { enabled: true, require_explicit_confirmation: true, require_auto_accept: true, capabilities: ["publish"] } });
+    assert.doesNotMatch(JSON.stringify(safe), /secret-value|api_key|token|password/i);
+  });
+
+  it("keeps repository-local goal policy above the global policy", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "mt-goal-priority-"));
+    const globalRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mt-goal-global-"));
+    const previousXdg = process.env.XDG_CONFIG_HOME;
+    const local = path.join(root, "minitok.yml");
+    try {
+      process.env.XDG_CONFIG_HOME = globalRoot;
+      fs.mkdirSync(path.join(globalRoot, "minitok"), { recursive: true });
+      fs.writeFileSync(path.join(globalRoot, "minitok", "config.yml"), "goal:\n  default_mode: supervised\n  unrestricted:\n    enabled: true\n    capabilities: [publish]\n");
+      fs.writeFileSync(local, "goal:\n  default_mode: safe\n  unrestricted:\n    enabled: false\n    capabilities: []\n");
+      const config = loadConfig(local, { repoRoot: root });
+      assert.equal(config.goal.default_mode, "safe");
+      assert.equal(config.goal.unrestricted.enabled, false);
+    } finally {
+      if (previousXdg === undefined) delete process.env.XDG_CONFIG_HOME; else process.env.XDG_CONFIG_HOME = previousXdg;
+      fs.rmSync(root, { recursive: true, force: true });
+      fs.rmSync(globalRoot, { recursive: true, force: true });
+    }
   });
 });

@@ -67,9 +67,18 @@ function auditContext(input, normalized) {
 function baseDecision(mode, capabilities, context) {
   return { mode, allowed: true, capabilities, approval_required: false, denied_capabilities: [], always_blocked_capabilities: [], reason: "capabilities are allowed by the current execution policy", audit_context: context };
 }
+function configuredGoalPolicy(config) {
+  const goal = config && typeof config === "object" && config.goal && typeof config.goal === "object" ? config.goal : null;
+  const unrestricted = goal?.unrestricted && typeof goal.unrestricted === "object" ? goal.unrestricted : null;
+  return { goal, unrestricted };
+}
 function resolveExecutionPolicy(input = {}) {
-  const normalized = normalizeMode(input.mode);
-  const requested = capabilityNames(input.capabilities);
+  const configured = configuredGoalPolicy(input.config);
+  const configuredDefaultMode = configured.goal?.default_mode === "unrestricted" ? "safe" : configured.goal?.default_mode;
+  const requestedMode = input.mode === undefined ? configuredDefaultMode : input.mode;
+  const configuredCapabilities = Array.isArray(configured.unrestricted?.capabilities) ? configured.unrestricted.capabilities : undefined;
+  const requested = input.mode === "unrestricted" && input.capabilities === undefined && configuredCapabilities ? [...configuredCapabilities] : capabilityNames(input.capabilities);
+  const normalized = normalizeMode(requestedMode);
   const context = auditContext(input, normalized);
   if (hasDangerousKey(input)) return { ...baseDecision(normalized.mode, [], context), allowed: false, denied_capabilities: ["invalid_input"], reason: "dangerous object key or non-plain policy input was rejected" };
   if (normalized.invalid) return { ...baseDecision("safe", [], context), allowed: false, denied_capabilities: ["invalid_mode"], reason: "unknown execution mode was rejected" };
@@ -82,6 +91,14 @@ function resolveExecutionPolicy(input = {}) {
     return { ...baseDecision(normalized.mode, requested.filter(capability => EXECUTION_CAPABILITIES.includes(capability)), context), allowed: false, denied_capabilities: [...unknown, ...invalid.map(error => error.code)], always_blocked_capabilities: [...alwaysBlocked, ...Object.keys(ALWAYS_BLOCKED_OPERATIONS).filter(operation => requested.includes(operation))], reason: alwaysBlocked.length ? "one or more capabilities are always blocked" : unknown.length ? "unknown capability was rejected" : "invalid capability input was rejected" };
   }
   if (normalized.mode === "always_blocked") return { ...baseDecision(normalized.mode, requested, context), allowed: false, always_blocked_capabilities: requested, reason: "always_blocked policy rejects every capability" };
+  if (normalized.mode === "unrestricted" && configured.unrestricted) {
+    if (configured.unrestricted.enabled !== true) return { ...baseDecision(normalized.mode, requested, context), allowed: false, denied_capabilities: ["unrestricted_disabled"], reason: "unrestricted mode is disabled by configuration" };
+    const allowlist = Array.isArray(configured.unrestricted.capabilities) ? configured.unrestricted.capabilities : [];
+    const outsideAllowlist = requested.filter(capability => !allowlist.includes(capability));
+    if (outsideAllowlist.length) return { ...baseDecision(normalized.mode, requested, context), allowed: false, denied_capabilities: outsideAllowlist, reason: "one or more capabilities are outside the configured unrestricted allowlist" };
+    if (configured.unrestricted.require_explicit_confirmation !== false && input.explicit_confirmation !== true) return { ...baseDecision(normalized.mode, requested, context), allowed: false, denied_capabilities: ["explicit_confirmation"], reason: "explicit confirmation is required by configuration" };
+    if (configured.unrestricted.require_auto_accept !== false && input.auto_accept !== true) return { ...baseDecision(normalized.mode, requested, context), allowed: false, denied_capabilities: ["auto_accept"], reason: "auto_accept is required by configuration" };
+  }
   const denied = [];
   const approval = [];
   if (normalized.mode === "safe") {

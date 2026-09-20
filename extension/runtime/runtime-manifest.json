@@ -113,8 +113,8 @@
       "embedded": "0f86e6c56aa35589b35c7940696ee2b819fad071e46e280cb136b8e006656fe9"
     },
     "config/loader.js": {
-      "source": "4feefa771b315a1ce45faaf0a5ce57faa32c8b6d9f29500d932186af850e0732",
-      "embedded": "4feefa771b315a1ce45faaf0a5ce57faa32c8b6d9f29500d932186af850e0732"
+      "source": "ac6a4fa4e323aac23e4c9ce6bcff501d39c0f91c9150c25e4a5f6136ef529042",
+      "embedded": "ac6a4fa4e323aac23e4c9ce6bcff501d39c0f91c9150c25e4a5f6136ef529042"
     },
     "context/compaction.js": {
       "source": "0475f4c5ed57462603366a047689064c136cf596822394fff72f0c456bb27cdf",
@@ -225,8 +225,8 @@
       "embedded": "675521fbbe443483de7780574dfe66761384ffcb97901b5ea8365a5a32fead16"
     },
     "goal/controller.js": {
-      "source": "b883211812451224b2ebe02d6ca7b39f2bc5153ba941d1230c84f9852d288b7c",
-      "embedded": "b883211812451224b2ebe02d6ca7b39f2bc5153ba941d1230c84f9852d288b7c"
+      "source": "97430619e255b0db8e60cb70426698f1080a6dff40ebb7a2dc2a4fa5aeb9b51f",
+      "embedded": "97430619e255b0db8e60cb70426698f1080a6dff40ebb7a2dc2a4fa5aeb9b51f"
     },
     "goal/evaluator.js": {
       "source": "216d25cf150aeeedc4a0c5640ba11dae2870337fcf2ab0f8fb834f3b8860573c",
@@ -237,8 +237,8 @@
       "embedded": "606af720d67dca41bf546683688601cd935f95dab4e30546160f58233c1eae29"
     },
     "goal/execution_policy.js": {
-      "source": "f2cf07bc132dc666998871262c37e874a0db078eab1bb13296be70fc364c8750",
-      "embedded": "f2cf07bc132dc666998871262c37e874a0db078eab1bb13296be70fc364c8750"
+      "source": "d000c1e18deb30bf6b45a48eb0879538d99e67e39ed9b4fd3a01cc16ed2e6233",
+      "embedded": "d000c1e18deb30bf6b45a48eb0879538d99e67e39ed9b4fd3a01cc16ed2e6233"
     },
     "goal/expansion.js": {
       "source": "24a3136418d49ef41e990f21ffdcf27ebbc137cb883c745c539c7b6e043ae655",
@@ -285,16 +285,16 @@
       "embedded": "57c2d171d131f56b7227fae0417a0412ce713d5280bcd6da5298c289ca3c013e"
     },
     "mcp/goal-tools.js": {
-      "source": "5aa80d6a13e790a965e2ed3acda0efd41ea035a277c3717cbe968c169fc40f20",
-      "embedded": "5aa80d6a13e790a965e2ed3acda0efd41ea035a277c3717cbe968c169fc40f20"
+      "source": "71516fdc721908d726145f378ae66ec67f67843904e4b91b9422fd3305bd3a75",
+      "embedded": "71516fdc721908d726145f378ae66ec67f67843904e4b91b9422fd3305bd3a75"
     },
     "mcp/runtime-token.js": {
       "source": "d07663e879ad91f12b327101f7b747e8bfc527bed6abc8aa2018ee393f4382d4",
       "embedded": "d07663e879ad91f12b327101f7b747e8bfc527bed6abc8aa2018ee393f4382d4"
     },
     "mcp/tools.js": {
-      "source": "7001eea59aafedce1c3ce927771245b7a1f8e1077a15f14f7e899c5087f5d892",
-      "embedded": "7001eea59aafedce1c3ce927771245b7a1f8e1077a15f14f7e899c5087f5d892"
+      "source": "fc9717bce3ceb5a08825491efdee3a1ad2c9297ce3b9dfc8d55356b4f11e8133",
+      "embedded": "fc9717bce3ceb5a08825491efdee3a1ad2c9297ce3b9dfc8d55356b4f11e8133"
     },
     "pipeline/authorization.js": {
       "source": "b6b7eb34e7a4d9790820d8a4b9828bf4ee965af1476b5d5c4522768b1d4aae4e",

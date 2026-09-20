@@ -254,6 +254,30 @@ CLI, MCP, GoalController와 Blocker alternative selection은 `src/goal/execution
 
 resolver 결과는 session state와 blocker decision에 기록되지만 credential 값, private key, authorization header, password, token은 기록하지 않는다. mode와 resolver가 허용하더라도 path traversal, workspace 경계 탈출, protected path, 실행 파일/검증기 변조 방지는 별도 무결성 계층에서 계속 적용한다.
 
+### Phase 3 unrestricted 설정
+
+설정은 다음 우선순위를 따른다.
+
+```text
+built-in defaults → global config → repository-local minitok.yml → environment → CLI/MCP request
+```
+
+기본 설정은 다음과 같다.
+
+```yaml
+goal:
+  default_mode: safe
+  unrestricted:
+    enabled: false
+    require_explicit_confirmation: true
+    require_auto_accept: true
+    capabilities: []
+```
+
+`unrestricted`는 설정 파일에서 `enabled: true`이고, 요청 capability가 allowlist에 포함되며, resolver가 요구하는 explicit confirmation과 auto-accept 조건을 만족할 때만 허용된다. 설정이 없거나 `enabled: false`이면 unrestricted는 거부된다. `protected_path_write` 등 always-blocked capability는 allowlist에 포함할 수 없으며 설정 validation이 실패한다.
+
+설정 오류는 fail-closed한다. repository-local 설정은 global 설정을 덮어쓰며, 환경 변수와 CLI/MCP 요청은 설정 이후에 적용되지만 unrestricted를 암묵적으로 활성화하지 않는다. 설정을 출력하거나 policy denial을 반환할 때는 `redactGoalExecutionConfig` projection만 사용하며 provider credential, token, password, private key 원문은 반환하지 않는다.
+
 ### CLI/MCP/runtime parity
 
 정책 구현 phase에서는 다음 parity를 검증한다.

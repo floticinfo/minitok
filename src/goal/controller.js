@@ -66,7 +66,7 @@ class GoalController {
     this.escalationEngine = options.escalationEngine || null;
     const requestedMode = options.mode || options.execution_policy?.mode || goalSpec.execution_policy?.mode || options.execution_policy || "safe";
     const requestedCapabilities = options.capabilities || options.execution_capabilities || ["read", "inspect", "verify"];
-    this.policyDecision = resolveExecutionPolicy({ mode: requestedMode, capabilities: requestedCapabilities, explicit_confirmation: options.explicit_confirmation === true, auto_accept: options.auto_accept === true || options.autoAccept === true, source: options.source || "internal", actor: options.actor });
+    this.policyDecision = resolveExecutionPolicy({ mode: requestedMode, capabilities: requestedCapabilities, explicit_confirmation: options.explicit_confirmation === true, auto_accept: options.auto_accept === true || options.autoAccept === true, source: options.source || "internal", actor: options.actor, config: options.config });
     this.options = /** @type {Record<string, any>} */ ({ ...options, mode: this.policyDecision.mode, policyDecision: this.policyDecision });
     this.startedAt = currentTime(options);
     const initial = options.initialState || options.session?.state || null;
