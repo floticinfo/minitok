@@ -169,6 +169,8 @@ class GoalController {
     this.session.state.out_of_scope_candidates = this.options.goalExpansion?.out_of_scope_candidates || this.session.state.out_of_scope_candidates || [];
     this.session.state.missing_information = this.options.goalExpansion?.missing_information || this.session.state.missing_information || [];
     this.session.state.expansion_confidence = this.options.goalExpansion?.expansion_confidence ?? this.session.state.expansion_confidence ?? null;
+    this.session.state.requires_user_confirmation = this.options.goalExpansion?.requires_user_confirmation ?? this.session.state.requires_user_confirmation ?? false;
+    this.session.state.questions = this.options.goalExpansion?.questions || this.session.state.questions || [];
     this.session.state.assumptions = this.options.goalExpansion?.assumptions || this.session.state.assumptions || [];
     this.session.state.blockers = this.blockerReports;
     this.session.state.alternatives = this.alternativeHistory;
