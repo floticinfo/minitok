@@ -149,7 +149,72 @@ AlternativePlan은 다음을 비교한다.
 credential 값은 수집하거나 로그에 남기지 않는다.
 
 
-## 6. MCP workflow
+## 6. Phase 0 정책 경계와 목표 계약
+
+Phase 0에서는 현재 동작을 보존하면서 실행 정책의 의미를 다음처럼 고정한다. `safe`가 명시되지 않은 기존 호출의 유효한 기본값이며, 이 문서의 목표 모드는 다음 Phase에서 단일 resolver로 적용한다.
+
+### 정책 매트릭스
+
+| mode | 기본/opt-in | workspace 변경 | 외부 호출·publish·deploy | credential 사용 | database mutation | approval state | 비고 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `safe` | 기본값 | 차단 또는 읽기 전용 | 차단 | 차단 | 차단 | `approval_required` | 기존 기본 동작을 그대로 유지한다. |
+| `supervised` | 명시 선택 | 승인 후 허용 | 승인과 capability가 필요 | 승인과 capability가 필요 | 승인과 capability가 필요 | `approval_required` | 승인 전에는 실행하지 않고 request/resume만 반환한다. |
+| `authorized_external` | 기존 명시 정책 | 승인과 scope가 필요 | 승인과 scope가 필요 | 값은 전달할 수 있으나 기록하지 않는다 | 승인과 scope가 필요 | `approval_required` | 기존 외부 side-effect 계약을 유지한다. |
+| `unrestricted` | 사용자 명시적 opt-in만 허용 | 설정된 workspace 범위에서 자동 실행 가능 | 설정된 범위에서 자동 실행 가능 | 설정된 capability가 있을 때만 사용 | 설정된 범위에서 자동 실행 가능 | `not_requested` 또는 resolver가 기록한 명시적 opt-in | `auto_accept` 하나만으로 활성화되지 않으며, 항상 무결성 보호를 통과해야 한다. |
+| `always_blocked` | 정책 고정 | 불가 | 불가 | 불가 | 불가 | 어떤 approval도 우회하지 못함 | `never_autonomous`의 영구 차단 의미를 이 범주로 이동한다. |
+| `approval_required` | capability 상태 | 현재 mode에 따라 승인 필요 | 현재 mode에 따라 승인 필요 | 값 비노출 | 현재 mode에 따라 승인 필요 | 승인 대기 | 실행 mode가 아니라 side-effect의 approval 상태다. |
+
+`never_autonomous`는 기존 API와 저장된 GoalPlan의 backward-compatible 입력으로 당분간 인식할 수 있지만, 새로운 정책 모델에서는 다음처럼 해석한다.
+
+- 영구적으로 금지된 작업은 canonical policy `always_blocked`로 분류한다.
+- 단순히 현재 mode에서 승인 대기인 작업은 `approval_required`로 분류한다.
+- 명시적 사용자 권한과 설정된 capability가 있으면 `unrestricted`에서 자동 실행할 수 있는 작업은 `always_blocked`로 분류하지 않는다.
+- private key 원문/secret 출력, approval 우회, 검증기·실행 파일 변조, workspace 경계 탈출 등은 `unrestricted`에서도 `always_blocked`다.
+
+### mode, capability, approval의 관계
+
+실행 허용은 다음 세 입력의 교집합으로 결정한다.
+
+1. **mode**: `safe`, `supervised`, `authorized_external`, `unrestricted` 중 호출자가 요청한 실행 수준. 누락되거나 잘못된 값은 `safe`로 처리한다.
+2. **capability**: workspace write, external call, credential use, publish, deploy, database mutation 등 실제 side-effect별로 설정된 권한과 범위.
+3. **approval state**: `not_requested`, `approval_required`, `approved`, `denied` 등 해당 작업의 승인 상태.
+
+공통 resolver는 먼저 위험 분류와 `always_blocked`를 판정하고, workspace/scope/무결성 검사를 수행한 뒤 mode와 capability를 결합한다. 따라서 `unrestricted`는 approval을 자동 충족할 수 있지만, 경로 traversal, dangerous object key, protected path, 실행 파일·검증기 변조, credential 원문 노출 보호를 약화시키지 않는다. CLI와 MCP는 같은 resolver 결과를 사용하고, extension runtime도 동일한 mode vocabulary와 결과 필드를 사용해야 한다.
+
+### 명시적 unrestricted opt-in
+
+`unrestricted`는 다음 조건을 모두 만족할 때만 활성화한다.
+
+- CLI flag/config 또는 MCP argument로 mode가 명시되었다.
+- 호출 주체가 unrestricted capability에 해당하는 명시적 권한을 보유한다.
+- workspace root와 허용 범위가 검증되었다.
+- 작업이 `always_blocked`가 아니다.
+- resolver가 계산한 side-effect capability가 설정으로 허용되었다.
+
+기본값, 누락된 mode, legacy `autonomous` 입력, 단순 `auto_accept` flag만으로는 unrestricted가 활성화되지 않는다. legacy 동작은 별도 compatibility adapter를 통해 기존 계약을 유지하되, 새 unrestricted 권한을 암묵적으로 부여하지 않는다.
+
+### 민감정보 및 무결성 보호
+
+credential 값, private key 원문, authorization header, password, token 및 provider 원문 출력은 로그, evidence, session state, CLI 출력, MCP 응답에 기록하지 않는다. 저장·반환 전 redaction을 적용하고, 필요한 경우 존재 여부·종류·검증 결과 같은 비밀값 없는 메타데이터만 남긴다.
+
+다음 보호는 모든 mode에서 동일하게 유지한다.
+
+- 상대 경로 검증, path traversal 거부, workspace 경계 확인
+- dangerous object key(`__proto__`, `prototype`, `constructor`) 거부
+- protected path, 실행 파일/스크립트, CI/hook, verification gate 변조 방지
+- validation 실패 시 즉시 현재 phase를 중단하고 다음 phase로 진행하지 않음
+- 승인·권한·외부 상태를 완료 evidence로 오인하지 않음. required verifier evidence가 필요함
+
+### CLI/MCP/runtime parity
+
+정책 구현 phase에서는 다음 parity를 검증한다.
+
+- CLI Goal, MCP Goal, legacy `minitok_run`이 동일한 resolver를 호출한다.
+- 응답에는 요청 mode, 유효 mode, approval state, capability decision, blocked reason을 비밀값 없이 일관된 필드로 포함한다.
+- extension runtime은 source runtime과 같은 mode 목록, 기본값, 차단 사유, redaction 계약을 유지한다.
+- 기존 CLI/MCP 필드와 오류 코드는 additive하게 보존하고, 기본 safe 동작을 변경하지 않는다.
+
+## 7. MCP workflow
 
 장기 목표에는 다음 도구를 사용한다.
 
@@ -173,7 +238,7 @@ minitok_run_get
 
 단일 구체 task에는 기존 `minitok_run`을 사용한다. MCP scope와 approval은 provider selection과 별개이며, provider를 선택했다고 write 또는 auto-accept 권한이 부여되지 않는다.
 
-## 7. 중단과 Resume
+## 8. 중단과 Resume
 
 중단 사유는 session state와 events에 저장된다. resume 전 다음을 확인한다.
 
@@ -188,7 +253,7 @@ tracked file이 checkpoint 이후 변경되면 resume 상태는 `verification_re
 
 MCP에서는 `resume_action` 또는 `minitok_goal_resume`를 사용한다. CLI에서는 `goal resume --goal-id ...`를 사용한다. 응답에는 `verification_required`와 `resume_check`를 포함할 수 있다. resume도 완료를 보장하지 않으며 evaluator evidence가 다시 필요하다.
 
-## 8. Evidence 확인
+## 9. Evidence 확인
 
 확인 대상:
 
@@ -210,7 +275,7 @@ minitok runs show <run_id> --repo <repository> --json
 
 MCP에서는 `minitok_goal_status` 또는 `minitok_run_get` 응답의 `evidence`, `blocker`, `alternatives`, `approval_requests`, `resolution_attempts`, `final_outcome`을 확인한다. 원본 로그나 provider 출력이 필요하더라도 secret 값을 복구하거나 출력하지 않으며, redacted response와 session state를 evidence의 권위 있는 표현으로 취급한다.
 
-## 9. Backward compatibility
+## 10. Backward compatibility
 
 기존 계약은 유지된다.
 
@@ -224,18 +289,18 @@ MCP에서는 `minitok_goal_status` 또는 `minitok_run_get` 응답의 `evidence`
 
 Goal-aware 필드는 additive하게 저장·반환되며, 기존 호출자가 이를 제공하지 않으면 기존 동작을 사용한다.
 
-## 10. 운영 원칙
+## 11. 운영 원칙
 
 - 무관한 작업은 자동 계획에 추가하지 않는다.
 - optional follow-up은 자동 실행하지 않는다.
 - 안전한 local 대안은 bounded policy 안에서만 자동 실행한다.
 - 외부 side effect는 승인 전 실행하지 않는다.
-- `never_autonomous`는 항상 차단한다.
+- canonical `always_blocked` 작업은 모든 mode에서 차단한다. 기존 `never_autonomous` 입력은 이 의미를 backward-compatible하게 표현할 수 있다.
 - 실패하면 원인과 최소 하나의 대안을 evidence로 남긴다.
 - 모든 대안이 실패하면 사람에게 필요한 조치와 재개 조건을 제공한다.
 - 목표를 넘어서 판단하지만 무제한으로 행동하지 않는다.
 
-## 11. Phase 9 acceptance checklist
+## 12. Phase 9 acceptance checklist
 
 ```text
 npm test
@@ -262,7 +327,7 @@ npm run readiness:all
 - force push
 - approval 우회
 
-## 12. Blocker 처리 순서
+## 13. Blocker 처리 순서
 
 1. 오류를 blocker category로 분류한다.
 2. redacted evidence와 함께 원인을 기록한다.
@@ -275,7 +340,7 @@ npm run readiness:all
 
 자동 선택되더라도 verifier 통과 없이는 Goal 완료로 판정하지 않는다.
 
-## 13. CLI workflow
+## 14. CLI workflow
 
 ```text
 minitok goal start "Prepare a release" --repo <repository> --json
