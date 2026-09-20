@@ -4,6 +4,7 @@ const path = require("path");
 const { resolveExecutionPolicy } = require("./execution_policy");
 const { recordExecutionAudit, redactAuditText, SAFE_OPERATIONS } = require("./execution_audit");
 const { redactValue } = require("./evidence");
+const { recordRollback } = require("./session");
 
 const RISK_OPERATIONS = Object.freeze([...SAFE_OPERATIONS]);
 const ADAPTER_NAMES = Object.freeze(Object.fromEntries(RISK_OPERATIONS.map(operation => [operation, operation])));
@@ -56,7 +57,11 @@ async function executeRiskOperations(proposal = {}, options = {}) {
     try { outcome = await adapter({ ...input, paths: checked.paths, operation, read_only: false }); } catch (error) { outcome = { success: false, status: "failure", error: redactAuditText(error.message) }; }
     const successful = outcome?.success === true;
     try { const finalAudit = recordExecutionAudit({ ...base, audit_id: audit.audit_id, phase: "final", verification_result: outcome?.verification_result || outcome?.verification || (successful ? "passed" : "failed"), final_outcome: successful ? "completed" : "failed" }, options); audits.push(finalAudit); } catch (error) { return { success: false, status: "blocked", error: error.message, error_code: error.code, audits, operations: results }; }
-    results.push({ operation, success: successful, status: outcome?.status || (successful ? "success" : "failure"), result: redactValue(outcome), audit_id: audit.audit_id });
+    const rollbackInput = outcome?.rollback || outcome?.rollback_record;
+    if (options.session && (rollbackInput || input.pre_state !== undefined || input.post_state !== undefined || input.irreversible === true)) {
+      const rollback = recordRollback(options.session, { ...rollbackInput, step_id: input.step_id || options.task || operation, operation, pre_state: input.pre_state ?? outcome?.pre_state, post_state: input.post_state ?? outcome?.post_state, rollback_adapter: rollbackInput?.rollback_adapter || input.rollback_adapter, rollback_conditions: rollbackInput?.rollback_conditions || input.rollback_conditions, irreversible: input.irreversible === true || rollbackInput?.irreversible === true, irreversibility_reason: input.irreversibility_reason || rollbackInput?.irreversibility_reason, policy_allowed: allowed, policy_evidence: { audit_id: audit.audit_id, policy_decision: base.policy_decision }, external_target: input.external_target, rollback_status: rollbackInput?.rollback_status || (successful ? "available" : "not_available"), rollback_evidence: rollbackInput?.rollback_evidence || [] });
+      results.push({ operation, success: successful, status: outcome?.status || (successful ? "success" : "failure"), result: redactValue(outcome), audit_id: audit.audit_id, rollback_id: rollback.rollback_id });
+    } else results.push({ operation, success: successful, status: outcome?.status || (successful ? "success" : "failure"), result: redactValue(outcome), audit_id: audit.audit_id });
   }
   const success = results.every(item => item.success === true);
   return { success, status: success ? "success" : "failure", operations: results, audits, risk_operations: results.map(item => item.operation) };
