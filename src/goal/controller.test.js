@@ -380,6 +380,24 @@ test("GoalController releases an owned session lock after an executor exception"
   } finally { session.lock?.release?.(); fs.rmSync(root, { recursive: true, force: true }); }
 });
 
+test("persists blocker and goal evidence fields through a Goal Session", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-controller-evidence-"));
+  const goal = spec([criterion("a")], { max_cycles: 2 });
+  const session = createGoalSession({ workspaceRoot: root, goalSpec: goal });
+  try {
+    const controller = new GoalController(goal, { session, execution_policy: "safe", goalExpansion: { inferred_steps: [{ id: "related", required: true }], assumptions: ["local only"] }, evaluator: async () => result(goal.goal_id, [["a", "failed"]]), taskProposer: async () => ({ next_task: "auth task", target_criteria: ["a"] }), taskExecutor: async () => ({ success: false, status: "failure", error: "authentication failed", stage: "work", tokens: {} }), releaseSessionOnExit: true });
+    const output = await controller.run();
+    assert.ok(output.blocker_reports.length > 0);
+    const loaded = loadGoalSession(root, goal.goal_id, { lock: false });
+    assert.equal(loaded.state.original_objective, goal.objective);
+    assert.ok(loaded.state.blockers.length > 0);
+    assert.ok(loaded.state.alternatives.length > 0);
+    assert.deepEqual(loaded.state.inferred_steps, [{ id: "related", required: true }]);
+    assert.deepEqual(loaded.state.assumptions, ["local only"]);
+    assert.ok(loaded.state.final_outcome);
+  } finally { fs.rmSync(root, { recursive: true, force: true }); }
+});
+
 test("diagnoses a blocker, selects a safe alternative, and records verification evidence", async () => {
   const goal = spec([criterion("a")], { max_cycles: 3, same_failure_limit: 3 });
   let calls = 0;

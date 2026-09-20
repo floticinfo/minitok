@@ -33,6 +33,9 @@ describe("goal session persistence", () => {
       assert.deepEqual(loaded.state.task_history, [{ task: "first" }]);
       assert.deepEqual(loaded.state.progress_state, { last_fingerprint: "", stagnant_cycles: 0, current_progress: 0, previous_progress: 0 });
       assert.equal(loaded.state.cycle_count, 0);
+      assert.equal(loaded.state.original_objective, "Persist a goal");
+      assert.deepEqual(loaded.state.blockers, []);
+      assert.deepEqual(loaded.state.approval_requests, []);
       assert.equal(fs.existsSync(goalSessionPaths(root, "goal-session-test").goal), true);
       close(loaded);
     } finally { clean(root); }
@@ -48,6 +51,36 @@ describe("goal session persistence", () => {
       assert.equal(events.includes("secret-token"), false);
       assert.equal(events.includes("Bearer abc"), false);
       assert.match(events, /REDACTED/);
+    } finally { clean(root); }
+  });
+
+  test("migrates old state with goal evidence defaults and preserves redaction", () => {
+    const root = workspace();
+    try {
+      const session = createGoalSession(sessionOptions(root));
+      session.state = { schema_version: 2, goal_id: session.goalSpec.goal_id, status: "paused", workspace_root: root, evaluator_results: [], blocker_reports: [{ cause: "token=hidden" }] };
+      saveGoalSession(session);
+      close(session);
+      const loaded = loadGoalSession(root, "goal-session-test");
+      assert.equal(loaded.state.original_objective, "Persist a goal");
+      assert.deepEqual(loaded.state.blockers, [{ cause: "token=[REDACTED]" }]);
+      assert.deepEqual(loaded.state.approval_requests, []);
+      close(loaded);
+      const stateText = fs.readFileSync(goalSessionPaths(root, "goal-session-test").state, "utf8");
+      assert.doesNotMatch(stateText, /hidden/);
+    } finally { clean(root); }
+  });
+
+  test("pause/resume stores resume provenance without secrets", () => {
+    const root = workspace();
+    try {
+      const session = createGoalSession(sessionOptions(root));
+      pauseGoalSession(session, "operator token=hidden pause");
+      releaseGoalSessionLock(session);
+      const resumed = resumeGoalSession(root, "goal-session-test");
+      assert.ok(resumed.state.resumed_from);
+      assert.doesNotMatch(JSON.stringify(resumed.state), /hidden/);
+      releaseGoalSessionLock(resumed);
     } finally { clean(root); }
   });
 

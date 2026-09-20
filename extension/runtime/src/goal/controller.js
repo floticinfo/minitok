@@ -113,6 +113,16 @@ class GoalController {
     if (!this.session) return;
     const { saveGoalSession, appendGoalEvent } = require("./session");
     this.session.state.status = this.state === "created" ? "running" : this.state;
+    this.session.state.original_objective = this.goal.objective;
+    this.session.state.explicit_steps = this.options.goalPlan?.explicit_steps || this.session.state.explicit_steps || [];
+    this.session.state.inferred_steps = this.options.goalExpansion?.inferred_steps || this.session.state.inferred_steps || [];
+    this.session.state.assumptions = this.options.goalExpansion?.assumptions || this.session.state.assumptions || [];
+    this.session.state.blockers = this.blockerReports;
+    this.session.state.alternatives = this.alternativeHistory;
+    this.session.state.selected_alternative = this.alternativeHistory.at(-1)?.alternative_id || null;
+    this.session.state.approval_requests = this.alternativeHistory.map(item => item.approval_request).filter(Boolean);
+    this.session.state.resolution_attempts = this.alternativeHistory;
+    this.session.state.verification_results = this.evaluatorResults;
     this.session.state.current_task = this.currentTask;
     this.session.state.cycle_count = this.cycleCount;
     this.session.state.task_history = this.taskHistory;
@@ -128,6 +138,7 @@ class GoalController {
     this.session.state.token_usage = this.tokenUsage;
     this.session.state.model = this.options.model || this.session.state.model;
     this.session.state.provider = this.options.provider || this.session.state.provider;
+    this.session.state.final_outcome = this.state === "completed" || ["escalate", "blocked", "failed", "timeout", "token_limit", "stagnation", "repetition"].includes(this.state) ? { state: this.state, completed: this.state === "completed", cycle_count: this.cycleCount, selected_alternative: this.alternativeHistory.at(-1)?.alternative_id || null } : this.session.state.final_outcome || null;
     saveGoalSession(this.session);
     appendGoalEvent(this.session, { type: eventType, state: this.session.state.status, cycle: this.cycleCount, current_task: this.currentTask });
   }
