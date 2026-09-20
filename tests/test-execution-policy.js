@@ -115,3 +115,51 @@ test("source and extension runtime resolver contracts are in parity", () => {
   assert.deepEqual(runtime.EXECUTION_POLICY_MODES, source.EXECUTION_POLICY_MODES);
   assert.deepEqual(runtime.resolveExecutionPolicy({ mode: "unrestricted", capabilities: ["publish"], explicit_confirmation: true, auto_accept: true }), source.resolveExecutionPolicy({ mode: "unrestricted", capabilities: ["publish"], explicit_confirmation: true, auto_accept: true }));
 });
+
+const generalConfig = {
+  goal: { unrestricted_general: {
+    enabled: true,
+    require_explicit_confirmation: true,
+    require_auto_accept: true,
+    allow_goal_inference: true,
+    allow_provisional_criteria: true,
+    allow_replanning: true,
+    allow_tool_discovery: true,
+    allow_external_adapters: false,
+    capabilities: ["read", "inspect", "verify", "goal_inference", "criteria_inference", "plan_expansion", "replanning", "tool_discovery", "workspace_write"],
+    max_plan_depth: 50,
+    max_replan_count: 20,
+    max_assumption_count: 100,
+  } },
+};
+const generalInput = { mode: "unrestricted_general", capabilities: ["goal_inference", "criteria_inference", "plan_expansion", "replanning", "tool_discovery", "workspace_write"], explicit_confirmation: true, auto_accept: true, runtime_permission: true, audit_persisted: true, integrity_preflight: true, config: generalConfig };
+
+test("unrestricted_general is explicit, disabled by default, and requires every preflight gate", () => {
+  const disabled = resolveExecutionPolicy({ ...generalInput, config: { goal: { unrestricted_general: { enabled: false, capabilities: [] } } } });
+  assert.equal(disabled.allowed, false);
+  assert.deepEqual(disabled.denied_capabilities, ["unrestricted_general_disabled"]);
+  for (const field of ["explicit_confirmation", "auto_accept", "runtime_permission", "audit_persisted", "integrity_preflight"]) {
+    const missing = { ...generalInput, [field]: false };
+    const result = resolveExecutionPolicy(missing);
+    assert.equal(result.allowed, false, field);
+    assert.ok(result.denied_capabilities.length > 0, field);
+  }
+});
+
+test("unrestricted_general applies inference flags, external-adapter policy, allowlist, and budget limits", () => {
+  const allowed = resolveExecutionPolicy(generalInput);
+  assert.equal(allowed.allowed, true);
+  const outside = resolveExecutionPolicy({ ...generalInput, capabilities: ["goal_inference", "publish"] });
+  assert.equal(outside.allowed, false);
+  assert.deepEqual(outside.denied_capabilities, ["publish"]);
+  const noReplan = resolveExecutionPolicy({ ...generalInput, config: { goal: { unrestricted_general: { ...generalConfig.goal.unrestricted_general, allow_replanning: false } } } });
+  assert.deepEqual(noReplan.denied_capabilities, ["replanning"]);
+  const noBudget = resolveExecutionPolicy({ ...generalInput, max_plan_depth: undefined, max_replan_count: undefined, max_assumption_count: undefined, config: { goal: { unrestricted_general: { enabled: true, capabilities: generalConfig.goal.unrestricted_general.capabilities, allow_goal_inference: true, allow_provisional_criteria: true, allow_replanning: true, allow_tool_discovery: true, allow_external_adapters: false } } } });
+  assert.deepEqual(noBudget.denied_capabilities, ["budget_limits"]);
+});
+
+test("unrestricted_general preserves always-blocked operations", () => {
+  const blocked = resolveExecutionPolicy({ ...generalInput, capabilities: ["protected_path_write"] });
+  assert.equal(blocked.allowed, false);
+  assert.deepEqual(blocked.always_blocked_capabilities, ["protected_path_write"]);
+});

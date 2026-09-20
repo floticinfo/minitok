@@ -40,10 +40,11 @@ async function executeRiskOperations(proposal = {}, options = {}) {
     const operation = typeof entry === "string" ? entry : entry?.operation;
     const input = typeof entry === "object" && entry ? entry : {};
     const requestedCapabilities = operationCapabilities(operation);
-    const decision = resolveExecutionPolicy({ mode: options.mode || "safe", capabilities: requestedCapabilities, explicit_confirmation: options.explicit_confirmation === true, auto_accept: options.auto_accept === true || options.autoAccept === true, source: options.source || "internal", actor: options.actor, config: options.config });
+    const general = options.config?.goal?.unrestricted_general || {};
+    const decision = resolveExecutionPolicy({ mode: options.mode || "safe", capabilities: requestedCapabilities, explicit_confirmation: options.explicit_confirmation === true, auto_accept: options.auto_accept === true || options.autoAccept === true, source: options.source || "internal", actor: options.actor, config: options.config, runtime_permission: options.runtime_permission === true, audit_persisted: options.audit_persisted === true, integrity_preflight: options.integrity_preflight === true, max_plan_depth: options.max_plan_depth ?? general.max_plan_depth, max_replan_count: options.max_replan_count ?? general.max_replan_count, max_assumption_count: options.max_assumption_count ?? general.max_assumption_count });
     const checked = validateRiskInput(operation, input, options);
     const denied = checked.valid ? decision.denied_capabilities : [...new Set([...(decision.denied_capabilities || []), checked.code])];
-    const allowed = checked.valid && decision.allowed && decision.mode === "unrestricted";
+    const allowed = checked.valid && decision.allowed && ["unrestricted", "unrestricted_general"].includes(decision.mode);
     const grantedCapabilities = allowed ? requestedCapabilities : [];
     const base = { goal_id: goalId, session_id: sessionId, source: options.source, actor: options.actor, execution_mode: decision.mode, requested_capabilities: requestedCapabilities, granted_capabilities: grantedCapabilities, denied_capabilities: denied, policy_decision: allowed ? "allowed" : decision.approval_required ? "approval_required" : "denied", task: options.task, affected_paths: checked.paths || input.paths, external_target: input.external_target, approval_bypassed: allowed, credential_presence_used: input.credential_presence_used === true, verification_result: "not_executed", final_outcome: checked.valid ? "not_executed" : checked.code, operation, phase: "preflight" };
     let audit;

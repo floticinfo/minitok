@@ -9,6 +9,7 @@ const { redactValue } = require("../../goal/evidence");
 const { resolveExecutionPolicy } = require("../../goal/execution_policy");
 const { loadConfig, redactGoalExecutionConfig } = require("../../config/loader");
 const { prepareGoalExecution } = require("../../goal/integration");
+const { recordGeneralPolicyPreflight } = require("../../goal/execution_audit");
 
 function repoPath(options = {}) { return path.resolve(options.repo || process.cwd()); }
 function capabilityOptions(options = {}) {
@@ -45,15 +46,23 @@ async function cmdGoalStart(goal, options = {}) {
   const requestedMode = options.mode || config.goal?.default_mode || "safe";
   const confirmation = effectiveConfirmation(options);
   const autoAccept = options.autoAccept === true || options.auto_accept === true;
-  if (requestedMode === "unrestricted" && options.confirmUnrestricted !== true) { output({ state: "policy_denied", ...policyResponse(resolveExecutionPolicy({ mode: "unrestricted", capabilities: capabilityOptions(options), explicit_confirmation: false, auto_accept: autoAccept, source: "cli", actor: options.actor, config })), reason: "--confirm-unrestricted is required for unrestricted mode" }, options); return 1; }
-  if (autoAccept && requestedMode !== "unrestricted") { output({ state: "policy_denied", reason: "--auto-accept is only valid with --mode unrestricted" }, options); return 1; }
+  const generalMode = requestedMode === "unrestricted_general";
+  const runtimePermission = generalMode ? options.allowUnrestrictedGeneral === true || options.unrestrictedGeneralPermission === true : true;
+  const auditPersisted = generalMode;
+  const integrityPreflight = generalMode;
+  if (["unrestricted", "unrestricted_general"].includes(requestedMode) && options.confirmUnrestricted !== true) { output({ state: "policy_denied", ...policyResponse(resolveExecutionPolicy({ mode: requestedMode, capabilities: capabilityOptions(options), explicit_confirmation: false, auto_accept: autoAccept, source: "cli", actor: options.actor, config })), reason: `--confirm-unrestricted is required for ${requestedMode} mode` }, options); return 1; }
+  if (autoAccept && !["unrestricted", "unrestricted_general"].includes(requestedMode)) { output({ state: "policy_denied", reason: "--auto-accept is only valid with an explicitly enabled unrestricted mode" }, options); return 1; }
   const requestedCapabilities = capabilityOptions(options);
-  const initialPrepared = /** @type {any} */ (prepareGoalExecution({ goal_spec: goalSpec, mode: requestedMode, capabilities: requestedCapabilities, explicit_confirmation: confirmation, auto_accept: autoAccept, actor: options.actor, config, source: "cli" }));
+  let persistedGeneralAudit = false;
+  if (generalMode) {
+    try { recordGeneralPolicyPreflight({ execution_mode: requestedMode, goal_id: goalSpec.goal_id, source: "cli", actor: options.actor, requested_capabilities: requestedCapabilities }, { auditPath: options.auditPath }); persistedGeneralAudit = true; } catch { persistedGeneralAudit = false; }
+  }
+  const initialPrepared = /** @type {any} */ (prepareGoalExecution({ goal_spec: goalSpec, mode: requestedMode, capabilities: requestedCapabilities, explicit_confirmation: confirmation, auto_accept: autoAccept, runtime_permission: runtimePermission, audit_persisted: persistedGeneralAudit, integrity_preflight: integrityPreflight, actor: options.actor, config, source: "cli" }));
   if (initialPrepared.status !== "ready") { output({ state: initialPrepared.status, objective: goalSpec.objective, questions: initialPrepared.questions || [], errors: initialPrepared.errors || [], ...initialPrepared }, options); return initialPrepared.status === "clarification_required" ? 2 : 1; }
   const policyCapabilities = [...new Set([...requestedCapabilities, ...(initialPrepared.requested_capabilities || [])])];
-  const policyDecision = resolveExecutionPolicy({ mode: requestedMode, capabilities: policyCapabilities, explicit_confirmation: confirmation, auto_accept: autoAccept, source: "cli", actor: options.actor, config });
+  const policyDecision = resolveExecutionPolicy({ mode: requestedMode, capabilities: policyCapabilities, explicit_confirmation: confirmation, auto_accept: autoAccept, runtime_permission: runtimePermission, audit_persisted: persistedGeneralAudit, integrity_preflight: integrityPreflight, source: "cli", actor: options.actor, config });
   if (!policyDecision.allowed && !policyDecision.approval_required) { output({ state: "policy_denied", ...policyResponse(policyDecision), policy: policyDecision, config: redactGoalExecutionConfig(config) }, options); return 1; }
-  const prepared = /** @type {any} */ (prepareGoalExecution({ goal_spec: goalSpec, existing_goal_plan: initialPrepared.goal_plan, mode: policyDecision.mode, capabilities: policyDecision.capabilities, explicit_confirmation: confirmation, auto_accept: autoAccept, actor: options.actor, config, source: "cli" }));
+  const prepared = /** @type {any} */ (prepareGoalExecution({ goal_spec: goalSpec, existing_goal_plan: initialPrepared.goal_plan, mode: policyDecision.mode, capabilities: policyDecision.capabilities, explicit_confirmation: confirmation, auto_accept: autoAccept, runtime_permission: runtimePermission, audit_persisted: persistedGeneralAudit, integrity_preflight: integrityPreflight, actor: options.actor, config, source: "cli" }));
   if (prepared.status !== "ready") { output({ state: prepared.status, objective: goalSpec.objective, questions: prepared.questions || [], errors: prepared.errors || [], ...prepared }, options); return prepared.status === "clarification_required" ? 2 : 1; }
   warnUnrestricted(options, policyDecision);
   const session = createGoalSession({ workspaceRoot: repoPath(options), goalSpec, model: options.model, provider: options.provider, approvalState: policyDecision.approval_required ? "approval_required" : "not_requested" });
@@ -66,7 +75,7 @@ async function cmdGoalStart(goal, options = {}) {
   session.state.expansion_confidence = prepared.expansion_confidence ?? null;
   saveGoalSession(session);
   const executeGoal = options.runGoal || runGoal;
-  try { const result = await executeGoal(goalSpec, { session, goalPlan: prepared.goal_plan, goalExpansion: prepared.expansion, releaseSessionOnExit: true, mode: policyDecision.mode, capabilities: policyDecision.capabilities, explicit_confirmation: confirmation, auto_accept: autoAccept, actor: options.actor, source: "cli", config, policyDecision }); const response = sessionResponse(session, { result, goal_plan: prepared.goal_plan, inferred_steps: prepared.inferred_steps, optional_steps: prepared.optional_steps, out_of_scope_candidates: prepared.out_of_scope_candidates, expansion_confidence: prepared.expansion_confidence, requires_user_confirmation: prepared.requires_user_confirmation, ...policyResponse(policyDecision) }); options.json ? output(response, options) : printHuman(response); return result.completed ? 0 : 1; } finally { session.lock?.release?.(); }
+  try { const result = await executeGoal(goalSpec, { session, goalPlan: prepared.goal_plan, goalExpansion: prepared.expansion, releaseSessionOnExit: true, mode: policyDecision.mode, capabilities: policyDecision.capabilities, explicit_confirmation: confirmation, auto_accept: autoAccept, runtime_permission: runtimePermission, audit_persisted: auditPersisted, integrity_preflight: integrityPreflight, actor: options.actor, source: "cli", config, policyDecision }); const response = sessionResponse(session, { result, goal_plan: prepared.goal_plan, inferred_steps: prepared.inferred_steps, optional_steps: prepared.optional_steps, out_of_scope_candidates: prepared.out_of_scope_candidates, expansion_confidence: prepared.expansion_confidence, requires_user_confirmation: prepared.requires_user_confirmation, ...policyResponse(policyDecision) }); options.json ? output(response, options) : printHuman(response); return result.completed ? 0 : 1; } finally { session.lock?.release?.(); }
 }
 function cmdGoalStatus(goalId, options = {}) { if (!goalId) { console.error("goal_id is required"); return 1; } const session = loadGoalSession(repoPath(options), goalId, { lock: false }); const response = sessionResponse(session); options.json ? output(response, options) : printHuman(response); return 0; }
 async function cmdGoalResume(goalId, options = {}) { return cmdGoalContinue(goalId, options); }
@@ -76,19 +85,27 @@ async function cmdGoalContinue(goalId, options = {}) {
   const stored = loadGoalSession(repoPath(options), goalId, { lock: false });
   const storedMode = stored.state.execution_policy?.mode || stored.goalSpec.execution_policy?.mode || "safe";
   const requestedMode = options.mode || "safe";
+  const generalMode = requestedMode === "unrestricted_general" || storedMode === "unrestricted_general";
+  const runtimePermission = generalMode ? options.allowUnrestrictedGeneral === true || options.unrestrictedGeneralPermission === true : true;
+  const auditPersisted = generalMode;
+  const integrityPreflight = generalMode;
   const confirmation = effectiveConfirmation(options);
-  if (storedMode === "unrestricted" && options.mode !== "unrestricted") { output({ state: "policy_denied", reason: "A previously unrestricted goal requires an explicit --mode unrestricted and --confirm-unrestricted request to continue or resume." }, options); return 1; }
+  if (["unrestricted", "unrestricted_general"].includes(storedMode) && !["unrestricted", "unrestricted_general"].includes(options.mode)) { output({ state: "policy_denied", reason: `A previously ${storedMode} goal requires an explicit mode and reauthorization to continue or resume.` }, options); return 1; }
   const autoAccept = options.autoAccept === true || options.auto_accept === true;
-  if (requestedMode === "unrestricted" && options.confirmUnrestricted !== true) { output({ state: "policy_denied", reason: "--confirm-unrestricted is required when continuing or resuming unrestricted mode" }, options); return 1; }
-  if (autoAccept && requestedMode !== "unrestricted") { output({ state: "policy_denied", reason: "--auto-accept is only valid with --mode unrestricted" }, options); return 1; }
+  if (["unrestricted", "unrestricted_general"].includes(requestedMode) && options.confirmUnrestricted !== true) { output({ state: "policy_denied", reason: `--confirm-unrestricted is required when continuing or resuming ${requestedMode} mode` }, options); return 1; }
+  if (autoAccept && !["unrestricted", "unrestricted_general"].includes(requestedMode)) { output({ state: "policy_denied", reason: "--auto-accept is only valid with an explicitly enabled unrestricted mode" }, options); return 1; }
   const session = resumeGoalSession(repoPath(options), goalId, { model: options.model, provider: options.provider, migrate: true });
   const requestedCapabilities = capabilityOptions(options);
-  const initialPrepared = /** @type {any} */ (prepareGoalExecution({ goal_spec: session.goalSpec, existing_goal_plan: session.state.goal_plan, mode: requestedMode, capabilities: requestedCapabilities, explicit_confirmation: confirmation, auto_accept: autoAccept, actor: options.actor, config, source: "cli" }));
+  let persistedGeneralAudit = false;
+  if (generalMode) {
+    try { recordGeneralPolicyPreflight({ execution_mode: requestedMode, goal_id: session.goalSpec.goal_id, source: "cli", actor: options.actor, requested_capabilities: requestedCapabilities }, { auditPath: options.auditPath }); persistedGeneralAudit = true; } catch { persistedGeneralAudit = false; }
+  }
+  const initialPrepared = /** @type {any} */ (prepareGoalExecution({ goal_spec: session.goalSpec, existing_goal_plan: session.state.goal_plan, mode: requestedMode, capabilities: requestedCapabilities, explicit_confirmation: confirmation, auto_accept: autoAccept, runtime_permission: runtimePermission, audit_persisted: persistedGeneralAudit, integrity_preflight: integrityPreflight, actor: options.actor, config, source: "cli" }));
   if (initialPrepared.status !== "ready") { session.lock?.release?.(); output({ state: initialPrepared.status, objective: session.goalSpec.objective, questions: initialPrepared.questions || [], errors: initialPrepared.errors || [], ...initialPrepared }, options); return initialPrepared.status === "clarification_required" ? 2 : 1; }
   const policyCapabilities = [...new Set([...requestedCapabilities, ...(initialPrepared.requested_capabilities || [])])];
-  const policyDecision = resolveExecutionPolicy({ mode: requestedMode, capabilities: policyCapabilities, explicit_confirmation: confirmation, auto_accept: autoAccept, source: "cli", actor: options.actor, config });
+  const policyDecision = resolveExecutionPolicy({ mode: requestedMode, capabilities: policyCapabilities, explicit_confirmation: confirmation, auto_accept: autoAccept, runtime_permission: runtimePermission, audit_persisted: persistedGeneralAudit, integrity_preflight: integrityPreflight, source: "cli", actor: options.actor, config });
   if (!policyDecision.allowed && !policyDecision.approval_required) { session.lock?.release?.(); output({ state: "policy_denied", ...policyResponse(policyDecision), policy: policyDecision, config: redactGoalExecutionConfig(config) }, options); return 1; }
-  const prepared = /** @type {any} */ (prepareGoalExecution({ goal_spec: session.goalSpec, existing_goal_plan: initialPrepared.goal_plan, mode: policyDecision.mode, capabilities: policyDecision.capabilities, explicit_confirmation: confirmation, auto_accept: autoAccept, actor: options.actor, config, source: "cli" }));
+  const prepared = /** @type {any} */ (prepareGoalExecution({ goal_spec: session.goalSpec, existing_goal_plan: initialPrepared.goal_plan, mode: policyDecision.mode, capabilities: policyDecision.capabilities, explicit_confirmation: confirmation, auto_accept: autoAccept, runtime_permission: runtimePermission, audit_persisted: persistedGeneralAudit, integrity_preflight: integrityPreflight, actor: options.actor, config, source: "cli" }));
   if (prepared.status !== "ready") { session.lock?.release?.(); output({ state: prepared.status, objective: session.goalSpec.objective, questions: prepared.questions || [], errors: prepared.errors || [], ...prepared }, options); return prepared.status === "clarification_required" ? 2 : 1; }
   session.state.execution_policy = policyDecision;
   session.state.goal_plan = prepared.goal_plan;
@@ -100,11 +117,11 @@ async function cmdGoalContinue(goalId, options = {}) {
   saveGoalSession(session);
   warnUnrestricted(options, policyDecision);
   const executeGoal = options.runGoal || runGoal;
-  try { const result = await executeGoal(session.goalSpec, { session, goalPlan: prepared.goal_plan, goalExpansion: prepared.expansion, releaseSessionOnExit: true, mode: policyDecision.mode, capabilities: policyDecision.capabilities, explicit_confirmation: confirmation, auto_accept: autoAccept, actor: options.actor, source: "cli", config, policyDecision }); const response = sessionResponse(session, { result, goal_plan: prepared.goal_plan, inferred_steps: prepared.inferred_steps, optional_steps: prepared.optional_steps, out_of_scope_candidates: prepared.out_of_scope_candidates, expansion_confidence: prepared.expansion_confidence, requires_user_confirmation: prepared.requires_user_confirmation, ...policyResponse(policyDecision) }); options.json ? output(response, options) : printHuman(response); return result.completed ? 0 : 1; } finally { session.lock?.release?.(); }
+  try { const result = await executeGoal(session.goalSpec, { session, goalPlan: prepared.goal_plan, goalExpansion: prepared.expansion, releaseSessionOnExit: true, mode: policyDecision.mode, capabilities: policyDecision.capabilities, explicit_confirmation: confirmation, auto_accept: autoAccept, runtime_permission: runtimePermission, audit_persisted: auditPersisted, integrity_preflight: integrityPreflight, actor: options.actor, source: "cli", config, policyDecision }); const response = sessionResponse(session, { result, goal_plan: prepared.goal_plan, inferred_steps: prepared.inferred_steps, optional_steps: prepared.optional_steps, out_of_scope_candidates: prepared.out_of_scope_candidates, expansion_confidence: prepared.expansion_confidence, requires_user_confirmation: prepared.requires_user_confirmation, ...policyResponse(policyDecision) }); options.json ? output(response, options) : printHuman(response); return result.completed ? 0 : 1; } finally { session.lock?.release?.(); }
 }
 function register(program) {
   const goal = program.command("goal").description("Manage persistent goal sessions");
-  const policyOptions = command => command.option("--mode <mode>").option("--capabilities <capabilities>", "comma-separated capabilities (legacy-compatible)").option("--capability <name>", "request one capability (repeatable)", (value, previous = []) => [...previous, value], []).option("--confirm-unrestricted", "explicitly confirm unrestricted autonomous execution").option("--explicit-confirmation", "legacy explicit confirmation alias").option("--auto-accept", "auto-accept only for explicitly enabled unrestricted mode").option("--json");
+  const policyOptions = command => command.option("--mode <mode>").option("--capabilities <capabilities>", "comma-separated capabilities (legacy-compatible)").option("--capability <name>", "request one capability (repeatable)", (value, previous = []) => [...previous, value], []).option("--confirm-unrestricted", "explicitly confirm unrestricted autonomous execution").option("--allow-unrestricted-general", "grant this request's unrestricted_general runtime permission").option("--explicit-confirmation", "legacy explicit confirmation alias").option("--auto-accept", "auto-accept only for explicitly enabled unrestricted mode").option("--json");
   policyOptions(goal.command("start").argument("<objective>").option("--repo <path>").option("--goal-id <id>")).action((objective, options) => cmdGoalStart(objective, options).then(code => { process.exitCode = code; }));
   goal.command("status").requiredOption("--goal-id <id>").option("--repo <path>").option("--json").action((options) => { process.exitCode = cmdGoalStatus(options.goalId, options); });
   policyOptions(goal.command("continue").requiredOption("--goal-id <id>").option("--repo <path>")).action((options) => cmdGoalContinue(options.goalId, options).then(code => { process.exitCode = code; }));

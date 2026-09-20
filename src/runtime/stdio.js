@@ -10,7 +10,7 @@ const os = require("os");
 const crypto = require("crypto");
 const { readRuntimeToken } = require("../mcp/runtime-token");
 const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
-const LOCAL_MCP_SCOPES = new Set(["read", "write", "auto_accept", "unrestricted_autonomous", "verify_exec"]);
+const LOCAL_MCP_SCOPES = new Set(["read", "write", "auto_accept", "unrestricted_autonomous", "unrestricted_general_autonomous", "verify_exec"]);
 
 function parseLocalMcpScopes(value = "read") {
   const scopes = String(value).split(",").map(item => item.trim()).filter(Boolean);

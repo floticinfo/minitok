@@ -10,9 +10,10 @@ const { createGoalSession, loadGoalSession, saveGoalSession, pauseGoalSession, r
 const { resolveExecutionPolicy } = require("../goal/execution_policy");
 const { loadConfig, redactGoalExecutionConfig } = require("../config/loader");
 const { prepareGoalExecution } = require("../goal/integration");
+const { recordGeneralPolicyPreflight } = require("../goal/execution_audit");
 
 const ACTIVE_GOALS = new Map();
-const GOAL_MODES = new Set(["safe", "supervised", "authorized_external", "unrestricted", "workspace", "autonomous"]);
+const GOAL_MODES = new Set(["safe", "supervised", "authorized_external", "unrestricted", "unrestricted_general", "workspace", "autonomous"]);
 function capabilityGrants(args = {}, runtimeOptions = {}) {
   if (Array.isArray(args.capabilities)) return args.capabilities;
   const permissions = runtimeOptions.permissions;
@@ -22,14 +23,17 @@ function capabilityGrants(args = {}, runtimeOptions = {}) {
   return [...new Set(grants)];
 }
 function policyInput(args = {}, runtimeOptions = {}, source = "mcp", config) {
-  return { mode: args.mode, capabilities: Array.isArray(args.capabilities) ? args.capabilities : (args.mode === "unrestricted" ? undefined : capabilityGrants(args, runtimeOptions)), explicit_confirmation: args.mode === "unrestricted" ? args.confirm_unrestricted === true : args.explicit_confirmation === true, auto_accept: args.mode === "unrestricted" ? runtimeOptions.permissions?.has?.("auto_accept") === true : args.auto_accept === true && runtimeOptions.permissions?.has?.("auto_accept"), source, actor: runtimeOptions.actor, config };
+  const general = config?.goal?.unrestricted_general || {};
+  const generalMode = args.mode === "unrestricted_general";
+  return { mode: args.mode, capabilities: Array.isArray(args.capabilities) ? args.capabilities : (["unrestricted", "unrestricted_general"].includes(args.mode) ? undefined : capabilityGrants(args, runtimeOptions)), explicit_confirmation: ["unrestricted", "unrestricted_general"].includes(args.mode) ? args.confirm_unrestricted === true : args.explicit_confirmation === true, auto_accept: ["unrestricted", "unrestricted_general"].includes(args.mode) ? runtimeOptions.permissions?.has?.("auto_accept") === true : args.auto_accept === true && runtimeOptions.permissions?.has?.("auto_accept"), runtime_permission: generalMode && runtimeOptions.permissions?.has?.("unrestricted_general_autonomous") === true || args.mode === "unrestricted" && runtimeOptions.permissions?.has?.("unrestricted_autonomous") === true, audit_persisted: generalMode && runtimeOptions.general_audit_persisted === true, integrity_preflight: generalMode && runtimeOptions.general_integrity_preflight === true, max_plan_depth: args.max_plan_depth ?? general.max_plan_depth, max_replan_count: args.max_replan_count ?? general.max_replan_count, max_assumption_count: args.max_assumption_count ?? general.max_assumption_count, source, actor: runtimeOptions.actor, config };
 }
 function auditId(policyDecision) { return `audit-${crypto.createHash("sha256").update(JSON.stringify({ mode: policyDecision.mode, capabilities: policyDecision.capabilities, denied: policyDecision.denied_capabilities, decision: policyDecision.allowed ? "allowed" : policyDecision.approval_required ? "approval_required" : "denied" })).digest("hex").slice(0, 16)}`; }
 function policyResponse(policyDecision) { return { execution_mode: policyDecision.mode, requested_capabilities: policyDecision.capabilities || [], granted_capabilities: policyDecision.allowed ? policyDecision.capabilities || [] : [], denied_capabilities: policyDecision.denied_capabilities || [], policy_decision: policyDecision.allowed ? "allowed" : policyDecision.approval_required ? "approval_required" : "denied", audit_id: auditId(policyDecision) }; }
 function capabilityRequest(args = {}, prepared = {}) { return [...new Set([...(Array.isArray(args.capabilities) ? args.capabilities : []), ...(Array.isArray(prepared.requested_capabilities) ? prepared.requested_capabilities : [])])]; }
 function prepareInput(args, mode, existingGoalPlan, config, runtimeOptions = {}) {
   const goalSpec = args.goal_spec && typeof args.goal_spec === "object" ? args.goal_spec : undefined;
-  const input = { goal_spec: goalSpec, objective: args.goal, success_criteria: args.success_criteria, repository_context: args.repository_context, environment_state: args.environment_state, existing_goal_plan: existingGoalPlan, mode, capabilities: args.capabilities, explicit_confirmation: mode === "unrestricted" ? args.confirm_unrestricted === true : args.explicit_confirmation === true, auto_accept: mode === "unrestricted" ? runtimeOptions.permissions?.has?.("auto_accept") === true : args.auto_accept === true, actor: runtimeOptions.actor, config, source: "mcp" };
+  const policy = policyInput({ ...args, mode }, runtimeOptions, "mcp", config);
+  const input = { goal_spec: goalSpec, objective: args.goal, success_criteria: args.success_criteria, repository_context: args.repository_context, environment_state: args.environment_state, existing_goal_plan: existingGoalPlan, mode, capabilities: args.capabilities, explicit_confirmation: policy.explicit_confirmation, auto_accept: policy.auto_accept, runtime_permission: policy.runtime_permission, audit_persisted: policy.audit_persisted, integrity_preflight: policy.integrity_preflight, max_plan_depth: policy.max_plan_depth, max_replan_count: policy.max_replan_count, max_assumption_count: policy.max_assumption_count, actor: runtimeOptions.actor, config, source: "mcp" };
   return prepareGoalExecution(input);
 }
 function policyForPrepared(args, runtimeOptions, config, mode, prepared) {
@@ -52,11 +56,13 @@ function clarificationResponse(goalSpec, prepared) {
   return { goal_id: goalSpec?.goal_id || null, state: "clarification_required", current_state: "clarification_required", goal: goalSpec || { objective: "" }, criteria: goalSpec?.success_criteria || [], current_task: null, next_action: "Provide clarification", blocker: null, alternatives: [], recommended_action: "Provide clarification", approval_required: false, resume_command: null, resume_action: "Provide clarification before starting the goal", evidence: [], goal_plan: null, inferred_steps: [], optional_steps: [], requested_capabilities: [], granted_capabilities: [], denied_capabilities: [], execution_mode: "safe", policy_decision: "clarification_required", requires_user_confirmation: true, questions: prepared.questions || [], question_details: prepared.question_details || [], missing_information: prepared.missing_information || [], out_of_scope_candidates: prepared.out_of_scope_candidates || [] };
 }
 function unrestrictedError(args, runtimeOptions) {
-  if (args.mode !== "unrestricted") return null;
-  const denied = !runtimeOptions.permissions?.has?.("unrestricted_autonomous") ? ["unrestricted_autonomous"] : args.confirm_unrestricted !== true ? ["confirm_unrestricted"] : [];
+  if (!["unrestricted", "unrestricted_general"].includes(args.mode)) return null;
+  const general = args.mode === "unrestricted_general";
+  const permission = general ? "unrestricted_general_autonomous" : "unrestricted_autonomous";
+  const denied = !runtimeOptions.permissions?.has?.(permission) ? [permission] : args.confirm_unrestricted !== true ? ["confirm_unrestricted"] : [];
   if (!denied.length) return null;
-  const policy = { mode: "unrestricted", capabilities: Array.isArray(args.capabilities) ? args.capabilities : [], allowed: false, approval_required: false, denied_capabilities: denied, always_blocked_capabilities: [], reason: denied[0] === "unrestricted_autonomous" ? "unrestricted runtime permission is required" : "unrestricted request confirmation is required" };
-  const code = denied[0] === "unrestricted_autonomous" ? "UNRESTRICTED_PERMISSION_DENIED" : "UNRESTRICTED_CONFIRMATION_REQUIRED";
+  const policy = { mode: args.mode, capabilities: Array.isArray(args.capabilities) ? args.capabilities : [], allowed: false, approval_required: false, denied_capabilities: denied, always_blocked_capabilities: [], reason: denied[0] === permission ? `${args.mode} runtime permission is required` : "unrestricted request confirmation is required" };
+  const code = denied[0] === permission ? (general ? "UNRESTRICTED_GENERAL_PERMISSION_DENIED" : "UNRESTRICTED_PERMISSION_DENIED") : "UNRESTRICTED_CONFIRMATION_REQUIRED";
   return Object.assign(new Error(policy.reason), { code, policy });
 }
 function policyError(policyDecision, config) { return Object.assign(new Error(policyDecision.reason), { code: policyDecision.always_blocked_capabilities.length ? "ALWAYS_BLOCKED" : "EXECUTION_POLICY_DENIED", policy: policyDecision, config: redactGoalExecutionConfig(config) }); }
@@ -82,7 +88,7 @@ function resultForSession(session, extra = {}) {
 }
 function launch(session, options = {}) {
   const goalId = session.goalSpec.goal_id; const controller = new AbortController(); const record = { controller, paused: false, promise: null, session }; ACTIVE_GOALS.set(goalId, record);
-  const taskExecutor = options.taskExecutor || ((task, taskOptions) => runTask(task, { ...taskOptions, repoRoot: session.workspaceRoot, signal: controller.signal, providerOverride: options.providerOverride, autoAccept: options.policyDecision?.allowed === true && options.mode === "unrestricted" }));
+  const taskExecutor = options.taskExecutor || ((task, taskOptions) => runTask(task, { ...taskOptions, repoRoot: session.workspaceRoot, signal: controller.signal, providerOverride: options.providerOverride, autoAccept: options.policyDecision?.allowed === true && ["unrestricted", "unrestricted_general"].includes(options.mode) }));
   record.promise = runGoal(session.goalSpec, { ...options, session, signal: controller.signal, taskExecutor, recoveryEnabled: options.recoveryEnabled !== false });
   record.promise.then(result => { if (record.paused) session.state.status = "paused"; else if (result.state === "completed") session.state.status = "completed"; else if (result.state === "escalate") session.state.status = "escalated"; else if (result.completed !== true && !["paused", "running"].includes(session.state.status)) session.state.status = "failed"; saveGoalSession(session); }).catch(error => { if (!record.paused) markGoalFailed(session, { error: error.message }); }).finally(() => { ACTIVE_GOALS.delete(goalId); session.lock?.release?.(); });
   return record;
@@ -109,15 +115,20 @@ async function startGoal(args, runtimeOptions = {}) {
   const compiled = compileInput(args); const compiledRecord = /** @type {Record<string, any>} */ (compiled);
   if (compiled.status === "clarification_required") return clarificationResponse(null, compiledRecord);
   if (compiled.status !== "ready") throw Object.assign(new Error(`Goal specification is ${compiled.status}`), { code: compiled.status === "unsupported" ? "GOAL_UNSUPPORTED" : "GOAL_INVALID", details: compiledRecord.errors || [{ path: "$", code: "UNSUPPORTED_GOAL", message: compiledRecord.reason || `Goal specification is ${compiled.status}` }] });
-  const initialPrepared = prepareInput({ ...args, goal_spec: compiledRecord.spec }, mode, null, config, runtimeOptions);
+  let generalAuditPersisted = false;
+  if (mode === "unrestricted_general") {
+    try { recordGeneralPolicyPreflight({ execution_mode: mode, goal_id: compiledRecord.spec.goal_id, source: "mcp", actor: runtimeOptions.actor, requested_capabilities: args.capabilities }, { auditPath: args.audit_path }); generalAuditPersisted = true; } catch { generalAuditPersisted = false; }
+  }
+  const preparedRuntime = { ...runtimeOptions, general_audit_persisted: generalAuditPersisted, general_integrity_preflight: mode === "unrestricted_general" };
+  const initialPrepared = prepareInput({ ...args, goal_spec: compiledRecord.spec }, mode, null, config, preparedRuntime);
   if (initialPrepared.status !== "ready") return clarificationResponse(compiledRecord.spec, initialPrepared);
-  const policyDecision = policyForPrepared(args, runtimeOptions, config, mode, initialPrepared);
+  const policyDecision = policyForPrepared(args, { ...preparedRuntime, general_audit_persisted: generalAuditPersisted }, config, mode, initialPrepared);
   if (!policyDecision.allowed && !policyDecision.approval_required) throw policyError(policyDecision, config);
-  const prepared = prepareInput({ ...args, goal_spec: compiledRecord.spec }, policyDecision.mode, initialPrepared.goal_plan, config, runtimeOptions);
+  const prepared = prepareInput({ ...args, goal_spec: compiledRecord.spec }, policyDecision.mode, initialPrepared.goal_plan, config, { ...preparedRuntime, general_audit_persisted: generalAuditPersisted });
   if (prepared.status !== "ready") return clarificationResponse(compiledRecord.spec, prepared);
   const session = createGoalSession({ workspaceRoot: repoRoot, goalSpec: compiledRecord.spec, model: runtimeOptions.model, provider: args.provider_override, approvalState: policyDecision.approval_required ? "approval_required" : "not_requested" });
   persistPreparedSession(session, prepared, policyDecision);
-  launch(session, { ...runtimeOptions, mode: policyDecision.mode, capabilities: policyDecision.capabilities, goalPlan: prepared.goal_plan, goalExpansion: prepared.expansion, explicit_confirmation: args.mode === "unrestricted" ? args.confirm_unrestricted === true : args.explicit_confirmation === true, auto_accept: policyDecision.audit_context.auto_accept, policyDecision, config, providerOverride: args.provider_override });
+  launch(session, { ...runtimeOptions, mode: policyDecision.mode, capabilities: policyDecision.capabilities, goalPlan: prepared.goal_plan, goalExpansion: prepared.expansion, explicit_confirmation: policyDecision.audit_context.explicit_confirmation, auto_accept: policyDecision.audit_context.auto_accept, runtime_permission: policyDecision.audit_context.runtime_permission, audit_persisted: policyDecision.audit_context.audit_persisted, integrity_preflight: policyDecision.audit_context.integrity_preflight, max_plan_depth: args.max_plan_depth, max_replan_count: args.max_replan_count, max_assumption_count: args.max_assumption_count, policyDecision, config, providerOverride: args.provider_override });
   return resultForSession(session, { state: "running", next_action: "Call minitok_goal_status to observe progress", goal_plan: prepared.goal_plan, inferred_steps: prepared.inferred_steps, optional_steps: prepared.optional_steps, out_of_scope_candidates: prepared.out_of_scope_candidates, expansion_confidence: prepared.expansion_confidence, requires_user_confirmation: prepared.requires_user_confirmation, questions: prepared.questions, missing_information: prepared.missing_information, policyDecision });
 }
 function readGoal(args, runtimeOptions = {}) { const repoRoot = requireGoalRepo(args.repo, runtimeOptions.workspaceRoot); return resultForSession(loadGoalSession(repoRoot, args.goal_id, { lock: false })); }
@@ -129,14 +140,19 @@ async function continueGoal(args, runtimeOptions = {}) {
   if (unrestrictedFailure) throw unrestrictedFailure;
   const session = resumeGoalSession(repoRoot, args.goal_id, { model: runtimeOptions.model, provider: args.provider_override, migrate: true });
   const mode = args.mode || "safe";
-  const initialPrepared = prepareInput({ ...args, goal_spec: session.goalSpec, existing_goal_plan: session.state.goal_plan }, mode, session.state.goal_plan, config, runtimeOptions);
+  let generalAuditPersisted = false;
+  if (mode === "unrestricted_general") {
+    try { recordGeneralPolicyPreflight({ execution_mode: mode, goal_id: session.goalSpec.goal_id, source: "mcp", actor: runtimeOptions.actor, requested_capabilities: args.capabilities }, { auditPath: args.audit_path }); generalAuditPersisted = true; } catch { generalAuditPersisted = false; }
+  }
+  const preparedRuntime = { ...runtimeOptions, general_audit_persisted: generalAuditPersisted, general_integrity_preflight: mode === "unrestricted_general" };
+  const initialPrepared = prepareInput({ ...args, goal_spec: session.goalSpec, existing_goal_plan: session.state.goal_plan }, mode, session.state.goal_plan, config, preparedRuntime);
   if (initialPrepared.status !== "ready") { session.lock?.release?.(); return resultForSession(session, { state: initialPrepared.status, current_state: initialPrepared.status, questions: initialPrepared.questions || [], errors: initialPrepared.errors || [], goal_plan: initialPrepared.goal_plan, inferred_steps: initialPrepared.inferred_steps || [], optional_steps: initialPrepared.optional_steps || [], out_of_scope_candidates: initialPrepared.out_of_scope_candidates || [], requires_user_confirmation: initialPrepared.requires_user_confirmation }); }
-  const policyDecision = policyForPrepared(args, runtimeOptions, config, mode, initialPrepared);
+  const policyDecision = policyForPrepared(args, preparedRuntime, config, mode, initialPrepared);
   if (!policyDecision.allowed && !policyDecision.approval_required) { session.lock?.release?.(); throw policyError(policyDecision, config); }
-  const prepared = prepareInput({ ...args, goal_spec: session.goalSpec, existing_goal_plan: initialPrepared.goal_plan }, policyDecision.mode, initialPrepared.goal_plan, config, runtimeOptions);
+  const prepared = prepareInput({ ...args, goal_spec: session.goalSpec, existing_goal_plan: initialPrepared.goal_plan }, policyDecision.mode, initialPrepared.goal_plan, config, preparedRuntime);
   if (prepared.status !== "ready") { session.lock?.release?.(); return resultForSession(session, { state: prepared.status, current_state: prepared.status, goal_plan: prepared.goal_plan, questions: prepared.questions || [], errors: prepared.errors || [], inferred_steps: prepared.inferred_steps || [], optional_steps: prepared.optional_steps || [], out_of_scope_candidates: prepared.out_of_scope_candidates || [], requires_user_confirmation: prepared.requires_user_confirmation }); }
   persistPreparedSession(session, prepared, policyDecision);
-  launch(session, { ...runtimeOptions, mode: policyDecision.mode, capabilities: policyDecision.capabilities, goalPlan: prepared.goal_plan, goalExpansion: prepared.expansion, explicit_confirmation: args.mode === "unrestricted" ? args.confirm_unrestricted === true : args.explicit_confirmation === true, auto_accept: policyDecision.audit_context.auto_accept, policyDecision, config, providerOverride: args.provider_override }); return resultForSession(session, { state: "running", goal_plan: prepared.goal_plan, inferred_steps: prepared.inferred_steps, optional_steps: prepared.optional_steps, out_of_scope_candidates: prepared.out_of_scope_candidates, expansion_confidence: prepared.expansion_confidence, requires_user_confirmation: prepared.requires_user_confirmation, questions: prepared.questions, missing_information: prepared.missing_information, policyDecision });
+  launch(session, { ...runtimeOptions, mode: policyDecision.mode, capabilities: policyDecision.capabilities, goalPlan: prepared.goal_plan, goalExpansion: prepared.expansion, explicit_confirmation: policyDecision.audit_context.explicit_confirmation, auto_accept: policyDecision.audit_context.auto_accept, runtime_permission: policyDecision.audit_context.runtime_permission, audit_persisted: policyDecision.audit_context.audit_persisted, integrity_preflight: policyDecision.audit_context.integrity_preflight, max_plan_depth: args.max_plan_depth, max_replan_count: args.max_replan_count, max_assumption_count: args.max_assumption_count, policyDecision, config, providerOverride: args.provider_override }); return resultForSession(session, { state: "running", goal_plan: prepared.goal_plan, inferred_steps: prepared.inferred_steps, optional_steps: prepared.optional_steps, out_of_scope_candidates: prepared.out_of_scope_candidates, expansion_confidence: prepared.expansion_confidence, requires_user_confirmation: prepared.requires_user_confirmation, questions: prepared.questions, missing_information: prepared.missing_information, policyDecision });
 }
 function pauseGoal(args, runtimeOptions = {}) { const repoRoot = requireGoalRepo(args.repo, runtimeOptions.workspaceRoot); const active = ACTIVE_GOALS.get(args.goal_id); const session = active?.session || loadGoalSession(repoRoot, args.goal_id); if (active) { active.paused = true; active.controller.abort(); ACTIVE_GOALS.delete(args.goal_id); } pauseGoalSession(session, args.reason || "paused by MCP client"); session.lock?.release?.(); return resultForSession(session, { state: "paused" }); }
 function cancelGoal(args, runtimeOptions = {}) { const repoRoot = requireGoalRepo(args.repo, runtimeOptions.workspaceRoot); const active = ACTIVE_GOALS.get(args.goal_id); const session = active?.session || loadGoalSession(repoRoot, args.goal_id); if (active) { active.paused = true; active.controller.abort(); ACTIVE_GOALS.delete(args.goal_id); } markGoalFailed(session, { cancelled: true, reason: args.reason || "cancelled by MCP client" }); session.lock?.release?.(); return resultForSession(session, { state: "failed" }); }

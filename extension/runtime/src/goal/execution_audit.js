@@ -71,7 +71,7 @@ function createExecutionAuditRecord(input = {}) {
     task: redactAuditText(input.task),
     affected_paths: redactAffectedPaths(input.affected_paths),
     external_target: redactExternalTarget(input.external_target),
-    approval_bypassed: input.approval_bypassed === true && input.execution_mode === "unrestricted" && granted.length > 0,
+    approval_bypassed: input.approval_bypassed === true && ["unrestricted", "unrestricted_general"].includes(input.execution_mode) && granted.length > 0,
     credential_presence_used: input.credential_presence_used === true,
     verification_result: redactAuditText(input.verification_result, 512),
     final_outcome: redactAuditText(input.final_outcome, 512),
@@ -88,4 +88,8 @@ function recordExecutionAudit(record, options = {}) {
   if (!result?.persisted) throw Object.assign(new Error("Execution audit persistence is required before continuing"), { code: "AUDIT_PERSISTENCE_REQUIRED", audit: safeRecord, persistence: result });
   return { ...safeRecord, persisted: true };
 }
-module.exports = { EXECUTION_AUDIT_SCHEMA_VERSION, SAFE_OPERATIONS, redactAuditText, redactAffectedPaths, redactExternalTarget, createExecutionAuditRecord, recordExecutionAudit };
+function recordGeneralPolicyPreflight(input = {}, options = {}) {
+  if (input.execution_mode !== "unrestricted_general") return null;
+  return recordExecutionAudit({ goal_id: input.goal_id, session_id: input.session_id, source: input.source, actor: input.actor, execution_mode: "unrestricted_general", requested_capabilities: input.requested_capabilities, granted_capabilities: [], denied_capabilities: [], policy_decision: "denied", task: "unrestricted_general policy preflight", final_outcome: "preflight_persisted", phase: "preflight" }, options);
+}
+module.exports = { EXECUTION_AUDIT_SCHEMA_VERSION, SAFE_OPERATIONS, redactAuditText, redactAffectedPaths, redactExternalTarget, createExecutionAuditRecord, recordExecutionAudit, recordGeneralPolicyPreflight };

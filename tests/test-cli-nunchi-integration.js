@@ -22,6 +22,7 @@ function plan() {
   return createGoalPlan({ objective: "Fix the bug in src/parser.js", explicit_steps: [], inferred_steps: [{ id: "persisted-fix", description: "Use the persisted required fix", required: true, target_criteria: ["fix"], rationale: "The existing plan is authoritative for this session.", verification: { type: "custom", id: "persisted-check", config: {} }, status: "proposed" }], dependencies: [], success_criteria: [{ id: "fix", description: "The bug is fixed", required: true }], scope_boundary: { allowed_paths: ["src"], blocked_paths: [".git"], protected_paths: [], allow_external: false }, risk_level: "low", approval_requirements: [], assumptions: [], execution_policy: "safe" });
 }
 function unrestrictedConfig() { return { goal: { unrestricted: { enabled: true, capabilities: ["workspace_write"], require_explicit_confirmation: true, require_auto_accept: true } } }; }
+function unrestrictedGeneralConfig() { return { goal: { unrestricted_general: { enabled: true, capabilities: ["workspace_write"], require_explicit_confirmation: true, require_auto_accept: true, allow_goal_inference: true, allow_provisional_criteria: true, allow_replanning: true, allow_tool_discovery: true, allow_external_adapters: false, max_plan_depth: 50, max_replan_count: 20, max_assumption_count: 100 } } }; }
 function captureRun(result = { completed: true, state: "completed" }) { const calls = []; return { calls, runGoal: async (spec, options) => { calls.push({ spec, options }); return result; } }; }
 
 
@@ -120,6 +121,25 @@ test("CLI unrestricted resume requires explicit mode, confirmation, auto_accept,
     assert.equal(denied, 1);
     const allowed = captureRun();
     const resumed = await cmdGoalResume("cli-unrestricted-resume", { repo, mode: "unrestricted", confirmUnrestricted: true, autoAccept: true, capabilities: ["workspace_write"], config: unrestrictedConfig(), json: true, runGoal: allowed.runGoal });
+    assert.equal(resumed, 0);
+    assert.equal(allowed.calls.length, 1);
+  } finally { fs.rmSync(repo, { recursive: true, force: true }); }
+});
+
+test("CLI unrestricted_general resume requires mode, confirmation, runtime permission, and preflight", async () => {
+  const repo = root();
+  try {
+    fs.writeFileSync(path.join(repo, "minitok.yml"), "goal:\n  unrestricted_general:\n    enabled: true\n    capabilities: [workspace_write]\n    require_explicit_confirmation: true\n    require_auto_accept: true\n    allow_goal_inference: true\n    allow_provisional_criteria: true\n    allow_replanning: true\n    allow_tool_discovery: true\n    allow_external_adapters: false\n    max_plan_depth: 50\n    max_replan_count: 20\n    max_assumption_count: 100\n");
+    const session = createGoalSession({ workspaceRoot: repo, goalSpec: goalSpec("Fix the bug in src/parser.js", "cli-general-resume") });
+    session.state.execution_policy = { mode: "unrestricted_general", allowed: true, capabilities: ["workspace_write"], denied_capabilities: [], approval_required: false };
+    saveGoalSession(session);
+    releaseGoalSessionLock(session);
+    const deniedMode = await cmdGoalResume("cli-general-resume", { repo, json: true, config: unrestrictedGeneralConfig(), runGoal: async () => ({ completed: true }) });
+    assert.equal(deniedMode, 1);
+    const deniedPermission = await cmdGoalResume("cli-general-resume", { repo, mode: "unrestricted_general", confirmUnrestricted: true, autoAccept: true, config: unrestrictedGeneralConfig(), json: true, runGoal: async () => ({ completed: true }) });
+    assert.equal(deniedPermission, 1);
+    const allowed = captureRun();
+    const resumed = await cmdGoalResume("cli-general-resume", { repo, mode: "unrestricted_general", confirmUnrestricted: true, autoAccept: true, allowUnrestrictedGeneral: true, auditPersisted: true, integrityPreflight: true, capabilities: ["workspace_write"], config: unrestrictedGeneralConfig(), json: true, runGoal: allowed.runGoal });
     assert.equal(resumed, 0);
     assert.equal(allowed.calls.length, 1);
   } finally { fs.rmSync(repo, { recursive: true, force: true }); }

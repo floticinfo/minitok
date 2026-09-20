@@ -60,6 +60,10 @@ function capabilitiesForTask(task, proposal = {}, mode = "safe") {
   if (Array.isArray(proposal.paths) && proposal.paths.length > 0 || Array.isArray(proposal.verification?.paths) && proposal.verification.paths.length > 0) inferred.push("workspace_write");
   return [...new Set([...explicit, ...inferred])].length ? [...new Set([...explicit, ...inferred])] : ["verify"];
 }
+function generalPolicyFields(options = {}) {
+  const general = options.config?.goal?.unrestricted_general || {};
+  return { runtime_permission: options.runtime_permission === true || options.unrestricted_general_permission === true, audit_persisted: options.audit_persisted === true || options.auditPersisted === true, integrity_preflight: options.integrity_preflight === true || options.integrityPreflight === true, max_plan_depth: options.max_plan_depth ?? general.max_plan_depth, max_replan_count: options.max_replan_count ?? general.max_replan_count, max_assumption_count: options.max_assumption_count ?? general.max_assumption_count };
+}
 function policyDecisionForTask(task, proposal, options, goal) {
   const mode = options.mode || options.execution_policy?.mode || options.execution_policy || goal?.execution_policy?.mode || "safe";
   const capabilities = capabilitiesForTask(task, proposal, mode);
@@ -68,7 +72,7 @@ function policyDecisionForTask(task, proposal, options, goal) {
   const denied = Array.isArray(goal?.denied_capabilities) ? goal.denied_capabilities : Array.isArray(plan?.denied_capabilities) ? plan.denied_capabilities : [];
   const scoped = requested ? capabilities.filter(capability => requested.includes(capability)) : capabilities;
   const outOfPlan = requested ? capabilities.filter(capability => !requested.includes(capability)) : [];
-  const decision = resolveExecutionPolicy({ mode: options.mode || options.execution_policy?.mode || options.execution_policy || goal?.execution_policy?.mode || "safe", capabilities: scoped.length ? scoped : capabilities, explicit_confirmation: options.explicit_confirmation === true, auto_accept: options.auto_accept === true || options.autoAccept === true, source: options.source || "internal", actor: options.actor, config: options.config });
+  const decision = resolveExecutionPolicy({ mode: options.mode || options.execution_policy?.mode || options.execution_policy || goal?.execution_policy?.mode || "safe", capabilities: scoped.length ? scoped : capabilities, explicit_confirmation: options.explicit_confirmation === true, auto_accept: options.auto_accept === true || options.autoAccept === true, source: options.source || "internal", actor: options.actor, config: options.config, ...generalPolicyFields(options) });
   const deniedCapabilities = [...new Set([...(decision.denied_capabilities || []), ...outOfPlan, ...capabilities.filter(capability => denied.includes(capability))])];
   const planDenied = outOfPlan.length > 0 || capabilities.some(capability => denied.includes(capability));
   return { ...decision, allowed: decision.allowed && !planDenied, reason: planDenied ? "task capability is outside the GoalPlan grant" : decision.reason, capabilities, requested_capabilities: requested || capabilities, granted_capabilities: decision.allowed && !planDenied ? capabilities.filter(capability => !denied.includes(capability)) : [], denied_capabilities: deniedCapabilities };
@@ -107,7 +111,7 @@ class GoalController {
     this.escalationEngine = options.escalationEngine || null;
     const requestedMode = options.mode || options.execution_policy?.mode || goalSpec.execution_policy?.mode || options.execution_policy || "safe";
     const requestedCapabilities = options.capabilities || options.execution_capabilities || ["read", "inspect", "verify"];
-    this.policyDecision = resolveExecutionPolicy({ mode: requestedMode, capabilities: requestedCapabilities, explicit_confirmation: options.explicit_confirmation === true, auto_accept: options.auto_accept === true || options.autoAccept === true, source: options.source || "internal", actor: options.actor, config: options.config });
+    this.policyDecision = resolveExecutionPolicy({ mode: requestedMode, capabilities: requestedCapabilities, explicit_confirmation: options.explicit_confirmation === true, auto_accept: options.auto_accept === true || options.autoAccept === true, source: options.source || "internal", actor: options.actor, config: options.config, ...generalPolicyFields(options) });
     this.options = /** @type {Record<string, any>} */ ({ ...options, mode: this.policyDecision.mode, policyDecision: this.policyDecision });
     this.startedAt = currentTime(options);
     const initial = options.initialState || options.session?.state || null;
@@ -310,7 +314,7 @@ class GoalController {
       used_alternative_ids: this.alternativeHistory.map(item => item.alternative_id).filter(Boolean),
       used_patch_signatures: this.taskHistory.map(item => item.patch_signature).filter(Boolean),
     });
-    const selectionDecision = selection.alternative ? resolveExecutionPolicy({ mode: this.policyDecision.mode, capabilities: capabilitiesForSideEffects(selection.alternative.side_effects), explicit_confirmation: this.options.explicit_confirmation === true, auto_accept: this.options.auto_accept === true || this.options.autoAccept === true, actor: this.options.actor, config: this.options.config, source: this.options.source || "internal" }) : this.policyDecision;
+    const selectionDecision = selection.alternative ? resolveExecutionPolicy({ mode: this.policyDecision.mode, capabilities: capabilitiesForSideEffects(selection.alternative.side_effects), explicit_confirmation: this.options.explicit_confirmation === true, auto_accept: this.options.auto_accept === true || this.options.autoAccept === true, actor: this.options.actor, config: this.options.config, source: this.options.source || "internal", ...generalPolicyFields(this.options) }) : this.policyDecision;
     this.alternativeHistory.push({ blocker_id: report.blocker_id, alternative_id: selection.alternative?.alternative_id || null, execution_policy: selection.alternative?.execution_policy || null, status: selection.status, reason: selection.reason, approval_request: selection.approval_request || null, resume_action: selection.approval_request?.resume_action || (selection.status === "selected" ? "Run verifier after the alternative completes" : "Call minitok_goal_resume after approval and required operator checks"), execution_status: selection.status === "selected" ? "delegated_to_recovery" : selection.status, verification_status: "pending", ...executionEvidence(selectionDecision, "pending", selection.auto_approved === true) });
     this.actionHistory.push({ cycle: this.cycleCount, action: "blocker_diagnosed", blocker_id: report.blocker_id, category: report.category, recommended_alternative: report.recommended_alternative, selected_alternative: selection.alternative?.alternative_id || null, selection_status: selection.status, reason: selection.reason });
     if (selection.status !== "selected") this.state = "escalate";
@@ -320,7 +324,7 @@ class GoalController {
   async execute(task, proposal) {
     const decision = policyDecisionForTask(task, proposal, this.options, this.goal);
     const mode = decision.mode;
-    const autoApproved = mode === "unrestricted" && decision.allowed && (this.options.auto_accept === true || this.options.autoAccept === true);
+    const autoApproved = ["unrestricted", "unrestricted_general"].includes(mode) && decision.allowed && (this.options.auto_accept === true || this.options.autoAccept === true);
     const policyEvidence = executionEvidence(decision, "not_executed", autoApproved);
     this.actionHistory.push({ cycle: this.cycleCount + 1, action: "execution_policy_decision", task: redactText(task), ...policyEvidence });
     if (!scopeAllowedForProposal(proposal, this.goal.constraints)) {

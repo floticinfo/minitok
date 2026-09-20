@@ -113,6 +113,17 @@ describe("config: explicit unrestricted goal policy", () => {
     assert.doesNotMatch(JSON.stringify(safe), /secret-value|api_key|token|password/i);
   });
 
+
+  it("validates and redacts unrestricted_general without exposing secrets", () => {
+    const config = validateConfig({ goal: { unrestricted_general: { enabled: true, allow_goal_inference: true, allow_provisional_criteria: true, allow_replanning: true, allow_tool_discovery: true, capabilities: ["goal_inference", "criteria_inference"], max_plan_depth: 50, max_replan_count: 20, max_assumption_count: 100 } }, providers: { openai: { api_key: "secret-value" } } });
+    const safe = redactGoalExecutionConfig(config);
+    assert.equal(safe.unrestricted_general.enabled, true);
+    assert.deepEqual(safe.unrestricted_general.capabilities, ["goal_inference", "criteria_inference"]);
+    assert.doesNotMatch(JSON.stringify(safe), /secret-value|api_key|token|password/i);
+    assert.throws(() => validateConfig({ goal: { unrestricted_general: { max_replan_count: -1 } } }), /max_replan_count/);
+    assert.throws(() => validateConfig({ goal: { unrestricted_general: { capabilities: ["protected_path_write"] } } }), /always-blocked/);
+  });
+
   it("keeps repository-local goal policy above the global policy", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "mt-goal-priority-"));
     const globalRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mt-goal-global-"));

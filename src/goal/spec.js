@@ -2,7 +2,7 @@
 
 const SCHEMA_VERSION = 1;
 const VERIFIER_TYPES = Object.freeze(["command", "file", "test", "custom"]);
-const EXECUTION_MODES = Object.freeze(["safe", "supervised", "authorized_external", "unrestricted", "workspace", "autonomous"]);
+const EXECUTION_MODES = Object.freeze(["safe", "supervised", "authorized_external", "unrestricted", "unrestricted_general", "always_blocked", "workspace", "autonomous"]);
 const DEFAULT_CONSTRAINTS = Object.freeze({
   allowed_paths: [],
   blocked_paths: [],

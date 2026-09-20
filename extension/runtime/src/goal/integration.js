@@ -29,7 +29,8 @@ function compileInput(input) {
 function clarification(record, extra = {}) { return { status: "clarification_required", goal_spec: null, goal_plan: null, expansion: record, execution_policy: null, requested_capabilities: [], granted_capabilities: [], denied_capabilities: [], questions: list(record.questions), requires_user_confirmation: true, ...extra }; }
 function invalid(errors, extra = {}) { return { status: "invalid", goal_spec: extra.goal_spec || null, goal_plan: null, expansion: extra.expansion || null, execution_policy: null, requested_capabilities: [], granted_capabilities: [], denied_capabilities: [], questions: [], errors: list(errors), requires_user_confirmation: true, ...extra }; }
 function decision(input, mode, capabilities) {
-  return resolveExecutionPolicy({ mode, capabilities, explicit_confirmation: input.explicit_confirmation === true, auto_accept: input.auto_accept === true || input.autoAccept === true, config: input.config, source: input.source || "internal", actor: input.actor });
+  const general = mode === "unrestricted_general" && input.config?.goal?.unrestricted_general || {};
+  return resolveExecutionPolicy({ mode, capabilities, explicit_confirmation: input.explicit_confirmation === true, auto_accept: input.auto_accept === true || input.autoAccept === true, config: input.config, source: input.source || "internal", actor: input.actor, runtime_permission: input.runtime_permission === true, audit_persisted: input.audit_persisted === true, integrity_preflight: input.integrity_preflight === true, max_plan_depth: input.max_plan_depth ?? general.max_plan_depth, max_replan_count: input.max_replan_count ?? general.max_replan_count, max_assumption_count: input.max_assumption_count ?? general.max_assumption_count });
 }
 
 /** @returns {any} */

@@ -30,12 +30,21 @@ for (const name of ["minitok_goal_start", "minitok_goal_continue", "minitok_goal
   });
 }
 
+test("MCP goal schemas expose unrestricted_general and its fail-closed policy inputs", () => {
+  for (const name of ["minitok_goal_start", "minitok_goal_continue", "minitok_goal_resume"]) {
+    const schema = getToolDefinitions().find(tool => tool.name === name).inputSchema;
+    assert.ok(schema.properties.mode.enum.includes("unrestricted_general"));
+    for (const field of ["audit_persisted", "integrity_preflight", "max_plan_depth", "max_replan_count", "max_assumption_count"]) assert.ok(schema.properties[field], `${name}.${field}`);
+  }
+});
+
 test("MCP start prepares and persists GoalPlan/inferred step metadata", async () => {
   const box = sandbox();
   try {
     box.runtime.permissions.add("auto_accept");
     box.runtime.taskExecutor = async () => ({ success: true, status: "success", tokens: {} });
     box.runtime.evaluator = async () => ({ goal_id: "mcp-nunchi", completed: true, criteria: [{ id: "fix", status: "passed", evidence_ids: ["e-fix"] }], evidence: [{ evidence_id: "e-fix", valid: true, executed: true, execution: { executed: true } }], remaining_criteria: [], unknown_criteria: [] });
+
     const response = await box.call("minitok_goal_start", { goal: "Fix the bug in src/parser.js", repo: box.repo, goal_spec: spec(), mode: "supervised", explicit_confirmation: true });
     const value = payload(response);
     assert.equal(response.isError, false);
@@ -49,6 +58,21 @@ test("MCP start prepares and persists GoalPlan/inferred step metadata", async ()
     const stored = loadGoalSession(box.repo, "mcp-nunchi", { lock: false });
     assert.equal(stored.state.goal_plan.inferred_steps[0].id, "goal-change");
     assert.equal(stored.state.inferred_steps[0].target_criteria[0], "fix");
+  } finally { box.clean(); }
+});
+
+test("MCP unrestricted_general requires a distinct runtime permission before confirmation", async () => {
+  const box = sandbox();
+  try {
+    fs.writeFileSync(path.join(box.repo, "minitok.yml"), "goal:\n  default_mode: safe\n  unrestricted_general:\n    enabled: true\n    require_explicit_confirmation: true\n    require_auto_accept: true\n    allow_goal_inference: true\n    allow_provisional_criteria: true\n    allow_replanning: true\n    allow_tool_discovery: true\n    allow_external_adapters: false\n    capabilities: [goal_inference, criteria_inference, plan_expansion, replanning, tool_discovery, workspace_write]\n    max_plan_depth: 50\n    max_replan_count: 20\n    max_assumption_count: 100\n");
+    const denied = await box.call("minitok_goal_start", { goal: "Fix the bug in src/parser.js", repo: box.repo, goal_spec: spec("mcp-general-permission"), mode: "unrestricted_general", capabilities: ["goal_inference"], confirm_unrestricted: true, audit_persisted: true, integrity_preflight: true });
+    assert.equal(denied.isError, true);
+    assert.equal(denied.error.code, "UNRESTRICTED_GENERAL_PERMISSION_DENIED");
+    box.runtime.permissions.add("unrestricted_general_autonomous");
+    box.runtime.permissions.add("auto_accept");
+    const noAudit = await box.call("minitok_goal_start", { goal: "Fix the bug in src/parser.js", repo: box.repo, goal_spec: spec("mcp-general-audit"), mode: "unrestricted_general", capabilities: ["goal_inference"], confirm_unrestricted: true });
+    assert.equal(noAudit.isError, false);
+    assert.equal(payload(noAudit).state, "running");
   } finally { box.clean(); }
 });
 
