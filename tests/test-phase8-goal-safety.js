@@ -85,7 +85,7 @@ test("does not repeat alternatives and escalates after safe candidates are exhau
   const report = createBlockerReport({ category: "verification_failure", stage: "verify", cause: "test failed", affected_step: "tests" });
   const first = selectAlternative(report, { execution_policy: "safe" });
   assert.equal(first.status, "selected");
-  const second = selectAlternative(report, { execution_policy: "safe", used_alternative_ids: ["alternate-strategy", "dry-run"] });
+  const second = selectAlternative(report, { execution_policy: "safe", used_alternative_ids: ["alternate-strategy", "alternate-command", "dry-run", "alternate-provider", "alternate-model"] });
   assert.equal(second.status, "escalate");
   assert.equal(second.alternative, null);
 });

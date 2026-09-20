@@ -37,10 +37,13 @@ test("requires approval for external, credential, and permission alternatives", 
   assert.ok(credential.side_effects.includes("credential"));
 });
 
-test("supports retry, dry-run, alternate strategy, dependency, and metadata alternatives", () => {
+test("supports retry, dry-run, alternate strategy, command/provider/model, dependency, and metadata alternatives", () => {
   assert.ok(createBlockerReport({ category: "network_failure", cause: "connection reset", stage: "verify", affected_step: "remote-check" }).alternatives.some(item => item.alternative_id === "retry-backoff"));
-  assert.ok(createBlockerReport({ category: "verification_failure", cause: "test failed", stage: "verify", affected_step: "tests" }).alternatives.some(item => item.alternative_id === "dry-run"));
-  assert.ok(createBlockerReport({ category: "verification_failure", cause: "test failed", stage: "verify", affected_step: "tests" }).alternatives.some(item => item.alternative_id === "alternate-strategy"));
+  const verification = createBlockerReport({ category: "verification_failure", cause: "test failed", stage: "verify", affected_step: "tests" });
+  for (const id of ["dry-run", "alternate-strategy", "alternate-command", "alternate-provider", "alternate-model"]) assert.ok(verification.alternatives.some(item => item.alternative_id === id), id);
+  assert.equal(verification.alternatives.find(item => item.alternative_id === "alternate-command").approval_required, false);
+  assert.equal(verification.alternatives.find(item => item.alternative_id === "alternate-provider").approval_required, true);
+  assert.equal(verification.alternatives.find(item => item.alternative_id === "alternate-model").approval_required, true);
   assert.ok(createBlockerReport({ category: "dependency_failure", cause: "module not found", stage: "implement", affected_step: "work" }).alternatives.some(item => item.alternative_id === "dependency-preparation"));
   assert.ok(createBlockerReport({ category: "metadata_mismatch", cause: "manifest mismatch", stage: "verify", affected_step: "parity" }).alternatives.some(item => item.alternative_id === "metadata-sync"));
 });
@@ -101,7 +104,7 @@ test("assigns explicit execution policies and creates redacted approval requests
 
 test("does not repeat an alternative or patch signature", () => {
   const report = createBlockerReport({ category: "verification_failure", stage: "verify", cause: "test failed", affected_step: "tests" });
-  const selected = selectAlternative(report, { execution_policy: "safe", used_alternative_ids: ["alternate-strategy", "dry-run"] });
+  const selected = selectAlternative(report, { execution_policy: "safe", used_alternative_ids: ["alternate-strategy", "alternate-command", "dry-run", "alternate-provider", "alternate-model"] });
   assert.equal(selected.status, "escalate");
   assert.equal(selected.alternative, null);
 });
