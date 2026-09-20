@@ -8,7 +8,8 @@ const { evaluateGoal: defaultEvaluator, evaluationIsComplete } = require("./eval
 const { runTask: defaultTaskExecutor } = require("./task_executor");
 const { classifyFailure, failureSignature, patchSignature, detectStagnation, createTerminalResult } = require("./failure");
 const { routeRole } = require("./capabilities");
-const { resolveExecutionPolicy } = require("./execution_policy");
+const { resolveExecutionPolicy, capabilitiesForSideEffects } = require("./execution_policy");
+const { redactText } = require("./evidence");
 const { recoveryFor, selectBlockerRecovery, buildRecoveryTask } = require("./recovery");
 
 function currentTime(options) { return (options.now || (() => new Date().toISOString()))(); }
@@ -20,7 +21,9 @@ function pathAllowed(file, constraints) {
   if (!candidate || candidate.split("/").includes("..") || candidate.startsWith("/")) return false;
   const blocked = (constraints.blocked_paths || []).map(normalizedPath);
   const allowed = (constraints.allowed_paths || []).map(normalizedPath);
+  const protectedPaths = (constraints.protected_paths || []).map(normalizedPath);
   if (blocked.some(prefix => candidate === prefix || candidate.startsWith(`${prefix}/`))) return false;
+  if (protectedPaths.some(prefix => candidate === prefix || candidate.startsWith(`${prefix}/`))) return false;
   return allowed.length === 0 || allowed.some(prefix => candidate === prefix || candidate.startsWith(`${prefix}/`));
 }
 function selectRemaining(spec, evaluation) {
@@ -34,10 +37,47 @@ function safeTaskProposal(proposal, remaining) {
   const remainingIds = new Set(remaining.map(criterion => criterion.id));
   if (!task) return { valid: false, reason: "Task proposal is empty" };
   if (target.length > 0 && !target.some(id => remainingIds.has(id))) return { valid: false, reason: "Task proposal does not target a remaining criterion" };
-  return { valid: true, task, target_criteria: target, rationale: value.rationale, expected_verification: Array.isArray(value.expected_verification) ? value.expected_verification : [], done: value.done === true };
+  return { valid: true, task, target_criteria: target, rationale: value.rationale, expected_verification: Array.isArray(value.expected_verification) ? value.expected_verification : [], capabilities: Array.isArray(value.capabilities) ? value.capabilities : Array.isArray(value.requested_capabilities) ? value.requested_capabilities : [], requested_capabilities: Array.isArray(value.requested_capabilities) ? value.requested_capabilities : [], side_effects: Array.isArray(value.side_effects) ? value.side_effects : [], paths: Array.isArray(value.paths) ? value.paths : Array.isArray(value.verification?.paths) ? value.verification.paths : [], verification: value.verification, goal_plan: value.goal_plan, done: value.done === true };
 }
 function progressFromEvaluation(evaluation) {
   return evaluation?.criteria ? evaluation.criteria.filter(item => item.status === "passed").length : 0;
+}
+function capabilitiesForTask(task, proposal = {}, mode = "safe") {
+  const explicit = Array.isArray(proposal.capabilities) ? proposal.capabilities : Array.isArray(proposal.requested_capabilities) ? proposal.requested_capabilities : [];
+  const sideEffects = Array.isArray(proposal.side_effects) ? proposal.side_effects : [];
+  const inferred = capabilitiesForSideEffects(sideEffects);
+  const text = `${task || ""} ${proposal.rationale || ""} ${JSON.stringify(proposal.verification || proposal.expected_verification || {})}`.toLowerCase();
+  if (mode === "unrestricted") {
+    if (/\b(force\s+push)\b/.test(text)) inferred.push("force_push");
+    if (/\b(tag\s+overwrite|overwrite\s+tag)\b/.test(text)) inferred.push("tag_overwrite");
+    if (/\b(publish|npm\s+publish|registry)\b/.test(text)) inferred.push("publish");
+    if (/\b(deploy|deployment|staging|production)\b/.test(text)) inferred.push("deploy");
+    if (/\b(credential|token|password|secret|api[_ -]?key|private\s+key|auth)\b/.test(text)) inferred.push("credential_use");
+    if (/\b(database|db|sql|migration|insert|update|delete\s+from)\b/.test(text)) inferred.push("database_mutation");
+    if (/\b(file|files|write|modify|create|delete|patch|edit)\b/.test(text)) inferred.push("workspace_write");
+  }
+  if (Array.isArray(proposal.paths) && proposal.paths.length > 0 || Array.isArray(proposal.verification?.paths) && proposal.verification.paths.length > 0) inferred.push("workspace_write");
+  return [...new Set([...explicit, ...inferred])].length ? [...new Set([...explicit, ...inferred])] : ["verify"];
+}
+function policyDecisionForTask(task, proposal, options, goal) {
+  const mode = options.mode || options.execution_policy?.mode || options.execution_policy || goal?.execution_policy?.mode || "safe";
+  const capabilities = capabilitiesForTask(task, proposal, mode);
+  const plan = proposal.goal_plan || options.goalPlan;
+  const requested = Array.isArray(goal?.requested_capabilities) ? goal.requested_capabilities : Array.isArray(plan?.requested_capabilities) ? plan.requested_capabilities : null;
+  const denied = Array.isArray(goal?.denied_capabilities) ? goal.denied_capabilities : Array.isArray(plan?.denied_capabilities) ? plan.denied_capabilities : [];
+  const scoped = requested ? capabilities.filter(capability => requested.includes(capability)) : capabilities;
+  const outOfPlan = requested ? capabilities.filter(capability => !requested.includes(capability)) : [];
+  const decision = resolveExecutionPolicy({ mode: options.mode || options.execution_policy?.mode || options.execution_policy || goal?.execution_policy?.mode || "safe", capabilities: scoped.length ? scoped : capabilities, explicit_confirmation: options.explicit_confirmation === true, auto_accept: options.auto_accept === true || options.autoAccept === true, source: options.source || "internal", actor: options.actor, config: options.config });
+  const deniedCapabilities = [...new Set([...(decision.denied_capabilities || []), ...outOfPlan, ...capabilities.filter(capability => denied.includes(capability))])];
+  const planDenied = outOfPlan.length > 0 || capabilities.some(capability => denied.includes(capability));
+  return { ...decision, allowed: decision.allowed && !planDenied, reason: planDenied ? "task capability is outside the GoalPlan grant" : decision.reason, capabilities, requested_capabilities: requested || capabilities, granted_capabilities: decision.allowed && !planDenied ? capabilities.filter(capability => !denied.includes(capability)) : [], denied_capabilities: deniedCapabilities };
+}
+function scopeAllowedForProposal(proposal = {}, constraints = {}) {
+  const paths = [...new Set([...(Array.isArray(proposal.paths) ? proposal.paths : []), ...(Array.isArray(proposal.verification?.paths) ? proposal.verification.paths : [])])];
+  return paths.every(file => pathAllowed(file, constraints));
+}
+function executionEvidence(decision, verificationResult = "pending", autoApproved = false) {
+  return { requested_capabilities: decision.requested_capabilities || decision.capabilities || [], granted_capabilities: decision.granted_capabilities || [], denied_capabilities: decision.denied_capabilities || [], policy_decision: decision.allowed ? "allowed" : decision.approval_required ? "approval_required" : "denied", execution_mode: decision.mode, auto_approved: autoApproved, verification_result: verificationResult };
 }
 function failureRecordFromHistory(item = {}) {
   const result = item.result && typeof item.result === "object" ? item.result : item;
@@ -187,7 +227,7 @@ class GoalController {
   checkEvaluation(evaluation) {
     const alternativeEntry = this.alternativeHistory.at(-1);
     if (evaluationIsComplete(this.goal, evaluation)) {
-      if (alternativeEntry && ["running", "delegated_to_recovery"].includes(alternativeEntry.execution_status)) { alternativeEntry.execution_status = "completed"; alternativeEntry.verification_status = "passed"; }
+      if (alternativeEntry && ["running", "delegated_to_recovery"].includes(alternativeEntry.execution_status)) { alternativeEntry.execution_status = "completed"; alternativeEntry.verification_status = "passed"; alternativeEntry.verification_result = "passed"; }
       this.state = "completed";
       if (this.activeRecovery && this.activeRecovery.status === "executed") {
         this.activeRecovery.status = "completed";
@@ -215,7 +255,7 @@ class GoalController {
     if (this.forcedTask) {
       const forced = this.forcedTask;
       this.forcedTask = null;
-      const safeForced = safeTaskProposal({ next_task: forced.task, target_criteria: forced.target_criteria, rationale: forced.rationale, expected_verification: forced.expected_verification }, remaining);
+      const safeForced = safeTaskProposal({ next_task: forced.task, target_criteria: forced.target_criteria, rationale: forced.rationale, expected_verification: forced.expected_verification, capabilities: forced.capabilities, requested_capabilities: forced.requested_capabilities, side_effects: forced.side_effects, paths: forced.paths, verification: forced.verification }, remaining);
       if (this.activeRecovery) {
         this.activeRecovery.status = safeForced.valid ? "executed" : "failed";
         this.activeRecovery.recovery_status = this.activeRecovery.status;
@@ -254,16 +294,35 @@ class GoalController {
       explicit_confirmation: this.options.explicit_confirmation === true,
       auto_accept: this.options.auto_accept === true || this.options.autoAccept === true,
       actor: this.options.actor,
+      config: this.options.config,
       used_alternative_ids: this.alternativeHistory.map(item => item.alternative_id).filter(Boolean),
       used_patch_signatures: this.taskHistory.map(item => item.patch_signature).filter(Boolean),
     });
-    this.alternativeHistory.push({ blocker_id: report.blocker_id, alternative_id: selection.alternative?.alternative_id || null, execution_policy: selection.alternative?.execution_policy || null, status: selection.status, reason: selection.reason, approval_request: selection.approval_request || null, resume_action: selection.approval_request?.resume_action || (selection.status === "selected" ? "Run verifier after the alternative completes" : "Call minitok_goal_resume after approval and required operator checks"), execution_status: selection.status === "selected" ? "delegated_to_recovery" : selection.status, verification_status: "pending" });
+    const selectionDecision = selection.alternative ? resolveExecutionPolicy({ mode: this.policyDecision.mode, capabilities: capabilitiesForSideEffects(selection.alternative.side_effects), explicit_confirmation: this.options.explicit_confirmation === true, auto_accept: this.options.auto_accept === true || this.options.autoAccept === true, actor: this.options.actor, config: this.options.config, source: this.options.source || "internal" }) : this.policyDecision;
+    this.alternativeHistory.push({ blocker_id: report.blocker_id, alternative_id: selection.alternative?.alternative_id || null, execution_policy: selection.alternative?.execution_policy || null, status: selection.status, reason: selection.reason, approval_request: selection.approval_request || null, resume_action: selection.approval_request?.resume_action || (selection.status === "selected" ? "Run verifier after the alternative completes" : "Call minitok_goal_resume after approval and required operator checks"), execution_status: selection.status === "selected" ? "delegated_to_recovery" : selection.status, verification_status: "pending", ...executionEvidence(selectionDecision, "pending", selection.auto_approved === true) });
     this.actionHistory.push({ cycle: this.cycleCount, action: "blocker_diagnosed", blocker_id: report.blocker_id, category: report.category, recommended_alternative: report.recommended_alternative, selected_alternative: selection.alternative?.alternative_id || null, selection_status: selection.status, reason: selection.reason });
     if (selection.status !== "selected") this.state = "escalate";
     return { report, selection };
   }
 
   async execute(task, proposal) {
+    const decision = policyDecisionForTask(task, proposal, this.options, this.goal);
+    const mode = decision.mode;
+    const autoApproved = mode === "unrestricted" && decision.allowed && (this.options.auto_accept === true || this.options.autoAccept === true);
+    const policyEvidence = executionEvidence(decision, "not_executed", autoApproved);
+    this.actionHistory.push({ cycle: this.cycleCount + 1, action: "execution_policy_decision", task: redactText(task), ...policyEvidence });
+    if (!scopeAllowedForProposal(proposal, this.goal.constraints)) {
+      const denied = { success: false, status: "blocked", error: "Task scope violates GoalSpec constraints", policy: { ...decision, allowed: false, denied_capabilities: [...new Set([...(decision.denied_capabilities || []), "scope_boundary"])] }, execution_evidence: { ...policyEvidence, policy_decision: "denied", denied_capabilities: [...new Set([...(policyEvidence.denied_capabilities || []), "scope_boundary"])] } };
+      this.state = "blocked";
+      return denied;
+    }
+    if (!decision.allowed) {
+      const denied = { success: false, status: decision.approval_required ? "approval_required" : "blocked", error: redactText(decision.reason), policy: decision, execution_evidence: policyEvidence };
+      this.state = decision.approval_required ? "escalate" : "blocked";
+      this.alternativeHistory.push({ alternative_id: null, status: "policy_denied", execution_status: "not_executed", execution_policy: mode, reason: redactText(decision.reason), ...policyEvidence });
+      this.persistSession("execution_policy_denied");
+      return denied;
+    }
     const count = (this.taskCounts.get(task) || 0) + 1;
     this.taskCounts.set(task, count);
     if (count > this.limits().sameTaskLimit) { this.state = "repetition"; return null; }
@@ -300,6 +359,7 @@ class GoalController {
     const pipelineInternalRecovery = Boolean(result?.recovery?.scheduled || result?.recovery?.task_generated || Array.isArray(result?.cycles) && result.cycles.length > 1);
     if (this.activeRecovery && this.activeRecovery.status === "executed") {
       this.activeRecovery.recovery_patch_signature = failureRecord.patch_signature;
+      this.activeRecovery.verification_result = result?.success === true ? "passed" : "failed";
     }
     if (this.activeRecovery && this.activeRecovery.status === "executed" && !result?.success) {
       this.activeRecovery.status = "failed";
@@ -330,7 +390,14 @@ class GoalController {
       }
       if (this.state !== "escalate" && (repeated || this.failureCounts.get(failureKey) <= this.limits().maxRetries)) {
         const recoveryTask = blockerAlternative ? `Recovery alternative ${blockerAlternative.alternative_id}: ${blockerAlternative.description}. ${blockerAlternative.rationale}` : buildRecoveryTask(failureRecord, { previous_tasks: this.taskHistory.map(item => item.task), previous_patch_signatures: this.taskHistory.map(item => item.patch_signature).filter(Boolean) });
-        this.forcedTask = { task: recoveryTask, target_criteria: proposal.target_criteria, expected_verification: proposal.expected_verification, rationale: blockerAlternative?.rationale || effectiveRecovery.detail, action: effectiveRecovery.action, alternative_id: blockerAlternative?.alternative_id || null };
+        const recoveryProposal = { capabilities: blockerAlternative ? capabilitiesForSideEffects(blockerAlternative.side_effects) : capabilitiesForTask(recoveryTask, proposal), requested_capabilities: proposal.requested_capabilities, side_effects: blockerAlternative?.side_effects || [], paths: proposal.paths || [], verification: proposal.verification };
+        const recoveryDecision = policyDecisionForTask(recoveryTask, recoveryProposal, this.options, this.goal);
+        if (!recoveryDecision.allowed) {
+          this.state = "escalate";
+          this.alternativeHistory.at(-1) && Object.assign(this.alternativeHistory.at(-1), executionEvidence(recoveryDecision, "not_executed", false), { execution_status: "not_executed", status: "policy_denied" });
+        } else {
+          this.forcedTask = { task: recoveryTask, target_criteria: proposal.target_criteria, expected_verification: proposal.expected_verification, rationale: blockerAlternative?.rationale || effectiveRecovery.detail, action: effectiveRecovery.action, alternative_id: blockerAlternative?.alternative_id || null, ...recoveryProposal };
+        }
         const recoveryEntry = { failure_category: failureCategory, recovery_action: effectiveRecovery.action, recovery_task: recoveryTask, previous_task: task, previous_patch_signature: failureRecord.patch_signature, recovery_patch_signature: null, model_before: modelBefore, model_after: selectedModel?.model || this.options.model || this.session?.state?.model || null, recovery_status: "scheduled", status: "scheduled", same_patch_repeated: false, same_patch_rejected: false, pipeline_internal_recovery: pipelineInternalRecovery, controller_recovery: true, action: effectiveRecovery.action, task: recoveryTask, model: selectedModel?.model || this.options.model || null };
         this.recoveryHistory.push(recoveryEntry);
         this.activeRecovery = recoveryEntry;
@@ -387,7 +454,8 @@ async function defaultTaskProposer(goal, remaining, _evaluation, options = {}) {
   if (expansionInput) {
     const expansion = expansionInput.goal_plan ? expansionInput : expandGoal({ objective: goal.objective, success_criteria: goal.success_criteria, repository_context: { repository_odd: goal.constraints.repository_odd || {} }, environment_state: options.environmentState, execution_policy: goal.execution_policy, ...expansionInput });
     const candidate = expansion.inferred_steps.find(step => step.required === true && step.status !== "deferred" && step.target_criteria.some(id => remaining.some(item => item.id === id)));
-    if (candidate) return { next_task: candidate.description, target_criteria: candidate.target_criteria, expected_verification: candidate.verification?.id ? [candidate.verification.id] : [], rationale: candidate.rationale, goal_plan: expansion.goal_plan, inferred_step_id: candidate.id, requires_user_confirmation: expansion.requires_user_confirmation };
+    if (candidate) return { next_task: candidate.description, target_criteria: candidate.target_criteria, expected_verification: candidate.verification?.id ? [candidate.verification.id] : [], rationale: candidate.rationale, goal_plan: expansion.goal_plan, inferred_step_id: candidate.id, requires_user_confirmation: expansion.requires_user_confirmation, capabilities: capabilitiesForTask(candidate.description, { side_effects: candidate.side_effects, verification: candidate.verification }, expansion.goal_plan?.execution_policy || expansion.execution_policy || "safe"), requested_capabilities: capabilitiesForTask(candidate.description, { side_effects: candidate.side_effects, verification: candidate.verification }, expansion.goal_plan?.execution_policy || expansion.execution_policy || "safe"), side_effects: candidate.side_effects || [], paths: candidate.verification?.paths || [], verification: candidate.verification };
+
   }
   const criterion = remaining[0];
   return { next_task: `Address criterion: ${criterion.description}`, target_criteria: [criterion.id], expected_verification: [criterion.verifier.id], rationale: "Work on the first remaining criterion" };

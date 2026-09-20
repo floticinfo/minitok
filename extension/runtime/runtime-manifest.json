@@ -213,8 +213,8 @@
       "embedded": "fdccc81100e3c029a7a284605aca4e5e7ac4bbf6ea8f6b28beb62d217f827972"
     },
     "goal/blocker.js": {
-      "source": "ad63e7819392f06bce8a51a9b7b09a88117ad7de28cc1346fdfb80a55d76e9ec",
-      "embedded": "ad63e7819392f06bce8a51a9b7b09a88117ad7de28cc1346fdfb80a55d76e9ec"
+      "source": "efcbda3b361ff3fb0a3b56b11eba87d15b11d899a06ddac6b5e042dc6c29f1a3",
+      "embedded": "efcbda3b361ff3fb0a3b56b11eba87d15b11d899a06ddac6b5e042dc6c29f1a3"
     },
     "goal/capabilities.js": {
       "source": "835345c95f6d99672b1a381ab36fe1d6d3f8f33170a8b5e0dd11657b232ed47f",
@@ -225,8 +225,8 @@
       "embedded": "675521fbbe443483de7780574dfe66761384ffcb97901b5ea8365a5a32fead16"
     },
     "goal/controller.js": {
-      "source": "97430619e255b0db8e60cb70426698f1080a6dff40ebb7a2dc2a4fa5aeb9b51f",
-      "embedded": "97430619e255b0db8e60cb70426698f1080a6dff40ebb7a2dc2a4fa5aeb9b51f"
+      "source": "8edd5943103937442422998fb0937cedb6711dbf9d70beff6cee9d1697f2d0b8",
+      "embedded": "8edd5943103937442422998fb0937cedb6711dbf9d70beff6cee9d1697f2d0b8"
     },
     "goal/evaluator.js": {
       "source": "216d25cf150aeeedc4a0c5640ba11dae2870337fcf2ab0f8fb834f3b8860573c",

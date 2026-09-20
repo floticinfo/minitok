@@ -185,14 +185,15 @@ function assertValidBlockerReport(report) {
 function noAlternativeReason(category, context = {}) {
   return { why: `No safe applicable alternative was identified for ${category}`, required_external_action: redactText(String(context.required_external_action || "Operator investigation and explicit decision are required")), user_command: context.user_command ? redactText(String(context.user_command)) : null, resume_conditions: redactText(String(context.resume_conditions || "Provide new redacted evidence and verify the blocker condition has cleared")) };
 }
+function modeForSelection(policy) { return normalizeMode(typeof policy === "string" ? policy : policy?.mode).mode; }
 function isAlternativeAutonomousSafe(alternativePlan, policy = "safe", options = {}) {
   if (!alternativePlan || alternativePlan.applicable !== true) return false;
   const policyValue = /** @type {any} */ (policy);
   const mode = normalizeMode(typeof policyValue === "string" ? policyValue : policyValue?.mode).mode;
   if (mode === "safe") return alternativePlan.approval_required !== true && alternativePlan.execution_policy === "safe" && alternativePlan.side_effects.length === 0;
   const capabilities = capabilitiesForSideEffects(alternativePlan.side_effects);
-  if (capabilities.length === 0) return resolveExecutionPolicy({ mode, capabilities: ["verify"], explicit_confirmation: options.explicit_confirmation === true, auto_accept: options.auto_accept === true, actor: options.actor, source: "internal" }).allowed;
-  const decision = resolveExecutionPolicy({ mode, capabilities, explicit_confirmation: options.explicit_confirmation === true, auto_accept: options.auto_accept === true, actor: options.actor, source: "internal" });
+  if (capabilities.length === 0) return resolveExecutionPolicy({ mode, capabilities: [], explicit_confirmation: options.explicit_confirmation === true, auto_accept: options.auto_accept === true, actor: options.actor, source: "internal", config: options.config }).allowed;
+  const decision = resolveExecutionPolicy({ mode, capabilities, explicit_confirmation: options.explicit_confirmation === true, auto_accept: options.auto_accept === true, actor: options.actor, source: "internal", config: options.config });
   return decision.allowed;
 }
 function buildApprovalRequest(report, alternativePlan, context = {}) {
@@ -216,7 +217,7 @@ function selectAlternative(report, options = {}) {
   const usedPatches = new Set([...(options.used_patch_signatures || []), ...(options.usedPatchSignatures || [])]);
   const candidates = (report?.alternatives || []).filter(item => !repeated.has(item.alternative_id) && item.applicable !== false);
   const safe = candidates.find(item => isAlternativeAutonomousSafe(item, policy, policyOptions));
-  if (safe) return { status: "selected", alternative: safe, requires_approval: false, approval_request: null, reason: "safe alternative permitted by the current execution policy" };
+  if (safe) return { status: "selected", alternative: safe, requires_approval: false, approval_request: null, auto_approved: modeForSelection(policy) === "unrestricted", reason: modeForSelection(policy) === "unrestricted" ? "unrestricted policy automatically approved the alternative" : "safe alternative permitted by the current execution policy" };
   const approval = candidates.find(item => item.approval_required === true || hasExternalEffect(item.side_effects));
   if (approval) return { status: "approval_required", alternative: approval, requires_approval: true, approval_request: buildApprovalRequest(report, approval, options), reason: "alternative requires approval or an external side effect" };
   if (candidates.length === 0) return { status: "escalate", alternative: null, requires_approval: true, approval_request: null, reason: usedPatches.size ? "all alternatives or patch signatures were already used" : "no applicable alternative is available" };
