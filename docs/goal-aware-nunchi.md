@@ -578,3 +578,69 @@ pause/resume 시 저장된 unrestricted state를 자동 신뢰하지 않는다. 
 path traversal, workspace 경계 탈출, dangerous object key, protected path 변경, 실행 파일·검증기 변조, private key/secret logging, `always_blocked` operation은 unrestricted에서도 차단하고 escalation한다. unrestricted를 켜면 allowlist에 포함된 파일 변경, 외부 호출, publish/deploy 및 기타 mutation이 승인 대기 없이 실행될 수 있어 데이터 손실, 비용 발생, 배포, branch history 변경 위험이 있다.
 
 현재 adapter 검증은 injected/mock 또는 dry-run 범위다. 실제 production publish/deploy/database/SCM 성공을 의미하지 않으며, production 연결은 동일한 resolver, integrity gate, redaction, preflight/final audit persistence 계약을 만족하는 별도 승인 단계가 필요하다.
+
+## 15. 현재 CLI/MCP 자동 통합 계약
+
+일반 CLI와 MCP goal 입력은 명시적인 세부 단계를 요구하지 않고 다음 공통 경계를 사용한다.
+
+```text
+CLI/MCP goal input
+→ GoalSpec compile/validation
+→ prepareGoalExecution
+→ success criteria/verifier 및 repository ODD 확인
+→ expandGoal
+→ GoalPlan validation
+→ execution policy/capability resolver
+→ persistent Goal Session
+→ GoalController({ goalPlan, goalExpansion })
+→ required inferred step 실행
+```
+
+CLI에서는 `minitok goal start`, `goal continue`, `goal resume`가 이 경계를 사용한다. MCP에서는 `minitok_goal_start`, `minitok_goal_continue`, `minitok_goal_resume`가 같은 shared integration을 사용한다. source와 extension runtime은 동일한 integration, expansion, controller, MCP goal-tools 계약을 유지한다.
+
+### Required inferred step과 optional follow-up
+
+- **Required inferred step**은 required success criterion을 충족하기 위해 실제로 필요한 단계다. `GoalPlan.inferred_steps`에 저장되고 `target_criteria`, rationale, verification을 가져야 한다. controller는 남은 criterion과 연결된 required step부터 제안한다.
+- **Optional follow-up**은 목표 완료에 필수는 아니며 `required: false`, 일반적으로 `status: deferred`로 분리된다. tag/publication 확인, 문서 보강처럼 유용할 수 있지만 safe 실행에서 자동으로 수행되지 않는다.
+- ODD 밖 후보는 GoalPlan에 넣지 않고 `out_of_scope_candidates`로 반환한다.
+
+### 성공 조건과 clarification
+
+성공 조건과 verifier가 없거나 자연어 목표가 결정적인 완료 기준으로 컴파일되지 않으면 `clarification_required`가 반환된다. 시스템은 임의의 acceptance condition이나 verifier를 만들어 완료를 주장하지 않는다. 응답에는 `questions`, `missing_information`, `requires_user_confirmation`이 포함될 수 있으며, 이 상태에서는 task executor를 호출하지 않는다.
+
+### 정책과 blocker
+
+기본 mode는 `safe`다. expansion이 발견한 capability도 기존 policy resolver를 통과해야 하며 자동 grant되지 않는다. unrestricted는 explicit mode, confirmation, runtime permission, configured allowlist, auto-accept 및 기존 integrity/always-blocked 규칙을 모두 다시 통과해야 한다.
+
+실패 시 기존 흐름을 재사용한다.
+
+```text
+inferred step
+→ task failure
+→ BlockerReport/category
+→ AlternativePlan 선택
+→ policy/capability 평가
+→ 허용된 recovery task 또는 approval request
+→ verifier
+→ evidence/session persistence
+```
+
+safe 대안은 bounded local scope 안에서만 자동 선택된다. 외부 side effect나 permission이 필요한 대안은 `approval_required`와 `resume_action`을 반환할 수 있다. always-blocked 작업은 unrestricted에서도 대안을 통해 우회하지 않고 escalation으로 종료된다.
+
+### Session/evidence와 resume
+
+계획과 실행 provenance는 다음에 저장된다.
+
+```text
+<repository>/.minitok/goals/<goal_id>/goal.json
+<repository>/.minitok/goals/<goal_id>/state.json
+<repository>/.minitok/goals/<goal_id>/events.jsonl
+<repository>/.minitok/goals/<goal_id>/evidence/
+~/.minitok/audit.jsonl
+```
+
+state에는 `goal_plan`, `inferred_steps`, `optional_steps`, blocker/alternative history, verification/evidence refs, policy decision 및 redacted audit reference가 저장된다. continue/resume은 저장된 GoalPlan을 재사용하여 중복 expansion을 피한다. unrestricted policy는 자동 상속하지 않으며 mode, confirmation, capability와 필요한 auto-accept/runtime permission을 새 요청에서 재검증한다. checkpoint 이후 tracked file이 변경되면 read-only verifier가 통과하기 전 executor를 호출하지 않는다.
+
+### 자연어와 검증 한계
+
+모든 자연어 목표를 무제한으로 해석하지 않는 이유는 목표 의미, 성공 조건, verifier, repository scope가 서로 다르기 때문이다. deterministic하게 관찰 가능한 목표만 자동 ready가 될 수 있고, 나머지는 clarification 또는 unsupported로 남는다. `stage2:parity`, 기본 E2E와 packed-install은 local/mock contract 검증이며 실제 production registry, cloud, database, browser, SCM 동작을 검증하지 않는다. live production 검증은 별도 승인된 harness와 rollback/credential 계획이 필요하다.

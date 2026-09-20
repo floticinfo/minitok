@@ -56,3 +56,39 @@ resume은 저장된 unrestricted 정책을 자동 신뢰하지 않는다. CLI/MC
 현재 unrestricted adapter는 injected/mock 계약을 검증하는 단계다. 실제 production registry, cloud, database, browser, SCM 시스템의 가용성·권한·롤백·비용은 검증하지 않았다. production 연결은 별도 승인과 dry-run/integration 검증이 필요하다.
 
 safe로 복귀하려면 새 CLI/MCP 요청에 `mode: safe`를 명시하고 unrestricted capability와 auto-accept를 제거한다. 이전 unrestricted session state만 읽어서는 재실행되지 않는다.
+
+## 자동 Nunchi 통합의 한계
+
+일반 CLI/MCP goal 입력은 자동으로 `prepareGoalExecution`과 `expandGoal`을 거쳐 GoalPlan과 inferred step을 만들지만, 이것이 모든 자연어 의도를 안전하게 이해한다는 뜻은 아니다.
+
+- success criterion 또는 verifier가 없으면 `clarification_required`이며 임의 완료 기준을 생성하지 않는다.
+- 모호하거나 deterministic하게 검증할 수 없는 목표는 clarification 또는 unsupported로 남는다.
+- required inferred step은 원래 criterion과 연결되어야 하며, 무관한 작업은 자동 추가되지 않는다.
+- optional follow-up은 완료 조건과 분리되어 deferred/제안으로 남을 수 있다.
+- repository ODD 밖 step은 실행하지 않고 `out_of_scope_candidates`로 반환한다.
+
+기본 mode는 `safe`이며 expansion capability도 기존 policy resolver를 통과해야 한다. unrestricted는 명시적인 opt-in이고 mode, confirmation, runtime permission, allowlist, audit/integrity gate를 모두 요구한다. continue/resume은 저장된 expansion을 재사용하지만 unrestricted policy를 자동 상속하지 않으며 checkpoint 변경 시 read-only verifier를 먼저 요구한다.
+
+### Blocker와 recovery의 한계
+
+inferred step에서 blocker가 발생하면 기존 BlockerReport, AlternativePlan, recovery 정책이 원인 분류, 대안 선택, approval/escalation, verifier와 evidence persistence를 수행한다. 그러나:
+
+- network/외부 서비스가 실제로 복구된다는 보장은 없다.
+- safe alternative는 제한된 local/read-only 범위의 자동 조치일 뿐이다.
+- approval_required 대안은 operator 승인 없이는 executor를 호출하지 않는다.
+- always-blocked, protected path, private key/secret logging, verifier tampering은 recovery로 우회하지 않는다.
+- 동일 alternative와 동일 patch 반복은 차단되며 후보가 없으면 escalation된다.
+
+### Session과 검증 증거
+
+계획, inferred/optional step, blocker/alternative, recovery, verifier 결과와 redacted audit는 다음에 저장된다.
+
+```text
+<repository>/.minitok/goals/<goal_id>/goal.json
+<repository>/.minitok/goals/<goal_id>/state.json
+<repository>/.minitok/goals/<goal_id>/events.jsonl
+<repository>/.minitok/goals/<goal_id>/evidence/
+~/.minitok/audit.jsonl
+```
+
+local/mock/injected 테스트와 `stage2:parity`는 구현 계약과 보안 경계를 검증하지만 실제 production registry, cloud, database, browser, SCM 가용성·권한·롤백·비용을 증명하지 않는다. live production 검증은 별도 승인, dry-run, credential 운영 및 rollback 계획이 필요하다.

@@ -117,3 +117,65 @@ minitok goal continue --repo <repository> --goal-id <goal_id> --mode safe
 ```
 
 unrestricted capability와 `--auto-accept`를 제거한다. unrestricted는 allowlisted 파일 변경, 외부 호출, publish/deploy 및 기타 mutation을 승인 대기 없이 실행할 수 있으므로 데이터 손실, 비용 발생, 배포, branch history 변경 위험이 있다. 실제 production publish/deploy는 이 문서의 mock/injected 검증으로 대체되지 않으며 별도 승인된 integration 단계가 필요하다.
+
+## 자동 Nunchi goal 통합
+
+일반 CLI goal은 다음 공통 흐름으로 처리된다.
+
+```text
+objective/goal_spec
+→ compileGoal 또는 compileModelGoal
+→ prepareGoalExecution
+→ GoalPlan + goalExpansion
+→ expansion capability와 CLI capability를 합친 policy resolver
+→ Goal Session 저장
+→ GoalController 실행
+```
+
+대상 명령은 `goal start`, `goal continue`, `goal resume`다. 명시적인 세부 단계를 입력하지 않아도 required inferred step이 `target_criteria`로 원래 success criterion에 연결되어 제안된다.
+
+### Required와 optional
+
+- `required: true` inferred step은 목표 완료에 필요한 작업이며 `GoalPlan.inferred_steps`와 session state에 저장된다.
+- `required: false` follow-up은 `optional_steps`로 분리되고 일반적으로 `deferred`다. publication/tag 확인이나 문서 보강처럼 목표에 도움이 되더라도 safe mode에서 자동 실행되지 않는다.
+- ODD 밖 후보는 자동 실행·Plan 추가에서 제외하고 `out_of_scope_candidates`로 반환한다.
+
+### Clarification
+
+`success_criteria` 또는 verifier가 없거나 자연어 목표가 deterministic completion contract로 해석되지 않으면 `clarification_required`를 반환한다. 임의 verifier를 만들지 않으며 session과 executor를 만들지 않는다. JSON 응답에는 `questions`, `missing_information`, `requires_user_confirmation`이 포함될 수 있다.
+
+### JSON additive response
+
+기존 CLI response는 유지되며 다음 field가 추가될 수 있다.
+
+```text
+goal_plan
+inferred_steps
+optional_steps
+requested_capabilities
+granted_capabilities
+denied_capabilities
+execution_mode
+policy_decision
+questions
+missing_information
+requires_user_confirmation
+out_of_scope_candidates
+blocker
+alternatives
+recommended_action
+resume_action
+execution_audits
+```
+
+`goal status`에서도 persisted GoalPlan과 expansion metadata를 확인할 수 있다.
+
+### Continue/resume
+
+continue/resume은 저장된 `state.goal_plan`과 expansion history를 재사용하므로 동일 목표를 다시 확장하지 않는다. 이전 unrestricted mode를 자동 상속하지 않으며 새 요청에서 mode, `--confirm-unrestricted`, capability, 필요한 `--auto-accept`와 config allowlist를 다시 검사한다. checkpoint 이후 tracked file 변경 시 read-only verifier가 통과하기 전 executor를 호출하지 않는다.
+
+### Blocker와 검증 범위
+
+inferred step failure는 기존 BlockerReport, AlternativePlan, recovery 정책을 사용한다. safe alternative만 자동 선택하며 approval이 필요한 변경/외부 작업은 approval request와 resume action으로 멈춘다. always-blocked operation은 모든 mode에서 escalation된다.
+
+세션은 `<repository>/.minitok/goals/<goal_id>/`에, 일반 audit는 `~/.minitok/audit.jsonl`에 redacted 형태로 저장된다. `stage2:parity`, mock/injected E2E와 packed-install은 local contract 검증이며 실제 production publish/deploy를 검증하지 않는다. live production 검증은 별도 승인된 harness가 필요하다.

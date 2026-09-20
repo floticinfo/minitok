@@ -103,3 +103,83 @@ risk operation은 preflight audit persistence 이후에만 injected adapter가 �
 현재 Goal MCP unrestricted 실행은 injected/mock adapter 계약을 검증한다. `stage2:parity`, 기본 E2E와 packed-install은 local contract/mock 검증이며 production registry, cloud, database, browser, SCM에 접속하지 않는다. production adapter를 연결하려면 동일한 policy resolver, runtime permission, integrity gate, redaction, preflight/final audit와 rollback 계획을 별도 승인 단계에서 검증해야 한다.
 
 unrestricted를 사용하면 설정된 side effect가 승인 대기 없이 실행될 수 있으므로 좁은 repository scope와 최소 capability로 시작하고, 불확실하면 safe 또는 supervised로 되돌린다.
+
+## 자동 Nunchi MCP goal 통합
+
+`minitok_goal_start`, `minitok_goal_continue`, `minitok_goal_resume`는 CLI와 같은 shared `prepareGoalExecution` 경계를 사용한다.
+
+```text
+MCP args
+→ argument/schema validation
+→ compile input
+→ prepareGoalExecution
+→ GoalPlan/expansion + repository ODD
+→ MCP capability와 expansion capability를 합친 policy resolver
+→ persistent Goal Session
+→ GoalController({ goalPlan, goalExpansion })
+```
+
+MCP schema는 `mode`, `confirm_unrestricted`, `capabilities`, `goal_spec`, `success_criteria`, `repository_context`, `environment_state`를 지원하며 `additionalProperties: false`로 알 수 없는 필드를 거부한다.
+
+### Required/optional와 clarification
+
+`required: true` inferred step은 원래 required success criterion과 연결되어 GoalPlan/session에 저장되고 controller가 먼저 실행한다. `required: false` optional follow-up은 별도 `optional_steps`로 반환되며 보통 `deferred`다. ODD 밖 후보는 Plan에 넣지 않고 `out_of_scope_candidates`로 기록한다.
+
+성공 조건 또는 verifier가 없거나 목표가 모호하면 `clarification_required` response를 반환한다. 질문과 `missing_information`을 제공하며 임의의 완료 기준을 만들지 않고 session/executor를 시작하지 않는다.
+
+### Response additive fields
+
+기존 MCP 응답과 blocker/recovery/policy/audit field는 유지된다. 다음 field가 추가된다.
+
+```json
+{
+  "goal_plan": {},
+  "inferred_steps": [],
+  "optional_steps": [],
+  "requested_capabilities": [],
+  "granted_capabilities": [],
+  "denied_capabilities": [],
+  "execution_mode": "safe",
+  "policy_decision": "allowed",
+  "requires_user_confirmation": false,
+  "questions": [],
+  "missing_information": [],
+  "out_of_scope_candidates": [],
+  "blocker": null,
+  "alternatives": [],
+  "recommended_action": null,
+  "resume_action": null
+}
+```
+
+### Unrestricted와 resume
+
+unrestricted는 다음 교집합을 모두 통과해야 한다.
+
+```text
+mode=unrestricted
++ confirm_unrestricted=true
++ runtime permission: unrestricted_autonomous
++ runtime permission: auto_accept
++ config capability allowlist
++ capability validation
++ integrity/always_blocked checks
++ audit persistence
+```
+
+기존 오류 코드는 유지된다.
+
+```text
+UNRESTRICTED_PERMISSION_DENIED
+UNRESTRICTED_CONFIRMATION_REQUIRED
+ALWAYS_BLOCKED
+EXECUTION_POLICY_DENIED
+```
+
+continue/resume은 저장된 GoalPlan을 재사용하여 duplicate expansion을 피하지만 unrestricted policy를 자동 상속하지 않는다. 새 요청의 mode/confirmation/capability/permission을 다시 확인하고 checkpoint 변경 시 read-only verifier 전에는 executor를 호출하지 않는다.
+
+### Blocker, session, mock/live
+
+inferred step failure는 기존 BlockerReport → AlternativePlan → policy/capability → recovery 또는 approval/escalation 흐름을 사용한다. safe 대안만 자동 선택하며 외부 side effect/permission 대안은 approval request와 resume action으로 반환된다. session은 `<repository>/.minitok/goals/<goal_id>/`에, redacted audit는 `~/.minitok/audit.jsonl`에 저장된다.
+
+`stage2:parity`, 기본 E2E, packed-install과 injected/mock adapter는 local contract 검증이며 production registry/cloud/database/browser/SCM에 접속하지 않는다. live production 검증은 별도 승인된 integration harness와 rollback 계획이 필요하다.
