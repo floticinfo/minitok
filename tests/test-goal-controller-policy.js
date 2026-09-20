@@ -2,7 +2,11 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const { createGoalSpec } = require("../src/goal/spec");
+const { createGoalSession, loadGoalSession } = require("../src/goal/session");
 const { GoalController } = require("../src/goal/controller");
 const { createBlockerReport, selectAlternative } = require("../src/goal/blocker");
 
@@ -56,6 +60,37 @@ test("unrestricted selection rejects always-blocked alternatives and supports ex
   const report = createBlockerReport({ category: "verification_failure", stage: "verify", cause: "test failed", affected_step: "tests" });
   const exhausted = selectAlternative(report, { execution_policy: "safe", used_alternative_ids: report.alternatives.map(item => item.alternative_id) });
   assert.equal(exhausted.status, "escalate"); assert.equal(exhausted.alternative, null);
+});
+
+test("automatic inferred network step recovers through retry-backoff and persists blocker evidence", async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-phase5-network-"));
+  const g = goal({ max_cycles: 5, same_failure_limit: 3 });
+  const session = createGoalSession({ workspaceRoot: root, goalSpec: g });
+  let calls = 0;
+  let index = 0;
+  const expansion = { goal_plan: { objective: g.objective, inferred_steps: [{ id: "network-check", description: "Verify the remote dependency", required: true, target_criteria: ["a"], rationale: "The inferred verification step is required by the goal.", verification: { type: "custom", id: "remote-check", config: {} }, status: "proposed" }] }, inferred_steps: [{ id: "network-check", description: "Verify the remote dependency", required: true, target_criteria: ["a"], rationale: "The inferred verification step is required by the goal.", verification: { type: "custom", id: "remote-check", config: {} }, status: "proposed" }], optional_steps: [], assumptions: ["local scope"], expansion_confidence: 0.9 };
+  try {
+    const output = await new GoalController(g, { session, goalExpansion: expansion, mode: "unrestricted", capabilities: ["external_call"], explicit_confirmation: true, auto_accept: true, actor: { credential_present: true }, config: unrestrictedConfig, evaluator: async () => evaluation(g, index++ === 0 ? "failed" : "passed"), taskProposer: async () => ({ next_task: "Verify the remote dependency", target_criteria: ["a"], capabilities: ["external_call"], side_effects: ["external_call"], verification: { type: "custom", id: "remote-check", config: {} } }), taskExecutor: async task => { calls += 1; return calls === 1 ? { success: false, status: "failure", error: "connection reset", stage: "verify", tokens: {} } : { success: true, status: "success", tokens: {} }; }, releaseSessionOnExit: true }).run();
+    assert.equal(output.completed, true);
+    assert.ok(output.blocker_reports.some(item => item.category === "network_failure"));
+    assert.ok(output.alternative_history.some(item => item.alternative_id === "retry-backoff" && item.status === "selected"));
+    assert.ok(output.recovery_history.some(item => item.recovery_action === "alternative_strategy"));
+    const loaded = loadGoalSession(root, g.goal_id, { lock: false });
+    assert.ok(loaded.state.evidence_refs.length >= 0);
+    assert.ok(loaded.state.blocker_reports.length > 0);
+    assert.ok(loaded.state.alternative_history.length > 0);
+  } finally { session.lock?.release?.(); fs.rmSync(root, { recursive: true, force: true }); }
+});
+
+test("automatic inferred verification failure uses alternate strategy and rejects repeated patch", async () => {
+  const g = goal({ max_cycles: 5, same_failure_limit: 3 });
+  let calls = 0;
+  let index = 0;
+  const output = await new GoalController(g, { goalExpansion: { inferred_steps: [{ id: "test-step", description: "Run the inferred verification test", required: true, target_criteria: ["a"], rationale: "The inferred test is required to verify the goal.", verification: { type: "custom", id: "test-check", config: {} }, status: "proposed" }] }, mode: "unrestricted", capabilities: ["workspace_write"], explicit_confirmation: true, auto_accept: true, config: unrestrictedConfig, evaluator: async () => evaluation(g, index++ > 0 ? "passed" : "failed"), taskProposer: async () => ({ next_task: "Run the inferred verification test", target_criteria: ["a"], capabilities: ["workspace_write"], paths: ["src/a.js"], verification: { type: "custom", id: "test-check", config: {} } }), taskExecutor: async () => { calls += 1; return { success: calls > 1, status: calls > 1 ? "success" : "failure", error: calls > 1 ? undefined : "test failed", changes: { changes: [{ file: "src/a.js", action: "modify", content: "patch" }] }, tokens: {} }; } }).run();
+  assert.equal(output.completed, true);
+  assert.ok(output.blocker_reports.some(item => item.category === "verification_failure"));
+  assert.ok(output.alternative_history.some(item => ["alternate-strategy", "dry-run"].includes(item.alternative_id)));
+  assert.ok(output.recovery_history.length > 0);
 });
 
 test("recovery keeps the original scope and repeated patch guard", async () => {
