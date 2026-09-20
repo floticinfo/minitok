@@ -16,7 +16,12 @@ function requireGoalRepo(value, workspaceRoot) {
 }
 function resultForSession(session, extra = {}) {
   const state = session.state; const evaluation = state.evaluator_results?.at(-1) || null;
-  return { goal_id: session.goalSpec.goal_id, state: state.status, goal: session.goalSpec, criteria: evaluation?.criteria || [], current_task: state.current_task || null, next_action: state.status === "paused" ? "Call minitok_goal_resume" : state.status === "running" ? "Call minitok_goal_status to observe progress" : null, evidence: evaluation?.evidence || [], ...extra };
+  const blocker = state.blocker_reports?.at(-1) || null;
+  const alternatives = blocker?.alternatives || [];
+  const alternativeHistory = state.alternative_history || [];
+  const approvalRequired = alternativeHistory.some(item => ["approval_required", "escalated"].includes(item.status)) || Boolean(blocker?.requires_user_decision || blocker?.requires_external_access);
+  const resumeAction = approvalRequired ? "Call minitok_goal_resume after explicit approval and required operator checks" : state.status === "paused" ? "Call minitok_goal_resume" : state.status === "running" ? "Call minitok_goal_status to observe progress" : null;
+  return { goal_id: session.goalSpec.goal_id, state: state.status, current_state: state.status, goal: session.goalSpec, criteria: evaluation?.criteria || [], current_task: state.current_task || null, next_action: resumeAction, blocker, alternatives, recommended_action: blocker?.recommended_alternative || alternativeHistory.at(-1)?.alternative_id || null, approval_required: approvalRequired, resume_command: approvalRequired ? "minitok_goal_resume" : null, resume_action: resumeAction, evidence: evaluation?.evidence || [], ...extra };
 }
 function launch(session, options = {}) {
   const goalId = session.goalSpec.goal_id; const controller = new AbortController(); const record = { controller, paused: false, promise: null, session }; ACTIVE_GOALS.set(goalId, record);

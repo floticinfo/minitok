@@ -49,6 +49,10 @@ test("goal start and status use persistent GoalState and evaluator completion", 
     const status = payload(await box.call("minitok_goal_status", { goal_id: "goal-mcp-test", repo: box.root }));
     assert.equal(status.state, "completed");
     assert.equal(status.criteria[0].status, "passed");
+    assert.ok(Object.prototype.hasOwnProperty.call(status, "current_state"));
+    assert.ok(Object.prototype.hasOwnProperty.call(status, "alternatives"));
+    assert.ok(Object.prototype.hasOwnProperty.call(status, "approval_required"));
+    assert.ok(Object.prototype.hasOwnProperty.call(status, "resume_action"));
   } finally { box.clean(); }
 });
 

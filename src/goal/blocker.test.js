@@ -11,6 +11,7 @@ const {
   deserializeBlockerReport,
   normalizeAlternative,
   selectAlternative,
+  buildApprovalRequest,
 } = require("./blocker");
 
 test("classifies supported blocker categories and creates structured alternatives", () => {
@@ -83,6 +84,19 @@ test("selects only safe alternatives under the current policy", () => {
   assert.equal(denied.status, "selected");
   assert.equal(denied.alternative.alternative_id, "local-validation");
   assert.notEqual(denied.alternative.alternative_id, "approval-credential");
+});
+
+test("assigns explicit execution policies and creates redacted approval requests", () => {
+  const file = normalizeAlternative({ alternative_id: "file", description: "Change a workspace file", rationale: "required", expected_benefit: "local change", side_effects: ["file_change"], risk_level: "medium", required_permissions: ["write"], estimated_cost: "low", reversible: true, verification_plan: {}, applicable: true });
+  assert.equal(file.execution_policy, "supervised");
+  assert.equal(file.approval_required, true);
+  const external = normalizeAlternative({ alternative_id: "external", description: "Publish package", rationale: "release", expected_benefit: "publish", side_effects: ["publish"], risk_level: "critical", required_permissions: ["approval"], estimated_cost: "high", reversible: false, verification_plan: {}, applicable: true });
+  assert.equal(external.execution_policy, "authorized_external");
+  assert.equal(external.approval_required, true);
+  const never = normalizeAlternative({ alternative_id: "never", description: "Force push or expose a private key", rationale: "forbidden", expected_benefit: "none", side_effects: ["external_call"], execution_policy: "never_autonomous", risk_level: "critical", required_permissions: [], estimated_cost: "unknown", reversible: false, verification_plan: {}, applicable: true });
+  assert.equal(never.applicable, false);
+  assert.equal(buildApprovalRequest({ blocker_id: "b" }, external).credential_presence_confirmation_required, false);
+  assert.equal(buildApprovalRequest({ blocker_id: "b" }, never), null);
 });
 
 test("does not repeat an alternative or patch signature", () => {

@@ -215,7 +215,7 @@ class GoalController {
       used_alternative_ids: this.alternativeHistory.map(item => item.alternative_id).filter(Boolean),
       used_patch_signatures: this.taskHistory.map(item => item.patch_signature).filter(Boolean),
     });
-    this.alternativeHistory.push({ blocker_id: report.blocker_id, alternative_id: selection.alternative?.alternative_id || null, status: selection.status, reason: selection.reason, execution_status: selection.status === "selected" ? "delegated_to_recovery" : selection.status, verification_status: "pending" });
+    this.alternativeHistory.push({ blocker_id: report.blocker_id, alternative_id: selection.alternative?.alternative_id || null, execution_policy: selection.alternative?.execution_policy || null, status: selection.status, reason: selection.reason, approval_request: selection.approval_request || null, resume_action: selection.approval_request?.resume_action || (selection.status === "selected" ? "Run verifier after the alternative completes" : "Call minitok_goal_resume after approval and required operator checks"), execution_status: selection.status === "selected" ? "delegated_to_recovery" : selection.status, verification_status: "pending" });
     this.actionHistory.push({ cycle: this.cycleCount, action: "blocker_diagnosed", blocker_id: report.blocker_id, category: report.category, recommended_alternative: report.recommended_alternative, selected_alternative: selection.alternative?.alternative_id || null, selection_status: selection.status, reason: selection.reason });
     if (selection.status !== "selected") this.state = "escalate";
     return { report, selection };

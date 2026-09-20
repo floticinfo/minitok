@@ -2,7 +2,7 @@
 
 const crypto = require("crypto");
 const { redactValue, redactText } = require("./evidence");
-const { SIDE_EFFECTS } = require("./plan");
+const { EXECUTION_POLICIES, SIDE_EFFECTS } = require("./plan");
 
 const BLOCKER_CATEGORIES = Object.freeze([
   "environment_failure", "network_failure", "authentication_failure", "permission_blocked",
@@ -13,7 +13,7 @@ const ALTERNATIVE_RISKS = Object.freeze(["low", "medium", "high", "critical"]);
 const COST_LEVELS = Object.freeze(["none", "low", "medium", "high", "unknown"]);
 const ALTERNATIVE_FIELDS = new Set([
   "alternative_id", "description", "rationale", "expected_benefit", "risk_level", "side_effects",
-  "required_permissions", "estimated_cost", "reversible", "verification_plan", "approval_required", "applicable",
+  "required_permissions", "estimated_cost", "reversible", "verification_plan", "approval_required", "applicable", "execution_policy",
 ]);
 const BLOCKER_FIELDS = new Set([
   "blocker_id", "category", "stage", "cause", "affected_step", "evidence", "retryable",
@@ -75,13 +75,23 @@ function normalizeCost(value) {
   const cost = isPlainObject(value) ? value : {};
   return { level: COST_LEVELS.includes(cost.level) ? cost.level : "unknown", estimate: cost.estimate == null ? null : redactText(String(cost.estimate)), currency: cost.currency || null, details: cost.details ? redactText(String(cost.details)) : null };
 }
+function inferExecutionPolicy(sideEffects, requested) {
+  if (requested === "never_autonomous") return requested;
+  if (sideEffects.some(effect => EXTERNAL_EFFECTS.has(effect))) return "authorized_external";
+  if (requested === "authorized_external") return requested;
+  if (requested === "supervised") return requested;
+  if (sideEffects.includes("file_change")) return "supervised";
+  return "safe";
+}
 function normalizeAlternative(input = {}) {
   const value = redactValue(input);
   const sideEffects = normalizeSideEffects(value.side_effects);
   const external = hasExternalEffect(sideEffects);
   const permissions = Array.isArray(value.required_permissions) ? value.required_permissions.filter(nonEmptyString) : [];
-  const approvalRequired = value.approval_required === true || external || ["supervised", "authorized_external", "never_autonomous"].includes(value.execution_policy);
-  return { alternative_id: value.alternative_id || stableId("alternative", { description: value.description, side_effects: sideEffects }), description: redactText(String(value.description || "")), rationale: redactText(String(value.rationale || "")), expected_benefit: redactText(String(value.expected_benefit || "")), risk_level: ALTERNATIVE_RISKS.includes(value.risk_level) ? value.risk_level : "unknown", side_effects: sideEffects, required_permissions: [...new Set(permissions)], estimated_cost: normalizeCost(value.estimated_cost), reversible: value.reversible === true, verification_plan: value.verification_plan === undefined ? {} : redactValue(value.verification_plan), approval_required: approvalRequired, applicable: value.applicable !== false };
+  const executionPolicy = inferExecutionPolicy(sideEffects, value.execution_policy);
+  const neverAutonomous = executionPolicy === "never_autonomous";
+  const approvalRequired = value.approval_required === true || external || ["supervised", "authorized_external", "never_autonomous"].includes(executionPolicy);
+  return { alternative_id: value.alternative_id || stableId("alternative", { description: value.description, side_effects: sideEffects }), description: redactText(String(value.description || "")), rationale: redactText(String(value.rationale || "")), expected_benefit: redactText(String(value.expected_benefit || "")), risk_level: ALTERNATIVE_RISKS.includes(value.risk_level) ? value.risk_level : "unknown", side_effects: sideEffects, required_permissions: [...new Set(permissions)], estimated_cost: normalizeCost(value.estimated_cost), reversible: value.reversible === true, verification_plan: value.verification_plan === undefined ? {} : redactValue(value.verification_plan), approval_required: approvalRequired, applicable: value.applicable !== false && !neverAutonomous, execution_policy: executionPolicy };
 }
 function alternative(id, description, rationale, options = {}) {
   return normalizeAlternative({ alternative_id: id, description, rationale, expected_benefit: options.expected_benefit || "Reduce blocker impact while preserving the goal boundary", risk_level: options.risk_level || "low", side_effects: options.side_effects || [], required_permissions: options.required_permissions || [], estimated_cost: options.estimated_cost || "low", reversible: options.reversible !== false, verification_plan: options.verification_plan || { type: "local_recheck" }, approval_required: options.approval_required, applicable: options.applicable, execution_policy: options.execution_policy });
@@ -133,8 +143,11 @@ function validateAlternative(value, path, errors) {
   if (typeof value.reversible !== "boolean") errors.push(issue(`${path}.reversible`, "INVALID_BOOLEAN", "reversible must be boolean"));
   if (typeof value.approval_required !== "boolean") errors.push(issue(`${path}.approval_required`, "INVALID_BOOLEAN", "approval_required must be boolean"));
   if (typeof value.applicable !== "boolean") errors.push(issue(`${path}.applicable`, "INVALID_BOOLEAN", "applicable must be boolean"));
+  if (!EXECUTION_POLICIES.includes(value.execution_policy)) errors.push(issue(`${path}.execution_policy`, "INVALID_EXECUTION_POLICY", `execution_policy must be one of: ${EXECUTION_POLICIES.join(", ")}`));
   validateCost(value.estimated_cost, `${path}.estimated_cost`, errors);
   validateSafeValue(value.verification_plan, `${path}.verification_plan`, errors);
+  if (hasExternalEffect(value.side_effects) && !["authorized_external", "never_autonomous"].includes(value.execution_policy)) errors.push(issue(`${path}.execution_policy`, "POLICY_SIDE_EFFECT_MISMATCH", "External side effects require authorized_external or never_autonomous"));
+  if (value.side_effects.includes("file_change") && !["supervised", "authorized_external", "never_autonomous"].includes(value.execution_policy)) errors.push(issue(`${path}.execution_policy`, "POLICY_SIDE_EFFECT_MISMATCH", "File changes require supervised or stronger policy"));
   if (hasExternalEffect(value.side_effects) && value.approval_required !== true) errors.push(issue(`${path}.approval_required`, "APPROVAL_REQUIRED", "External side effects require approval"));
 }
 function validateTerminalReason(value, errors) {
@@ -173,9 +186,22 @@ function noAlternativeReason(category, context = {}) {
 }
 function isAlternativeAutonomousSafe(alternativePlan, policy = "safe") {
   if (!alternativePlan || alternativePlan.applicable !== true || alternativePlan.approval_required === true) return false;
-  if (["supervised", "authorized_external", "never_autonomous"].includes(policy)) return false;
-  if (alternativePlan.side_effects.some(effect => EXTERNAL_EFFECTS.has(effect) || effect === "database_mutation" || effect === "credential" || effect === "publish" || effect === "deploy")) return false;
-  return alternativePlan.side_effects.every(effect => ["file_change"].includes(effect)) || alternativePlan.side_effects.length === 0;
+  if (policy !== "safe" || alternativePlan.execution_policy !== "safe") return false;
+  return alternativePlan.side_effects.length === 0;
+}
+function buildApprovalRequest(report, alternativePlan, context = {}) {
+  if (!alternativePlan || alternativePlan.execution_policy === "never_autonomous") return null;
+  return {
+    type: "goal_alternative_approval_request",
+    blocker_id: report?.blocker_id || null,
+    alternative_id: alternativePlan.alternative_id,
+    execution_policy: alternativePlan.execution_policy,
+    description: redactText(String(alternativePlan.description || "")),
+    required_permissions: (alternativePlan.required_permissions || []).filter(nonEmptyString),
+    credential_presence_confirmation_required: alternativePlan.execution_policy === "authorized_external" && alternativePlan.side_effects.includes("credential"),
+    approval_required: true,
+    resume_action: redactText(String(context.resume_action || "Call minitok_goal_resume after approval and required operator checks")),
+  };
 }
 function selectAlternative(report, options = {}) {
   const policy = options.execution_policy?.mode || options.execution_policy || "safe";
@@ -183,21 +209,22 @@ function selectAlternative(report, options = {}) {
   const usedPatches = new Set([...(options.used_patch_signatures || []), ...(options.usedPatchSignatures || [])]);
   const candidates = (report?.alternatives || []).filter(item => !repeated.has(item.alternative_id) && item.applicable !== false);
   const safe = candidates.find(item => isAlternativeAutonomousSafe(item, policy));
-  if (safe) return { status: "selected", alternative: safe, requires_approval: false, reason: "safe alternative permitted by the current execution policy" };
+  if (safe) return { status: "selected", alternative: safe, requires_approval: false, approval_request: null, reason: "safe alternative permitted by the current execution policy" };
   const approval = candidates.find(item => item.approval_required === true || hasExternalEffect(item.side_effects));
-  if (approval) return { status: "approval_required", alternative: approval, requires_approval: true, reason: "alternative requires approval or an external side effect" };
-  if (candidates.length === 0) return { status: "escalate", alternative: null, requires_approval: true, reason: usedPatches.size ? "all alternatives or patch signatures were already used" : "no applicable alternative is available" };
-  return { status: "escalate", alternative: null, requires_approval: true, reason: "no alternative is safe under the current execution policy" };
+  if (approval) return { status: "approval_required", alternative: approval, requires_approval: true, approval_request: buildApprovalRequest(report, approval, options), reason: "alternative requires approval or an external side effect" };
+  if (candidates.length === 0) return { status: "escalate", alternative: null, requires_approval: true, approval_request: null, reason: usedPatches.size ? "all alternatives or patch signatures were already used" : "no applicable alternative is available" };
+  return { status: "escalate", alternative: null, requires_approval: true, approval_request: null, reason: "no alternative is safe under the current execution policy" };
 }
 
 function createBlockerReport(input = {}) {
   const value = redactValue(input);
   const category = classifyBlocker(value);
-  const alternatives = (Array.isArray(value.alternatives) ? value.alternatives : allAlternativesFor(category, value)).map(normalizeAlternative).filter(item => item.applicable);
-  const recommended = value.recommended_alternative || alternatives.find(item => !item.approval_required)?.alternative_id || alternatives[0]?.alternative_id || null;
+  const alternatives = (Array.isArray(value.alternatives) ? value.alternatives : allAlternativesFor(category, value)).map(normalizeAlternative);
+  const applicableAlternatives = alternatives.filter(item => item.applicable);
+  const recommended = value.recommended_alternative || applicableAlternatives.find(item => !item.approval_required)?.alternative_id || applicableAlternatives[0]?.alternative_id || null;
   const external = value.requires_external_access === true || alternatives.some(item => hasExternalEffect(item.side_effects));
   const permission = value.requires_permission === true || alternatives.some(item => item.required_permissions.length > 0);
-  const decision = value.requires_user_decision === true || external || permission || alternatives.some(item => item.approval_required);
+  const decision = value.requires_user_decision === true || external || permission || alternatives.some(item => item.approval_required) || alternatives.some(item => item.execution_policy === "never_autonomous");
   const report = { blocker_id: value.blocker_id || stableId("blocker", { category, stage: value.stage, cause: value.cause, affected_step: value.affected_step }), category, stage: value.stage || "unknown", cause: redactText(String(value.cause || value.error || "unknown")), affected_step: redactText(String(value.affected_step || value.task || "unknown")), evidence: Array.isArray(value.evidence) ? value.evidence.map(redactValue) : [], retryable: value.retryable === true || ["network_failure", "timeout", "environment_failure"].includes(category), requires_permission: permission, requires_external_access: external, requires_user_decision: decision, alternatives, recommended_alternative: recommended, terminal_reason: alternatives.length ? (value.terminal_reason || null) : noAlternativeReason(category, value) };
   assertValidBlockerReport(report);
   return report;
@@ -211,4 +238,4 @@ function deserializeBlockerReport(serialized) {
   assertValidBlockerReport(report);
   return report;
 }
-module.exports = { BLOCKER_CATEGORIES, ALTERNATIVE_RISKS, COST_LEVELS, classifyBlocker, alternativesFor: allAlternativesFor, createBlockerReport, validateBlockerReport, assertValidBlockerReport, serializeBlockerReport, deserializeBlockerReport, normalizeAlternative, noAlternativeReason, isAlternativeAutonomousSafe, selectAlternative };
+module.exports = { BLOCKER_CATEGORIES, ALTERNATIVE_RISKS, COST_LEVELS, classifyBlocker, alternativesFor: allAlternativesFor, createBlockerReport, validateBlockerReport, assertValidBlockerReport, serializeBlockerReport, deserializeBlockerReport, normalizeAlternative, noAlternativeReason, isAlternativeAutonomousSafe, selectAlternative, buildApprovalRequest };
