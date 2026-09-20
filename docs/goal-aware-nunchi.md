@@ -287,6 +287,35 @@ goal:
 - extension runtime은 source runtime과 같은 mode 목록, 기본값, 차단 사유, redaction 계약을 유지한다.
 - 기존 CLI/MCP 필드와 오류 코드는 additive하게 보존하고, 기본 safe 동작을 변경하지 않는다.
 
+### CLI unrestricted 명시 활성화
+
+Goal CLI의 기본 실행은 계속 `safe`이다. unrestricted는 다음 조건을 명시적으로 전달해야 한다.
+
+```text
+minitok goal start "<objective>" \
+  --mode unrestricted \
+  --confirm-unrestricted \
+  --capability workspace_write \
+  --capability external_call \
+  --capability publish \
+  --auto-accept
+```
+
+`--capability`는 반복 입력할 수 있으며, 기존 `--capabilities a,b,c` 형식도 backward compatible하게 유지한다. `--confirm-unrestricted`가 없으면 unrestricted는 session을 만들기 전에 거부된다. `--auto-accept`는 unrestricted 요청에서만 유효하며, safe/supervised/authorized_external 요청에서는 거부된다. 설정의 unrestricted allowlist와 resolver 조건을 만족하지 못하면 CLI는 fail closed한다.
+
+unrestricted를 사용하는 human-readable CLI 출력은 stderr에 경고를 표시하며 JSON stdout을 오염시키지 않는다. `--json` 응답은 다음 정책 필드를 additive하게 포함한다.
+
+```text
+execution_mode
+requested_capabilities
+granted_capabilities
+denied_capabilities
+policy_decision
+audit_id
+```
+
+`goal continue`와 `goal resume`는 이전 session의 unrestricted 상태를 자동 상속하지 않는다. 이전 session이 unrestricted였던 경우에도 새 요청에서 `--mode unrestricted`, `--confirm-unrestricted`, 필요한 `--capability`와 `--auto-accept`를 다시 전달해야 한다. 그렇지 않으면 resume 전에 정책 거부 응답을 반환한다. 일반 safe session도 기본적으로 safe mode로 계속되며, 기존 unrestricted 상태를 암묵적으로 활성화하지 않는다.
+
 ## 7. MCP workflow
 
 장기 목표에는 다음 도구를 사용한다.

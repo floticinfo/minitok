@@ -38,9 +38,72 @@ test("CLI goal registration exposes explicit policy controls", () => {
   const program = new Command();
   require("../src/cli/commands/goal").register(program);
   const start = program.commands.find(command => command.name() === "goal").commands.find(command => command.name() === "start");
+  assert.ok(start.options.some(option => option.long === "--mode"));
   assert.ok(start.options.some(option => option.long === "--capabilities"));
+  assert.ok(start.options.some(option => option.long === "--capability"));
+  assert.ok(start.options.some(option => option.long === "--confirm-unrestricted"));
   assert.ok(start.options.some(option => option.long === "--explicit-confirmation"));
   assert.ok(start.options.some(option => option.long === "--auto-accept"));
+});
+
+test("CLI accepts repeated capabilities and preserves the legacy comma-list", () => {
+  const { Command } = require("commander");
+  const program = new Command();
+  require("../src/cli/commands/goal").register(program);
+  const goal = program.commands.find(command => command.name() === "goal");
+  const start = goal.commands.find(command => command.name() === "start");
+  start.parseOptions(["--capabilities", "read,verify", "--capability", "workspace_write", "--capability", "publish"]);
+  const { capabilityOptions } = require("../src/cli/commands/goal");
+  assert.deepEqual(capabilityOptions({ capabilities: "read,verify", capability: ["workspace_write", "publish"] }), ["read", "verify", "workspace_write", "publish"]);
+});
+
+test("CLI unrestricted start requires the dedicated confirmation flag", async () => {
+  const repo = root();
+  try {
+    const { cmdGoalStart } = require("../src/cli/commands/goal");
+    const code = await cmdGoalStart("goal", { repo, mode: "unrestricted", capabilities: ["workspace_write"], autoAccept: true, json: true, goalSpec: spec("cli-unrestricted") });
+    assert.equal(code, 1);
+    assert.equal(fs.existsSync(path.join(repo, ".minitok", "goals")), false);
+  } finally { fs.rmSync(repo, { recursive: true, force: true }); }
+});
+
+test("CLI rejects invalid capabilities before creating a session", async () => {
+  const repo = root();
+  try {
+    const { cmdGoalStart } = require("../src/cli/commands/goal");
+    const code = await cmdGoalStart("goal", { repo, mode: "unrestricted", confirmUnrestricted: true, autoAccept: true, capabilities: ["not_a_capability"], json: true, goalSpec: spec("cli-invalid-capability") });
+    assert.equal(code, 1);
+    assert.equal(fs.existsSync(path.join(repo, ".minitok", "goals")), false);
+  } finally { fs.rmSync(repo, { recursive: true, force: true }); }
+});
+
+test("CLI JSON session response exposes policy fields and deterministic audit id", () => {
+  const { sessionResponse } = require("../src/cli/commands/goal");
+  const repo = root();
+  try {
+    const session = createGoalSession({ workspaceRoot: repo, goalSpec: spec("cli-json-policy") });
+    session.state.execution_policy = { mode: "unrestricted", allowed: true, capabilities: ["workspace_write"], denied_capabilities: [], approval_required: false };
+    const response = sessionResponse(session);
+    for (const field of ["execution_mode", "requested_capabilities", "granted_capabilities", "denied_capabilities", "policy_decision", "audit_id"]) assert.ok(Object.prototype.hasOwnProperty.call(response, field), field);
+    assert.equal(response.execution_mode, "unrestricted");
+    assert.match(response.audit_id, /^audit-[a-f0-9]{16}$/);
+    releaseGoalSessionLock(session);
+  } finally { fs.rmSync(repo, { recursive: true, force: true }); }
+});
+
+test("CLI continue/resume do not inherit unrestricted mode without a new request", async () => {
+  const repo = root();
+  try {
+    const session = createGoalSession({ workspaceRoot: repo, goalSpec: spec("cli-resume-policy") });
+    session.state.execution_policy = { mode: "unrestricted", allowed: true, capabilities: ["workspace_write"], denied_capabilities: [], approval_required: false };
+    saveGoalSession(session);
+    releaseGoalSessionLock(session);
+    const { cmdGoalContinue } = require("../src/cli/commands/goal");
+    const code = await cmdGoalContinue("cli-resume-policy", { repo, json: true });
+    assert.equal(code, 1);
+    const loaded = require("../src/goal/session").loadGoalSession(repo, "cli-resume-policy", { lock: false });
+    assert.equal(loaded.state.execution_policy.mode, "unrestricted");
+  } finally { fs.rmSync(repo, { recursive: true, force: true }); }
 });
 
 test("CLI goal registration includes start/status/continue/resume", () => {
