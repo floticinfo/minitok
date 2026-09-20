@@ -1,6 +1,7 @@
 "use strict";
 
 const path = require("path");
+const crypto = require("crypto");
 const { compileGoal, compileModelGoal } = require("../goal/compiler");
 const { runGoal } = require("../goal/controller");
 const { runTask } = require("../goal/task_executor");
@@ -19,8 +20,19 @@ function capabilityGrants(args = {}, runtimeOptions = {}) {
   return [...new Set(grants)];
 }
 function policyInput(args = {}, runtimeOptions = {}, source = "mcp", config) {
-  return { mode: args.mode, capabilities: Array.isArray(args.capabilities) ? args.capabilities : (args.mode === "unrestricted" ? undefined : capabilityGrants(args, runtimeOptions)), explicit_confirmation: args.explicit_confirmation === true, auto_accept: args.auto_accept === true && runtimeOptions.permissions?.has?.("auto_accept"), source, actor: runtimeOptions.actor, config };
+  return { mode: args.mode, capabilities: Array.isArray(args.capabilities) ? args.capabilities : (args.mode === "unrestricted" ? undefined : capabilityGrants(args, runtimeOptions)), explicit_confirmation: args.mode === "unrestricted" ? args.confirm_unrestricted === true : args.explicit_confirmation === true, auto_accept: args.mode === "unrestricted" ? runtimeOptions.permissions?.has?.("auto_accept") === true : args.auto_accept === true && runtimeOptions.permissions?.has?.("auto_accept"), source, actor: runtimeOptions.actor, config };
 }
+function auditId(policyDecision) { return `audit-${crypto.createHash("sha256").update(JSON.stringify({ mode: policyDecision.mode, capabilities: policyDecision.capabilities, denied: policyDecision.denied_capabilities, decision: policyDecision.allowed ? "allowed" : policyDecision.approval_required ? "approval_required" : "denied" })).digest("hex").slice(0, 16)}`; }
+function policyResponse(policyDecision) { return { execution_mode: policyDecision.mode, requested_capabilities: policyDecision.capabilities || [], granted_capabilities: policyDecision.allowed ? policyDecision.capabilities || [] : [], denied_capabilities: policyDecision.denied_capabilities || [], policy_decision: policyDecision.allowed ? "allowed" : policyDecision.approval_required ? "approval_required" : "denied", audit_id: auditId(policyDecision) }; }
+function unrestrictedError(args, runtimeOptions) {
+  if (args.mode !== "unrestricted") return null;
+  const denied = !runtimeOptions.permissions?.has?.("unrestricted_autonomous") ? ["unrestricted_autonomous"] : args.confirm_unrestricted !== true ? ["confirm_unrestricted"] : [];
+  if (!denied.length) return null;
+  const policy = { mode: "unrestricted", capabilities: Array.isArray(args.capabilities) ? args.capabilities : [], allowed: false, approval_required: false, denied_capabilities: denied, always_blocked_capabilities: [], reason: denied[0] === "unrestricted_autonomous" ? "unrestricted runtime permission is required" : "unrestricted request confirmation is required" };
+  const code = denied[0] === "unrestricted_autonomous" ? "UNRESTRICTED_PERMISSION_DENIED" : "UNRESTRICTED_CONFIRMATION_REQUIRED";
+  return Object.assign(new Error(policy.reason), { code, policy });
+}
+function policyError(policyDecision, config) { return Object.assign(new Error(policyDecision.reason), { code: policyDecision.always_blocked_capabilities.length ? "ALWAYS_BLOCKED" : "EXECUTION_POLICY_DENIED", policy: policyDecision, config: redactGoalExecutionConfig(config) }); }
 function requireGoalRepo(value, workspaceRoot) {
   if (typeof value !== "string" || !path.isAbsolute(value)) throw Object.assign(new Error("goal repo must be an absolute path"), { code: "INVALID_PATH" });
   const resolved = path.resolve(value); const root = path.resolve(workspaceRoot || process.cwd()); const relative = path.relative(root, resolved);
@@ -37,7 +49,9 @@ function resultForSession(session, extra = {}) {
   const resumeCheck = state.resume_check || { safe_to_resume: true, checkpoint_changed: false, requires_verification: false, reason: null };
   const verificationRequired = resumeCheck.requires_verification === true || state.status === "verification_required";
   const resumeAction = approvalRequired ? "Call minitok_goal_resume after explicit approval and required operator checks" : verificationRequired ? "Run the read-only verifier, then call minitok_goal_resume" : state.status === "paused" ? "Call minitok_goal_resume" : state.status === "running" ? "Call minitok_goal_status to observe progress" : null;
-  return { goal_id: session.goalSpec.goal_id, state: state.status, current_state: state.status, goal: session.goalSpec, criteria: evaluation?.criteria || [], current_task: state.current_task || null, next_action: resumeAction, blocker, alternatives, recommended_action: blocker?.recommended_alternative || alternativeHistory.at(-1)?.alternative_id || null, approval_required: approvalRequired, verification_required: verificationRequired, resume_check: resumeCheck, resume_command: approvalRequired || verificationRequired ? "minitok_goal_resume" : null, resume_action: resumeAction, evidence: evaluation?.evidence || [], ...extra };
+  const policy = state.execution_policy || extra.policyDecision;
+  const policyFields = policy ? policyResponse(policy) : { execution_mode: "safe", requested_capabilities: [], granted_capabilities: [], denied_capabilities: [], policy_decision: "unknown", audit_id: "audit-unknown" };
+  return { goal_id: session.goalSpec.goal_id, state: state.status, current_state: state.status, goal: session.goalSpec, criteria: evaluation?.criteria || [], current_task: state.current_task || null, next_action: resumeAction, blocker, alternatives, recommended_action: blocker?.recommended_alternative || alternativeHistory.at(-1)?.alternative_id || null, approval_required: approvalRequired, verification_required: verificationRequired, resume_check: resumeCheck, resume_command: approvalRequired || verificationRequired ? "minitok_goal_resume" : null, resume_action: resumeAction, evidence: evaluation?.evidence || [], ...policyFields, ...extra };
 }
 function launch(session, options = {}) {
   const goalId = session.goalSpec.goal_id; const controller = new AbortController(); const record = { controller, paused: false, promise: null, session }; ACTIVE_GOALS.set(goalId, record);
@@ -53,28 +67,36 @@ async function startGoal(args, runtimeOptions = {}) {
   const mode = args.mode || "safe";
   if (!GOAL_MODES.has(mode)) throw Object.assign(new Error("Invalid goal mode"), { code: "INVALID_PARAMS" });
   if (mode === "autonomous" && !runtimeOptions.permissions?.has?.("auto_accept")) throw Object.assign(new Error("autonomous goal mode requires explicit auto_accept permission"), { code: "AUTO_ACCEPT_DENIED" });
+  const unrestrictedFailure = unrestrictedError(args, runtimeOptions);
+  if (unrestrictedFailure) throw unrestrictedFailure;
   const repoRoot = requireGoalRepo(args.repo || runtimeOptions.workspaceRoot, runtimeOptions.workspaceRoot);
   const config = loadConfig(path.join(repoRoot, "minitok.yml"), { repoRoot });
   const policyDecision = resolveExecutionPolicy(policyInput(args, runtimeOptions, "mcp", config));
-  if (!policyDecision.allowed && !policyDecision.approval_required) throw Object.assign(new Error(policyDecision.reason), { code: policyDecision.always_blocked_capabilities.length ? "ALWAYS_BLOCKED" : "EXECUTION_POLICY_DENIED", policy: policyDecision, config: redactGoalExecutionConfig(config) });
+  if (!policyDecision.allowed && !policyDecision.approval_required) throw policyError(policyDecision, config);
   const compiled = compileInput(args); const compiledRecord = /** @type {Record<string, any>} */ (compiled);
   if (compiled.status === "clarification_required") return { state: "clarification_required", current_state: "clarification_required", goal: { objective: compiledRecord.objective || args.goal || "" }, criteria: [], current_task: null, next_action: "Provide clarification", blocker: null, alternatives: [], recommended_action: "Provide clarification", approval_required: false, resume_command: null, resume_action: "Provide clarification before starting the goal", evidence: [], questions: compiledRecord.questions || [], question_details: compiledRecord.question_details || [] };
   if (compiled.status !== "ready") throw Object.assign(new Error(`Goal specification is ${compiled.status}`), { code: compiled.status === "unsupported" ? "GOAL_UNSUPPORTED" : "GOAL_INVALID", details: compiledRecord.errors || [{ path: "$", code: "UNSUPPORTED_GOAL", message: compiledRecord.reason || `Goal specification is ${compiled.status}` }] });
   const session = createGoalSession({ workspaceRoot: repoRoot, goalSpec: compiledRecord.spec, model: runtimeOptions.model, provider: args.provider_override, approvalState: policyDecision.approval_required ? "approval_required" : "not_requested" });
-  launch(session, { ...runtimeOptions, mode: policyDecision.mode, capabilities: policyDecision.capabilities, explicit_confirmation: args.explicit_confirmation === true, auto_accept: policyDecision.audit_context.auto_accept, policyDecision, config, providerOverride: args.provider_override });
-  return resultForSession(session, { state: "running", next_action: "Call minitok_goal_status to observe progress" });
+  session.state.execution_policy = policyDecision;
+  saveGoalSession(session);
+  launch(session, { ...runtimeOptions, mode: policyDecision.mode, capabilities: policyDecision.capabilities, explicit_confirmation: args.mode === "unrestricted" ? args.confirm_unrestricted === true : args.explicit_confirmation === true, auto_accept: policyDecision.audit_context.auto_accept, policyDecision, config, providerOverride: args.provider_override });
+  return resultForSession(session, { state: "running", next_action: "Call minitok_goal_status to observe progress", policyDecision });
 }
 function readGoal(args, runtimeOptions = {}) { const repoRoot = requireGoalRepo(args.repo, runtimeOptions.workspaceRoot); return resultForSession(loadGoalSession(repoRoot, args.goal_id, { lock: false })); }
 async function continueGoal(args, runtimeOptions = {}) {
   const repoRoot = requireGoalRepo(args.repo, runtimeOptions.workspaceRoot);
   if (ACTIVE_GOALS.has(args.goal_id)) throw Object.assign(new Error("Goal session is already running"), { code: "GOAL_SESSION_BUSY" });
   const config = loadConfig(path.join(repoRoot, "minitok.yml"), { repoRoot });
+  const unrestrictedFailure = unrestrictedError(args, runtimeOptions);
+  if (unrestrictedFailure) throw unrestrictedFailure;
   const policyDecision = resolveExecutionPolicy(policyInput(args, runtimeOptions, "mcp", config));
-  if (!policyDecision.allowed && !policyDecision.approval_required) throw Object.assign(new Error(policyDecision.reason), { code: policyDecision.always_blocked_capabilities.length ? "ALWAYS_BLOCKED" : "EXECUTION_POLICY_DENIED", policy: policyDecision, config: redactGoalExecutionConfig(config) });
+  if (!policyDecision.allowed && !policyDecision.approval_required) throw policyError(policyDecision, config);
   const session = resumeGoalSession(repoRoot, args.goal_id, { model: runtimeOptions.model, provider: args.provider_override, migrate: true });
-  launch(session, { ...runtimeOptions, mode: policyDecision.mode, capabilities: policyDecision.capabilities, explicit_confirmation: args.explicit_confirmation === true, auto_accept: policyDecision.audit_context.auto_accept, policyDecision, config, providerOverride: args.provider_override }); return resultForSession(session, { state: "running" });
+  session.state.execution_policy = policyDecision;
+  saveGoalSession(session);
+  launch(session, { ...runtimeOptions, mode: policyDecision.mode, capabilities: policyDecision.capabilities, explicit_confirmation: args.mode === "unrestricted" ? args.confirm_unrestricted === true : args.explicit_confirmation === true, auto_accept: policyDecision.audit_context.auto_accept, policyDecision, config, providerOverride: args.provider_override }); return resultForSession(session, { state: "running", policyDecision });
 }
 function pauseGoal(args, runtimeOptions = {}) { const repoRoot = requireGoalRepo(args.repo, runtimeOptions.workspaceRoot); const active = ACTIVE_GOALS.get(args.goal_id); const session = active?.session || loadGoalSession(repoRoot, args.goal_id); if (active) { active.paused = true; active.controller.abort(); ACTIVE_GOALS.delete(args.goal_id); } pauseGoalSession(session, args.reason || "paused by MCP client"); session.lock?.release?.(); return resultForSession(session, { state: "paused" }); }
 function cancelGoal(args, runtimeOptions = {}) { const repoRoot = requireGoalRepo(args.repo, runtimeOptions.workspaceRoot); const active = ACTIVE_GOALS.get(args.goal_id); const session = active?.session || loadGoalSession(repoRoot, args.goal_id); if (active) { active.paused = true; active.controller.abort(); ACTIVE_GOALS.delete(args.goal_id); } markGoalFailed(session, { cancelled: true, reason: args.reason || "cancelled by MCP client" }); session.lock?.release?.(); return resultForSession(session, { state: "failed" }); }
 function isActive(goalId) { return ACTIVE_GOALS.has(goalId); }
-module.exports = { GOAL_MODES, ACTIVE_GOALS, startGoal, readGoal, continueGoal, pauseGoal, cancelGoal, resultForSession, isActive, requireGoalRepo };
+module.exports = { GOAL_MODES, ACTIVE_GOALS, startGoal, readGoal, continueGoal, pauseGoal, cancelGoal, resultForSession, policyResponse, isActive, requireGoalRepo };

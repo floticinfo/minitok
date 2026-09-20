@@ -285,16 +285,16 @@
       "embedded": "57c2d171d131f56b7227fae0417a0412ce713d5280bcd6da5298c289ca3c013e"
     },
     "mcp/goal-tools.js": {
-      "source": "71516fdc721908d726145f378ae66ec67f67843904e4b91b9422fd3305bd3a75",
-      "embedded": "71516fdc721908d726145f378ae66ec67f67843904e4b91b9422fd3305bd3a75"
+      "source": "5b2c9076e059b048c6ba3a6e968ad3a832357bef954c58dd16c47d7cb93a110e",
+      "embedded": "5b2c9076e059b048c6ba3a6e968ad3a832357bef954c58dd16c47d7cb93a110e"
     },
     "mcp/runtime-token.js": {
       "source": "d07663e879ad91f12b327101f7b747e8bfc527bed6abc8aa2018ee393f4382d4",
       "embedded": "d07663e879ad91f12b327101f7b747e8bfc527bed6abc8aa2018ee393f4382d4"
     },
     "mcp/tools.js": {
-      "source": "fc9717bce3ceb5a08825491efdee3a1ad2c9297ce3b9dfc8d55356b4f11e8133",
-      "embedded": "fc9717bce3ceb5a08825491efdee3a1ad2c9297ce3b9dfc8d55356b4f11e8133"
+      "source": "b7bb5c24bb0305ed65b04d6b09417c00c57e5f7b64de9797264e371caadd939f",
+      "embedded": "b7bb5c24bb0305ed65b04d6b09417c00c57e5f7b64de9797264e371caadd939f"
     },
     "pipeline/authorization.js": {
       "source": "b6b7eb34e7a4d9790820d8a4b9828bf4ee965af1476b5d5c4522768b1d4aae4e",
@@ -385,8 +385,8 @@
       "embedded": "4023e87bc6dd66a33cd8bbaaab20cc07af46584ced03e6093aaa762e097fef02"
     },
     "runtime/stdio.js": {
-      "source": "0797ce9639026c15783de3872c7e1e9fd89e7ae5c01888c4cd8da39b3c371447",
-      "embedded": "0797ce9639026c15783de3872c7e1e9fd89e7ae5c01888c4cd8da39b3c371447"
+      "source": "291913a6f3d4f7451db020488f72d104fa8bc8a21bda0d51ecc86c27fd393b2f",
+      "embedded": "291913a6f3d4f7451db020488f72d104fa8bc8a21bda0d51ecc86c27fd393b2f"
     },
     "runtime/workspace.js": {
       "source": "1ccbe48769fd72363230d4a914849ce6b5fc52f5db6496e0b35ce8ac655ff220",

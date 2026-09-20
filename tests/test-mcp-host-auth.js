@@ -25,9 +25,16 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { RuntimeStdio } = require("../src/runtime/stdio");
 const { createRuntimeServices } = require("../src/runtime");
+const { parseLocalMcpScopes, LOCAL_MCP_SCOPES } = require("../src/runtime/stdio");
 
 const TOKEN = "env-only-host-token";
 const entry = path.resolve(__dirname, "../src/runtime/stdio-entry.js");
+
+test("unrestricted MCP scope is explicit and remains separate from autonomous auto_accept", () => {
+  assert.equal(LOCAL_MCP_SCOPES.has("unrestricted_autonomous"), true);
+  assert.deepEqual(parseLocalMcpScopes("read,write,unrestricted_autonomous"), ["read", "write", "unrestricted_autonomous"]);
+  assert.throws(() => parseLocalMcpScopes("read,unrestricted"), error => error.code === "INVALID_SCOPE");
+});
 
 /** Environment for a host that can only pass the credential through env. */
 function hostEnvironment(token) {

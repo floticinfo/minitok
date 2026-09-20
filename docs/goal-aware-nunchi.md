@@ -318,6 +318,28 @@ audit_id
 
 ## 7. MCP workflow
 
+MCP Goal tools는 CLI와 동일한 `src/goal/execution_policy.js` resolver를 사용한다. 기존 `autonomous`는 compatibility alias로서 기존 자동 승인 수준(`auto_accept`)을 의미하고, `unrestricted`는 별도 권한 경계를 갖는다.
+
+`unrestricted` MCP 요청은 다음 조건을 모두 만족해야 한다.
+
+```json
+{
+  "goal": "Prepare and publish the package",
+  "repo": "C:\\repo",
+  "mode": "unrestricted",
+  "confirm_unrestricted": true,
+  "capabilities": ["workspace_write", "publish"]
+}
+```
+
+- runtime scope `unrestricted_autonomous`가 없으면 `UNRESTRICTED_PERMISSION_DENIED`
+- `confirm_unrestricted: true`가 없으면 `UNRESTRICTED_CONFIRMATION_REQUIRED`
+- 설정 allowlist, runtime `auto_accept` scope, capability validation 및 `always_blocked` 검사는 resolver가 동일하게 수행
+- `protected_path_write`와 기타 무결성 보호 대상은 unrestricted에서도 거부
+- response에는 `execution_mode`, `requested_capabilities`, `granted_capabilities`, `denied_capabilities`, `policy_decision`, `audit_id`가 포함되며 credential 값·private key·authorization header·password·token은 포함되지 않음
+
+runtime scope는 기본적으로 `read`이며, 쓰기와 unrestricted는 명시적으로 설정해야 한다. unrestricted를 활성화할 때는 일반 MCP write/검증 scope와 별도로 `unrestricted_autonomous`를 추가해야 한다.
+
 장기 목표에는 다음 도구를 사용한다.
 
 ```text
