@@ -1,6 +1,7 @@
 "use strict";
 
 const { redactValue } = require("./evidence");
+const { EXECUTION_CAPABILITIES, CAPABILITY_METADATA, ALWAYS_BLOCKED_OPERATIONS, validateCapabilities, assertValidCapabilities, getCapabilityMetadata, isAlwaysBlockedCapability, validateCapabilityContract } = require("./capabilities");
 
 const PLAN_VERSION = 1;
 const STEP_SOURCES = Object.freeze(["explicit", "inferred", "recovery"]);
@@ -177,4 +178,4 @@ function deserializeGoalPlan(serialized) {
   assertValidGoalPlan(redacted);
   return redacted;
 }
-module.exports = { PLAN_VERSION, STEP_SOURCES, STEP_RISKS, STEP_STATUSES, EXECUTION_POLICIES, SIDE_EFFECTS, APPROVAL_REQUIREMENTS, createGoalPlan, validateGoalPlan, assertValidGoalPlan, serializeGoalPlan, deserializeGoalPlan, detectSideEffects };
+module.exports = { PLAN_VERSION, STEP_SOURCES, STEP_RISKS, STEP_STATUSES, EXECUTION_POLICIES, SIDE_EFFECTS, APPROVAL_REQUIREMENTS, EXECUTION_CAPABILITIES, CAPABILITY_METADATA, ALWAYS_BLOCKED_OPERATIONS, validateCapabilities, assertValidCapabilities, getCapabilityMetadata, isAlwaysBlockedCapability, validateCapabilityContract, createGoalPlan, validateGoalPlan, assertValidGoalPlan, serializeGoalPlan, deserializeGoalPlan, detectSideEffects };

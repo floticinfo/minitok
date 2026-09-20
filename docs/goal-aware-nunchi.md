@@ -205,6 +205,41 @@ credential 값, private key 원문, authorization header, password, token 및 pr
 - validation 실패 시 즉시 현재 phase를 중단하고 다음 phase로 진행하지 않음
 - 승인·권한·외부 상태를 완료 evidence로 오인하지 않음. required verifier evidence가 필요함
 
+### Phase 1 공통 Capability Contract
+
+실행 권한은 mode 문자열만으로 판단하지 않고, `src/goal/capabilities.js`의 공통 contract로 표현한다. extension runtime은 동일한 source 파일을 sync하여 같은 vocabulary와 metadata를 사용한다.
+
+지원 capability는 다음과 같다.
+
+```text
+read
+inspect
+verify
+workspace_write
+local_mutation
+external_call
+credential_use
+publish
+deploy
+database_mutation
+force_push
+tag_overwrite
+protected_path_write
+```
+
+각 capability metadata는 다음을 표현한다.
+
+- `side_effect`: 작업이 외부 또는 workspace 상태를 변경하는지
+- `default_approval`: 기본적으로 사용자 승인이 필요한지
+- `default_execution_policy`: `safe`, `supervised`, `authorized_external`, `always_blocked` 중 기본 정책
+- `unrestricted_allowed`: 명시적 unrestricted capability에서 허용 가능한지
+- `always_blocked`: 어떤 mode에서도 거부되는지
+- `verification_required`: 실행 후 검증 evidence가 필요한지
+
+`workspace_write`, `local_mutation`, `external_call`, `credential_use`, `publish`, `deploy`, `database_mutation`, `force_push`, `tag_overwrite`는 기본적으로 `approval_required`이며 명시적 unrestricted 권한이 있을 때만 resolver가 자동 승인을 검토할 수 있다. `protected_path_write`는 `always_blocked`이며 unrestricted에서도 허용하지 않는다. private key 원문 노출, credential 값·authorization header·password·token 로그 출력, approval 우회는 항상 차단되는 operation으로 분류한다.
+
+알 수 없는 capability, 중복 capability, 빈 capability 및 dangerous object key는 fail closed한다. 이 Phase에서는 contract와 validation만 추가하며 실제 CLI/MCP 실행 resolver 연결과 unrestricted 실행은 다음 Phase의 책임이다.
+
 ### CLI/MCP/runtime parity
 
 정책 구현 phase에서는 다음 parity를 검증한다.
