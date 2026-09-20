@@ -2,6 +2,7 @@
 
 const { expandGoal } = require("./expansion");
 const { createBlockerReport } = require("./blocker");
+const { redactValue } = require("./evidence");
 const { assertValidGoalSpec } = require("./validator");
 const { evaluateGoal: defaultEvaluator, evaluationIsComplete } = require("./evaluator");
 const { runTask: defaultTaskExecutor } = require("./task_executor");
@@ -346,7 +347,7 @@ class GoalController {
     const terminal = createTerminalResult({ ...legacy, completed: this.state === "completed", blocked: this.state === "blocked", humanEscalation: ["escalate", "escalated"].includes(this.state), recovery_scheduled: this.recoveryHistory.some(item => item.status === "scheduled" && this.state === "running"), recovery_failed: this.state === "recover" && this.failureHistory.length > 0, stagnantCycles: this.stagnantCycles }, { state: this.state, stagnantCycles: this.stagnantCycles, valid_evidence: this.state === "completed" && evaluationIsComplete(this.goal, this.evaluation) });
     const approved = this.failureHistory.some(item => item.status === "success");
     const partial = this.state !== "completed" && approved;
-    return { ...legacy, ...terminal, partial, approved, blocker_reports: this.blockerReports, alternative_history: this.alternativeHistory };
+    return redactValue({ ...legacy, ...terminal, partial, approved, blocker_reports: this.blockerReports, alternative_history: this.alternativeHistory });
   }
 }
 
