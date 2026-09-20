@@ -11,6 +11,7 @@ const { routeRole } = require("./capabilities");
 const { resolveExecutionPolicy, capabilitiesForSideEffects } = require("./execution_policy");
 const { redactText } = require("./evidence");
 const { recoveryFor, selectBlockerRecovery, buildRecoveryTask } = require("./recovery");
+const { executeRiskOperations } = require("./risk_execution");
 
 function currentTime(options) { return (options.now || (() => new Date().toISOString()))(); }
 function elapsedMs(startedAt, now) { return Math.max(0, new Date(now).getTime() - new Date(startedAt).getTime()); }
@@ -37,7 +38,7 @@ function safeTaskProposal(proposal, remaining) {
   const remainingIds = new Set(remaining.map(criterion => criterion.id));
   if (!task) return { valid: false, reason: "Task proposal is empty" };
   if (target.length > 0 && !target.some(id => remainingIds.has(id))) return { valid: false, reason: "Task proposal does not target a remaining criterion" };
-  return { valid: true, task, target_criteria: target, rationale: value.rationale, expected_verification: Array.isArray(value.expected_verification) ? value.expected_verification : [], capabilities: Array.isArray(value.capabilities) ? value.capabilities : Array.isArray(value.requested_capabilities) ? value.requested_capabilities : [], requested_capabilities: Array.isArray(value.requested_capabilities) ? value.requested_capabilities : [], side_effects: Array.isArray(value.side_effects) ? value.side_effects : [], paths: Array.isArray(value.paths) ? value.paths : Array.isArray(value.verification?.paths) ? value.verification.paths : [], verification: value.verification, goal_plan: value.goal_plan, done: value.done === true };
+  return { valid: true, task, target_criteria: target, rationale: value.rationale, expected_verification: Array.isArray(value.expected_verification) ? value.expected_verification : [], capabilities: Array.isArray(value.capabilities) ? value.capabilities : Array.isArray(value.requested_capabilities) ? value.requested_capabilities : [], requested_capabilities: Array.isArray(value.requested_capabilities) ? value.requested_capabilities : [], side_effects: Array.isArray(value.side_effects) ? value.side_effects : [], paths: Array.isArray(value.paths) ? value.paths : Array.isArray(value.verification?.paths) ? value.verification.paths : [], risk_operations: Array.isArray(value.risk_operations) ? value.risk_operations : Array.isArray(value.operations) ? value.operations : [], verification: value.verification, goal_plan: value.goal_plan, done: value.done === true };
 }
 function progressFromEvaluation(evaluation) {
   return evaluation?.criteria ? evaluation.criteria.filter(item => item.status === "passed").length : 0;
@@ -119,6 +120,7 @@ class GoalController {
     this.evaluation = initial?.evaluator_results?.at(-1) || null;
     this.taskHistory = (Array.isArray(initial?.task_history) ? initial.task_history : []).map(item => item && typeof item === "object" ? { ...item, patch_signature: item.patch_signature || (item.result ? patchSignature(item.result) : "") } : item);
     this.actionHistory = Array.isArray(initial?.action_history) ? initial.action_history : [];
+    this.executionAudits = Array.isArray(initial?.execution_audits) ? initial.execution_audits : [];
     this.evaluatorResults = Array.isArray(initial?.evaluator_results) ? initial.evaluator_results : [];
     this.evidence = Array.isArray(initial?.evidence) ? initial.evidence : [];
     this.taskCounts = new Map();
@@ -181,6 +183,9 @@ class GoalController {
     this.session.state.alternative_history = this.alternativeHistory;
     this.session.state.model_routing = this.modelRouting;
     this.session.state.execution_policy = this.policyDecision;
+    this.session.state.session_id = this.session.state.session_id || `session_${this.goal.goal_id}`;
+    this.session.state.execution_audits = this.executionAudits;
+    this.session.state.execution_audit_refs = this.executionAudits.map(item => item.audit_id).filter(Boolean);
     this.session.state.progress_state = { last_fingerprint: this.lastFingerprint, stagnant_cycles: this.stagnantCycles, current_progress: this.currentProgress || 0, previous_progress: this.previousProgress || 0 };
     this.session.state.token_usage = this.tokenUsage;
     this.session.state.model = this.options.model || this.session.state.model;
@@ -328,7 +333,19 @@ class GoalController {
     if (count > this.limits().sameTaskLimit) { this.state = "repetition"; return null; }
     this.currentTask = task;
     this.cycleCount += 1;
-    const result = await this.taskExecutor(task, { ...this.options, cycle: this.cycleCount, target_criteria: proposal.target_criteria });
+    let result;
+    let riskResult = null;
+    if (proposal.risk_operations.length > 0) {
+      riskResult = await executeRiskOperations(proposal, { ...this.options, task, goal_id: this.goal.goal_id, session: this.session, workspaceRoot: this.session?.workspaceRoot || this.options.workspaceRoot });
+      this.executionAudits = [...(this.executionAudits || []), ...(riskResult.audits || [])];
+      if (!riskResult.success) {
+        result = { success: false, status: "blocked", error: riskResult.error || riskResult.status, risk_execution: riskResult };
+      }
+    }
+    if (!result) {
+      result = await this.taskExecutor(task, { ...this.options, cycle: this.cycleCount, target_criteria: proposal.target_criteria });
+      if (riskResult) result = { ...result, risk_execution: riskResult };
+    }
     const tokens = result?.tokens || {};
     this.tokenUsage.input += Number(tokens.input) || 0;
     this.tokenUsage.output += Number(tokens.output) || 0;
@@ -441,7 +458,7 @@ class GoalController {
   }
 
   result() {
-    const legacy = { goal_id: this.goal.goal_id, completed: this.state === "completed", state: this.state, state_version: 4, cycle_count: this.cycleCount, current_task: this.currentTask, task_history: this.taskHistory, action_history: this.actionHistory, evaluator_results: this.evaluatorResults, evaluation: this.evaluation, evidence: this.evidence, failure_history: this.failureHistory, recovery_history: this.recoveryHistory, model_routing: this.modelRouting, token_usage: this.tokenUsage, started_at: this.startedAt, evaluated_at: currentTime(this.options), approval_state: this.options.approvalState || "not_requested" };
+    const legacy = { goal_id: this.goal.goal_id, completed: this.state === "completed", state: this.state, state_version: 4, cycle_count: this.cycleCount, current_task: this.currentTask, task_history: this.taskHistory, action_history: this.actionHistory, evaluator_results: this.evaluatorResults, evaluation: this.evaluation, evidence: this.evidence, execution_audits: this.executionAudits, execution_audit_refs: this.executionAudits.map(item => item.audit_id).filter(Boolean), failure_history: this.failureHistory, recovery_history: this.recoveryHistory, model_routing: this.modelRouting, token_usage: this.tokenUsage, started_at: this.startedAt, evaluated_at: currentTime(this.options), approval_state: this.options.approvalState || "not_requested" };
     const terminal = createTerminalResult({ ...legacy, completed: this.state === "completed", blocked: this.state === "blocked", humanEscalation: ["escalate", "escalated"].includes(this.state), recovery_scheduled: this.recoveryHistory.some(item => item.status === "scheduled" && this.state === "running"), recovery_failed: this.state === "recover" && this.failureHistory.length > 0, stagnantCycles: this.stagnantCycles }, { state: this.state, stagnantCycles: this.stagnantCycles, valid_evidence: this.state === "completed" && evaluationIsComplete(this.goal, this.evaluation) });
     const approved = this.failureHistory.some(item => item.status === "success");
     const partial = this.state !== "completed" && approved;

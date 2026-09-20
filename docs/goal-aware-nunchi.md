@@ -386,6 +386,7 @@ MCP에서는 `resume_action` 또는 `minitok_goal_resume`를 사용한다. CLI�
 - evaluator `verification_results`
 - blocker report와 alternative history
 - approval request와 resolution attempt
+- execution audit evidence와 audit reference
 - final outcome
 
 모든 저장·응답 evidence는 token, password, API key, secret, private key, authorization header를 redaction한다. 모델의 `done`, `completed`, review `APPROVE`만으로 완료를 주장하지 않는다.
@@ -399,7 +400,38 @@ minitok runs show <run_id> --repo <repository> --json
 
 MCP에서는 `minitok_goal_status` 또는 `minitok_run_get` 응답의 `evidence`, `blocker`, `alternatives`, `approval_requests`, `resolution_attempts`, `final_outcome`을 확인한다. 원본 로그나 provider 출력이 필요하더라도 secret 값을 복구하거나 출력하지 않으며, redacted response와 session state를 evidence의 권위 있는 표현으로 취급한다.
 
-## 10. Backward compatibility
+## 10. Unrestricted execution audit evidence
+
+위험 작업은 실제 외부 시스템을 직접 호출하는 것이 아니라 명시적으로 주입된 adapter를 통해 실행한다. 지원 operation은 다음과 같다.
+
+```text
+workspace_write
+external_call
+credential_use
+publish
+deploy
+database_mutation
+force_push
+tag_overwrite
+```
+
+각 실행의 redacted audit evidence에는 다음 필드가 포함된다.
+
+```text
+audit_id, goal_id, session_id, timestamp, actor/source,
+execution_mode, requested_capabilities, granted_capabilities,
+denied_capabilities, policy_decision, task, affected_paths,
+external_target, approval_bypassed, credential_presence_used,
+verification_result, final_outcome
+```
+
+`unrestricted`이고 resolver가 capability를 허용하며 audit persistence가 성공한 경우에만 adapter가 호출된다. safe/supervised/authorized_external 또는 allowlist 밖 capability는 adapter를 호출하지 않고 denial evidence만 기록한다. audit persistence 실패도 fail closed이며 task executor로 진행하지 않는다.
+
+`task`, `external_target`, `affected_paths`, adapter 결과는 redaction projection을 거친다. API key, access token, password, private key, authorization header, secret environment value 및 credential file 원문은 기록하지 않는다. external target은 protocol/hostname/port/pathname만 보존하고 query, fragment, userinfo를 제거한다. 경로 traversal, workspace boundary escape, dangerous object key, verifier tampering 및 `always_blocked` capability는 unrestricted에서도 adapter 호출 전에 차단된다.
+
+단위 테스트는 `riskAdapters` 또는 `executionAdapters`에 mock 함수를 주입하며 실제 publish/deploy/database/remote git 시스템에는 연결하지 않는다.
+
+## 11. Backward compatibility
 
 기존 계약은 유지된다.
 

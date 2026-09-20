@@ -41,12 +41,14 @@
     "goal/controller.js",
     "goal/evaluator.js",
     "goal/evidence.js",
+    "goal/execution_audit.js",
     "goal/execution_policy.js",
     "goal/expansion.js",
     "goal/failure.js",
     "goal/odd.js",
     "goal/plan.js",
     "goal/recovery.js",
+    "goal/risk_execution.js",
     "goal/session.js",
     "goal/spec.js",
     "goal/task_executor.js",
@@ -225,8 +227,8 @@
       "embedded": "675521fbbe443483de7780574dfe66761384ffcb97901b5ea8365a5a32fead16"
     },
     "goal/controller.js": {
-      "source": "8edd5943103937442422998fb0937cedb6711dbf9d70beff6cee9d1697f2d0b8",
-      "embedded": "8edd5943103937442422998fb0937cedb6711dbf9d70beff6cee9d1697f2d0b8"
+      "source": "3770110015b97952402152db93ef0bacd68bbfd92a9889c991cd1cb9fd31f348",
+      "embedded": "3770110015b97952402152db93ef0bacd68bbfd92a9889c991cd1cb9fd31f348"
     },
     "goal/evaluator.js": {
       "source": "216d25cf150aeeedc4a0c5640ba11dae2870337fcf2ab0f8fb834f3b8860573c",
@@ -235,6 +237,10 @@
     "goal/evidence.js": {
       "source": "606af720d67dca41bf546683688601cd935f95dab4e30546160f58233c1eae29",
       "embedded": "606af720d67dca41bf546683688601cd935f95dab4e30546160f58233c1eae29"
+    },
+    "goal/execution_audit.js": {
+      "source": "c5670ddafe9634438a05d8665c28e62e237d013eecc2e90c3e089d553f8866a2",
+      "embedded": "c5670ddafe9634438a05d8665c28e62e237d013eecc2e90c3e089d553f8866a2"
     },
     "goal/execution_policy.js": {
       "source": "d000c1e18deb30bf6b45a48eb0879538d99e67e39ed9b4fd3a01cc16ed2e6233",
@@ -260,9 +266,13 @@
       "source": "8cadd386951bf02984c18cc028e489185f3352d2544006adf3103af2a87cc747",
       "embedded": "8cadd386951bf02984c18cc028e489185f3352d2544006adf3103af2a87cc747"
     },
+    "goal/risk_execution.js": {
+      "source": "09134753b61bc87aaac32e56b8c31b2a649cfe4e71273b08b38240ba122e24de",
+      "embedded": "09134753b61bc87aaac32e56b8c31b2a649cfe4e71273b08b38240ba122e24de"
+    },
     "goal/session.js": {
-      "source": "2b8b9a35da37f71da46efcfddcad7ceded8ce3f03bb6663cb5ee2c10107d2cb3",
-      "embedded": "2b8b9a35da37f71da46efcfddcad7ceded8ce3f03bb6663cb5ee2c10107d2cb3"
+      "source": "b0946a6b06f396c741707f5cfd8e37da0caf5606d904bd5016e811d32248917e",
+      "embedded": "b0946a6b06f396c741707f5cfd8e37da0caf5606d904bd5016e811d32248917e"
     },
     "goal/spec.js": {
       "source": "65d74e51c87dcd56b3501935d2cc131af75d94da005551d845d93a11661c7b78",
@@ -285,8 +295,8 @@
       "embedded": "57c2d171d131f56b7227fae0417a0412ce713d5280bcd6da5298c289ca3c013e"
     },
     "mcp/goal-tools.js": {
-      "source": "5b2c9076e059b048c6ba3a6e968ad3a832357bef954c58dd16c47d7cb93a110e",
-      "embedded": "5b2c9076e059b048c6ba3a6e968ad3a832357bef954c58dd16c47d7cb93a110e"
+      "source": "f42c690d782119c0a54800866d29fdb2061329ba3c3409fdad4d7300add1e96c",
+      "embedded": "f42c690d782119c0a54800866d29fdb2061329ba3c3409fdad4d7300add1e96c"
     },
     "mcp/runtime-token.js": {
       "source": "d07663e879ad91f12b327101f7b747e8bfc527bed6abc8aa2018ee393f4382d4",
