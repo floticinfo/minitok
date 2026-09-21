@@ -5,7 +5,7 @@ const { expandGoalGeneral } = require("./expansion_general");
 const { replan, createReplanTrace, signature: patchSignature } = require("./replanner");
 const { synthesizeVerifier, evaluateDynamicVerifier, isCompletionVerified, resolveVerifierEvidence, detectVerifierTampering, invalidateVerifierEvidence } = require("./dynamic_verifier");
 const { createBlockerReport, selectAlternative } = require("./blocker");
-const { persistGeneralLoopState, createCheckpoint, markSessionCrashRecovery, validateResumePolicy } = require("./session");
+const { persistGeneralLoopState, createCheckpoint, markSessionCrashRecovery, validateResumePolicy, verifyResumedSession } = require("./session");
 const LOOP_STATES = Object.freeze(["running", "paused", "blocked", "escalated", "verification_required", "completed", "stagnated", "timeout"]);
 function array(value) { return Array.isArray(value) ? value : []; }
 function stableId(prefix, value) { return `${prefix}_${crypto.createHash("sha256").update(JSON.stringify(redactValue(value))).digest("hex").slice(0, 16)}`; }
@@ -31,7 +31,21 @@ function createInitialState(intent, options) { return { state: "running", object
 async function runGeneralGoalLoop(intent, options = {}) {
   const state = createInitialState(intent, options); const session = options.session || null; const maxCycles = Number.isSafeInteger(options.max_cycles) ? options.max_cycles : 10;
   const persistAndReturn = (reason, saveCheckpoint = false) => { state.evaluator_results = state.verification_results; state.evidence_refs = state.evidence.map(item => item?.evidence_id).filter(Boolean); state.final_outcome = state.final_outcome || { state: state.state, completed: state.state === "completed", reason: state.final_reason }; if (session) { persistGeneralLoopState(session, { ...state, plan_versions: state.plan_versions, replanning_traces: state.replanning_traces, tool_observations: state.tool_observations, rollback_records: state.rollback_records, final_outcome: state.final_outcome }, reason); if (saveCheckpoint) { const saved = createCheckpoint(session, { label: reason }); state.checkpoints.push({ checkpoint_id: saved.checkpoint_id, created_at: saved.created_at }); } } else if (saveCheckpoint) state.checkpoints.push(checkpoint(state, reason)); return state; };
-  if (session) { session.state.interpreted_intent = state.interpreted_intent; session.state.raw_objective_redacted = state.raw_objective_redacted; session.state.goal_hypotheses = state.goal_hypotheses; session.state.assumption_ledger = state.assumption_ledger; const resume = validateResumePolicy(session, options); if (!resume.valid) return persistAndReturn("resume_policy_revalidation_required"); } const timeoutMs = Number.isSafeInteger(options.timeout_ms) ? options.timeout_ms : 0; const maxTokens = Number.isSafeInteger(options.max_tokens) ? options.max_tokens : 0; const stagnationLimit = Number.isSafeInteger(options.stagnation_limit) ? options.stagnation_limit : 3; let noProgress = 0;
+  if (session) {
+    session.state.interpreted_intent = state.interpreted_intent; session.state.raw_objective_redacted = state.raw_objective_redacted; session.state.goal_hypotheses = state.goal_hypotheses; session.state.assumption_ledger = state.assumption_ledger;
+    const resumeRequired = session.state.status === "verification_required" || session.state.resume_check?.requires_verification === true;
+    const resumeOptionsPresent = options.resumePolicy !== undefined || options.policyDecision !== undefined || options.plan_version !== undefined || options.external_state !== undefined || options.resume_context !== undefined;
+    const resume = resumeRequired || resumeOptionsPresent ? validateResumePolicy(session, options) : { valid: true };
+    if (!resume.valid || resumeRequired) {
+      const readOnlyVerifier = options.resumeVerifier || options.readOnlyVerifier;
+      if (typeof readOnlyVerifier !== "function") { state.state = "verification_required"; state.final_reason = session.state.resume_check?.reason || "read-only resume verification is required before actions"; return persistAndReturn("resume_verification_required"); }
+      let verification;
+      try { verification = await readOnlyVerifier({ intent, session, read_only: true, state: redactValue(state), resume_check: session.state.resume_check }); } catch (error) { verification = { read_only: true, executed: false, error: redactValue(error?.message || String(error)), evidence: [] }; }
+      const verified = verifyResumedSession(session, verification);
+      if (!verified.valid) { state.state = "verification_required"; state.final_reason = "read-only resume verification failed"; return persistAndReturn("resume_verification_failed"); }
+    }
+  }
+  const timeoutMs = Number.isSafeInteger(options.timeout_ms) ? options.timeout_ms : 0; const maxTokens = Number.isSafeInteger(options.max_tokens) ? options.max_tokens : 0; const stagnationLimit = Number.isSafeInteger(options.stagnation_limit) ? options.stagnation_limit : 3; let noProgress = 0;
   if (!policyAllows(options)) { state.state = "blocked"; state.final_reason = "unrestricted_general requires explicit activation"; return persistAndReturn("policy_denied", true); }
   const observe = typeof options.observeEnvironment === "function" ? options.observeEnvironment : async () => ({}); const plan = typeof options.plan === "function" ? options.plan : async input => expandGoalGeneral(intent, input.environment || {}); const execute = typeof options.execute === "function" ? options.execute : async step => ({ status: "not_executed", executed: false, reason: "injected executor is required", step_id: step.id }); const verify = typeof options.verify === "function" ? options.verify : async value => value; const replanFn = typeof options.replan === "function" ? options.replan : async (previous, input) => replan(previous, input);
   for (let cycle = 0; cycle < maxCycles; cycle += 1) {

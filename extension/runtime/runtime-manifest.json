@@ -125,8 +125,8 @@
       "embedded": "4edfb2ae7b61790cc7d62315ed8b0aeadbd6c0a44686753f6b62a4534680f7a2"
     },
     "cli/commands/goal.js": {
-      "source": "26d4fde22b9c03fa71b4b427ce4db5e3d0900baee80f7843d82254185b81adfc",
-      "embedded": "26d4fde22b9c03fa71b4b427ce4db5e3d0900baee80f7843d82254185b81adfc"
+      "source": "49beadd3515ecbc056d8bc588b005552af9b91b0041074529d3b53ce2813bb02",
+      "embedded": "49beadd3515ecbc056d8bc588b005552af9b91b0041074529d3b53ce2813bb02"
     },
     "cli/commands/server-config.js": {
       "source": "0f86e6c56aa35589b35c7940696ee2b819fad071e46e280cb136b8e006656fe9",
@@ -293,8 +293,8 @@
       "embedded": "d25f0b5771dbfeb380d8ac8b90d9afbe421173732e5ac454bbaab956b72dd2f7"
     },
     "goal/general_loop.js": {
-      "source": "b90c516ca24dab020225f8d4f3c71803333bcdfe8224c2556d00cc45724d6bf0",
-      "embedded": "b90c516ca24dab020225f8d4f3c71803333bcdfe8224c2556d00cc45724d6bf0"
+      "source": "e3009ccdd8fe4897258fd6b841591403623dba7d7896798451ec50b82936709b",
+      "embedded": "e3009ccdd8fe4897258fd6b841591403623dba7d7896798451ec50b82936709b"
     },
     "goal/general_planner.js": {
       "source": "4d615f1e13207b9c2acb745388e1426d858869ee780374af67d185f396ad19b6",
@@ -337,8 +337,8 @@
       "embedded": "305c6637083d515f3bc1d81e1c677933ed3c02cb1ae6728f674d4f1cfb4cbbbc"
     },
     "goal/session.js": {
-      "source": "6441c4a1590f90c11bc4b41471ab096ce7c18dc755cfd5e4323fb8d3ac6e2290",
-      "embedded": "6441c4a1590f90c11bc4b41471ab096ce7c18dc755cfd5e4323fb8d3ac6e2290"
+      "source": "31cbaf61337b23bf0ae07070c006d4ffcba9adb6366bb8a2b9e2375127979cec",
+      "embedded": "31cbaf61337b23bf0ae07070c006d4ffcba9adb6366bb8a2b9e2375127979cec"
     },
     "goal/spec.js": {
       "source": "db7492cece7da2c3f73057424be667270263a9a015de1b1544a6394455c0ee24",
@@ -365,8 +365,8 @@
       "embedded": "57c2d171d131f56b7227fae0417a0412ce713d5280bcd6da5298c289ca3c013e"
     },
     "mcp/goal-tools.js": {
-      "source": "b67a46c5f655a29397f539b6a3dfe741e6c1e3dc65f6603ca50552719e62dcb9",
-      "embedded": "b67a46c5f655a29397f539b6a3dfe741e6c1e3dc65f6603ca50552719e62dcb9"
+      "source": "1119db2e6669684a811b6b4a83d66e8054b65f29b001434b8a40a7937d2e534e",
+      "embedded": "1119db2e6669684a811b6b4a83d66e8054b65f29b001434b8a40a7937d2e534e"
     },
     "mcp/runtime-token.js": {
       "source": "d07663e879ad91f12b327101f7b747e8bfc527bed6abc8aa2018ee393f4382d4",
