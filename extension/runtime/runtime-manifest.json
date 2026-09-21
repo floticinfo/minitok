@@ -293,8 +293,8 @@
       "embedded": "9e6cc217a23debf2c652720f207ecc7d4d8fd6be8140495d36a98a9e05863f8f"
     },
     "goal/general_loop.js": {
-      "source": "d25b6124901c5b0a5b91cb03ea6a24209bb529b467c57d771e1fb4c27197b0c6",
-      "embedded": "d25b6124901c5b0a5b91cb03ea6a24209bb529b467c57d771e1fb4c27197b0c6"
+      "source": "70aa1c5f2fef60b6b45ddce4bb4a856c5f7721cd6bd7dc520f2a7d65701363c3",
+      "embedded": "70aa1c5f2fef60b6b45ddce4bb4a856c5f7721cd6bd7dc520f2a7d65701363c3"
     },
     "goal/general_planner.js": {
       "source": "4d615f1e13207b9c2acb745388e1426d858869ee780374af67d185f396ad19b6",
@@ -337,8 +337,8 @@
       "embedded": "305c6637083d515f3bc1d81e1c677933ed3c02cb1ae6728f674d4f1cfb4cbbbc"
     },
     "goal/session.js": {
-      "source": "3933b0dac8d12d2fe6c07de366e28e5ac3b1788f471eb15f420538d004a43356",
-      "embedded": "3933b0dac8d12d2fe6c07de366e28e5ac3b1788f471eb15f420538d004a43356"
+      "source": "7655eca61da53fa642e818dd0920eb5270a48bc6b157a368d700d2d4b248a34d",
+      "embedded": "7655eca61da53fa642e818dd0920eb5270a48bc6b157a368d700d2d4b248a34d"
     },
     "goal/spec.js": {
       "source": "db7492cece7da2c3f73057424be667270263a9a015de1b1544a6394455c0ee24",
