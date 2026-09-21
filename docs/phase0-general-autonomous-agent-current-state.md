@@ -1,26 +1,28 @@
-# Phase 0 — `unrestricted_general` 현재 상태 재검증
+# Historical Phase 0 baseline — `unrestricted_general` 상태 재검증
+
+> **Historical record, not the current execution contract.** 이 문서는 HEAD `0967ce9477ca6015d8870b02aff7521d1c78afee`에서 수행한 Phase 0의 당시 관찰을 보존한다. 이후 Phase 1 통합 작업으로 CLI/MCP의 실제 기본 경로가 변경되었으므로, 아래의 `runGoal()` 전용 routing gap과 다음 phase 계획을 현재 동작으로 해석하지 말라. 현재 동작은 `docs/goal-aware-nunchi.md`, `docs/goal-agent-cli.md`, `docs/goal-agent-mcp.md`와 현재 소스/테스트를 기준으로 한다.
 
 - **Repository:** `C:\Users\J1\.cline\data\workspaces\chat\minitok-release-1.4.6`
 - **Branch:** `fix/mcp-domain-auth`
-- **HEAD:** `0967ce9477ca6015d8870b02aff7521d1c78afee`
-- **Phase:** 0 — 현재 구현 및 실제 실행 경로 재감사
-- **Status:** PASS / 구현 변경 없음
+- **Historical HEAD:** `0967ce9477ca6015d8870b02aff7521d1c78afee`
+- **Phase:** 0 — 당시 구현 및 실제 실행 경로 재감사
+- **Status:** PASS / 당시 구현 변경 없음
 - **Date:** 2026-09-21
 
-## 1. 결론
+## 1. 당시 결론
 
-현재 저장소에는 `unrestricted_general`의 해석·계획·관찰·검증·blocker·replanning·session/persistence·CLI/MCP response 계약이 구현되어 있다. 그러나 이번 재검증에서 다음 통합 공백을 다시 확인했다.
+당시 저장소에는 `unrestricted_general`의 해석·계획·관찰·검증·blocker·replanning·session/persistence·CLI/MCP response 계약이 구현되어 있었지만, 당시 실행 경로에는 통합 공백이 있었다.
 
 ```text
 CLI/MCP 자연어 입력
 → intent / hypothesis / assumption / GoalPlan 준비
 → persistent Goal Session
-→ 현재 실제 실행: runGoal() → GoalController
+→ 당시 실제 실행: runGoal() → GoalController
 ```
 
-`runGeneralGoalLoop()`는 별도 구현 및 전용 테스트에서 동작하지만, 현재 CLI/MCP의 실제 launch executor와 `runGoal()` compatibility 함수에서 호출되지 않는다. 따라서 다음 순차 phase의 핵심 작업은 기존 안전 경계를 유지하면서 `unrestricted_general` 요청만 general loop로 라우팅하고, 기존 mode와 legacy 실행 계약은 보존하는 것이다.
+당시 `runGeneralGoalLoop()`는 별도 구현 및 전용 테스트에서 동작했지만, CLI/MCP의 실제 launch executor와 `runGoal()` compatibility 함수에서 호출되지 않았다. 이 historical gap은 후속 Phase 1에서 `unrestricted_general` 요청에 한정된 실제 general-loop routing으로 보완되었다.
 
-**Phase 0 판정: PASS. 다음 phase 진입: READY.**
+**당시 Phase 0 판정: PASS. 다음 phase 진입: READY.**
 
 ## 2. 저장소 및 작업 상태
 
