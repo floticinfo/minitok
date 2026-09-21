@@ -229,8 +229,8 @@
       "embedded": "26d689131d68eaf4b0d247af5cbd0d3a6d6ca7dcfc1216392769bca7ba0ec72c"
     },
     "goal/adapter_registry.js": {
-      "source": "65748908707992e0a111e59831a9465dfd612d0b76311885dd93ceee8692473c",
-      "embedded": "65748908707992e0a111e59831a9465dfd612d0b76311885dd93ceee8692473c"
+      "source": "3325a941c7d7322b3d06ccad5378f87fe4c4a91e94c43cd32e7e798bd41e9886",
+      "embedded": "3325a941c7d7322b3d06ccad5378f87fe4c4a91e94c43cd32e7e798bd41e9886"
     },
     "goal/application.js": {
       "source": "fdccc81100e3c029a7a284605aca4e5e7ac4bbf6ea8f6b28beb62d217f827972",
@@ -289,8 +289,8 @@
       "embedded": "2b6d0dd416212750ae6501c716a2ec416fe67af939eaa629784bc140df1454c9"
     },
     "goal/general_execution.js": {
-      "source": "d25f0b5771dbfeb380d8ac8b90d9afbe421173732e5ac454bbaab956b72dd2f7",
-      "embedded": "d25f0b5771dbfeb380d8ac8b90d9afbe421173732e5ac454bbaab956b72dd2f7"
+      "source": "4ea0d729beacb3d9f876acfb067a2f5aa953118db59082c32d464fe47ce110d1",
+      "embedded": "4ea0d729beacb3d9f876acfb067a2f5aa953118db59082c32d464fe47ce110d1"
     },
     "goal/general_loop.js": {
       "source": "e3009ccdd8fe4897258fd6b841591403623dba7d7896798451ec50b82936709b",
