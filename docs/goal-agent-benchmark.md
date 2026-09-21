@@ -1,8 +1,8 @@
-# Goal Agent Benchmark (Phase 13)
+# Goal Agent Benchmark (Phase 10/11 verification boundary)
 
 ## 범위
 
-benchmark는 실제 외부 접근 없는 deterministic mock/local suite다. canonical suite는 25개 scenario를 측정하며, 그중 17개는 Phase 10 lifecycle coverage 계약으로 필수 검증한다. `runBenchmarkSuite({ includeFixtures: true })` 또는 `npm run benchmark:goal -- --include-fixtures`로 16개 category fixture를 추가할 수 있다. 이 결과는 모든 자연어 목표 지원, live provider 성능, production 성공, 외부 서비스 성공, deploy/publish/database/SCM 성공을 주장하지 않는다.
+benchmark는 실제 외부 접근 없는 deterministic mock/local suite다. canonical suite는 25개 scenario를 측정하며, 그중 17개는 Phase 10 lifecycle coverage 계약으로 필수 검증한다. `runBenchmarkSuite({ includeFixtures: true })` 또는 `npm run benchmark:goal -- --include-fixtures`로 16개 category fixture를 추가할 수 있다. mock/local artifact는 `publishable_claim: false`와 `claim_boundary: "Local deterministic benchmark evidence only ..."`를 유지한다. 이 결과는 모든 자연어 목표 지원, live provider 성능, production 성공, 외부 서비스 성공, deploy/publish/database/SCM 성공을 주장하지 않는다.
 
 - simple bug fix
 - multi-file feature
@@ -19,7 +19,7 @@ benchmark는 실제 외부 접근 없는 deterministic mock/local suite다. cano
 - false completion claim
 - unknown verifier state
 
-Phase 13 category taxonomy:
+Phase 10 category taxonomy:
 
 - simple_repository_task
 - ambiguous_goal
@@ -52,7 +52,7 @@ profile별로 `structured_output`, `tool_calling`, repository navigation, code e
 
 ## Metrics
 
-각 record는 scenario type, expected negative case, system completion, goal achievement, system false completion, unsafe action attempted/blocked/executed, negative case handling, release blocker, capability profile, cycle, token usage, recovery, escalation, repeated action, verifier execution/evidence, resume를 기록한다.
+각 record는 scenario type, expected negative case, system completion, goal achievement, system false completion, unsafe action attempted/blocked/executed, negative case handling, release blocker, capability profile, cycle, token usage, recovery, escalation, repeated action, verifier execution/evidence, resume를 기록한다. artifact에는 총 21개 required release/quality metric이 있어야 하며, 검증기는 누락 metric, 누락 required scenario, redaction 실패와 local-only claim boundary 위반을 release blocker로 처리한다.
 
 계산 지표:
 
@@ -69,7 +69,7 @@ profile별로 `structured_output`, `tool_calling`, repository navigation, code e
 - resume success rate
 - unsafe action rate
 
-Phase 13 quality metrics:
+Phase 10 required quality metrics:
 
 - `goal_interpretation_accuracy`
 - `criteria_inference_quality`
@@ -122,7 +122,7 @@ npm run benchmark:goal -- --mode live
 npm run benchmark:validate -- .minitok/benchmarks/baseline.raw.json .minitok/benchmarks/minitok.raw.json
 ```
 
-기본 runner는 `.minitok/benchmarks/`에 `baseline.raw.json`, `minitok.raw.json`, `summary.json`, `evidence.json`을 생성한다. mock/local 결과는 실행 종류를 명시하고 `publishable_claim: false`로 기록한다. `live`는 `MINITOK_GOAL_BENCHMARK_LIVE=1` gate가 없으면 `live.unavailable.json`만 생성하며 성공으로 위장하지 않는다.
+기본 runner는 `.minitok/benchmarks/`에 `baseline.raw.json`, `minitok.raw.json`, `summary.json`, `evidence.json`을 생성한다. mock/local 결과는 실행 종류를 명시하고 `publishable_claim: false` 및 deterministic local-only `claim_boundary`로 기록한다. `live`는 `MINITOK_GOAL_BENCHMARK_LIVE=1` gate가 없으면 `live.unavailable.json`만 생성하며 성공으로 위장하지 않는다. gate가 있더라도 별도 live evidence 없이는 mock/local 결과를 provider 또는 production 성공으로 승격하지 않는다.
 
 ```js
 const { runBenchmarkSuite } = require("../src/goal/benchmark");
@@ -130,4 +130,4 @@ const result = await runBenchmarkSuite({ execute: async () => ({ goal_achieved: 
 console.log(result.metrics);
 ```
 
-기본 suite는 외부 서비스, 임의 API, browser, database mutation, deployment를 실행하지 않는다. 실제 환경 측정은 승인·격리된 후속 phase에서만 수행한다.
+기본 suite는 외부 서비스, 임의 API, browser, database mutation, deployment, publish 또는 SCM mutation을 실행하지 않는다. 실제 환경 측정은 별도 승인·격리된 live harness, credential 관리, rollback 계획과 독립 evidence가 있는 후속 phase에서만 수행한다. 이 문서의 deterministic benchmark는 general loop의 해석·계획·검증·차단·재개 경계를 측정할 뿐 live adapter 가용성을 측정하지 않는다.

@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Documentation
+
+- Documented the verified `unrestricted_general` CLI/MCP routing and its fail-closed boundaries: explicit opt-in, general runtime permission, capability allowlists, plan/replan/assumption budgets, audit/integrity preflight, clarification for ambiguous goals, and required verifier evidence for completion.
+- Documented pause/resume, checkpoint verification, blocker classification, alternative selection, rollback, and replan behavior without implying that deterministic mock/local results validate live providers or production adapters.
+- Clarified the supported adapter descriptor categories and the current injected/mock/local verification scope. Browser, API, database mutation, deployment, publish, and SCM descriptors do not constitute a live production connection.
+
 ## 1.4.10 - 2026-09-20
 
 ### Fixed

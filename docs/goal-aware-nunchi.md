@@ -646,7 +646,7 @@ state에는 `goal_plan`, `inferred_steps`, `optional_steps`, blocker/alternative
 모든 자연어 목표를 무제한으로 해석하지 않는 이유는 목표 의미, 성공 조건, verifier, repository scope가 서로 다르기 때문이다. deterministic하게 관찰 가능한 목표만 자동 ready가 될 수 있고, 나머지는 clarification 또는 unsupported로 남는다. `stage2:parity`, 기본 E2E와 packed-install은 local/mock contract 검증이며 실제 production registry, cloud, database, browser, SCM 동작을 검증하지 않는다. live production 검증은 별도 승인된 harness와 rollback/credential 계획이 필요하다.
 
 
-## 16. Phase 14: General Autonomous Agent 운영 계약
+## 16. Phase 11: General Autonomous Agent 운영 계약
 
 ### 16.1 Mode와 기본 안전 경계
 
@@ -661,7 +661,7 @@ state에는 `goal_plan`, `inferred_steps`, `optional_steps`, blocker/alternative
 | `unrestricted_general` | **기본 비활성, 명시 opt-in** | 자연어 해석, 기준 추론, Plan 확장, 도구 관찰, replanning | enabled, general confirmation, runtime permission, auto-accept, allowlist, budget, audit/integrity | 정형 입력 없이 실행 가능한 일반 목표 |
 | `always_blocked` | 정책 고정 | 없음 | 어떤 승인도 우회하지 못함 | 시스템 무결성 보호 |
 
-`unrestricted_general`은 `unrestricted`의 별칭이 아니다. 설정이 없거나 `enabled: false`이면 거부되며, CLI/MCP 요청에서 mode와 general confirmation을 다시 제출해야 한다. legacy alias나 `auto_accept`만으로 활성화되지 않는다. 모든 mode에서 path traversal, workspace 경계 탈출, dangerous object key, protected path/verifier tampering, private key·credential·password·token 원문 노출, secret logging, approval bypass는 `always_blocked`다.
+`unrestricted_general`은 `unrestricted`의 별칭이 아니다. 설정이 없거나 `enabled: false`이면 거부되며, CLI/MCP 요청에서 mode와 general confirmation을 다시 제출해야 한다. `goal.unrestricted_general.enabled`, `confirm_unrestricted_general`/`--confirm-unrestricted-general`, `unrestricted_general_autonomous` runtime permission, `auto_accept`, general capability allowlist, `max_plan_depth`/`max_replan_count`/`max_assumption_count`, audit persistence와 integrity preflight의 교집합이 필요하다. legacy alias, 일반 `confirm_unrestricted`, `unrestricted_autonomous` permission 또는 `auto_accept`만으로 활성화되지 않는다. 모든 mode에서 path traversal, workspace 경계 탈출, dangerous object key, protected path/verifier tampering, private key·credential·password·token 원문 노출, secret logging, approval bypass는 `always_blocked`다.
 
 ### 16.2 자연어 목표 해석과 요구사항 provenance
 
@@ -680,7 +680,7 @@ general loop는 다음 순서로 처리한다.
 - **Assumption**은 부족한 정보로 진행하기 위한 가설이며 confidence, 영향 step, invalidation signal을 기록한다.
 - **Provisional criterion**은 관찰 가능한 후보일 뿐 확정된 사용자 요구가 아니다.
 
-scope 밖 작업은 `out_of_scope_candidates`로 반환한다. confidence가 낮거나 안전한 기준/verifier를 만들 수 없으면 `clarification_required` 또는 `unsupported`로 멈춘다. 모델이 만든 기준을 사용자 요구와 동일하게 취급하지 않는다.
+scope 밖 작업은 `out_of_scope_candidates`로 반환한다. 목표가 추상적이거나 대상, 범위, 원하는 결과, acceptance condition 또는 검증 방법이 불명확하면 clarification 질문과 `missing_information`을 반환하고 executor를 시작하지 않는다. confidence가 낮거나 안전한 기준/verifier를 만들 수 없으면 `clarification_required` 또는 `unsupported`로 멈춘다. provisional criterion은 assumption ledger에 기록되는 후보일 뿐 사용자 요구가 아니며, required completion evidence로 승격되지 않는다. 모델이 만든 기준을 사용자 요구와 동일하게 취급하지 않는다.
 
 ### 16.3 Plan, blocker, replanning, rollback
 
@@ -707,6 +707,8 @@ audit/evidence에는 credential 값, private key, authorization header, password
 
 
 ### 16.5 CLI/MCP, capability allowlist와 운영 한계
+
+현재 CLI/MCP의 `unrestricted_general` 요청은 shared integration을 거쳐 `executeGoal()`의 general execution 경로로 들어가며, `runGeneralGoalLoop()`가 실제 lifecycle을 수행한다. 단순히 general intent와 plan만 반환하고 기존 `GoalController`만 사용하는 별도 우회 경로가 아니다.
 
 CLI general 실행 예시:
 

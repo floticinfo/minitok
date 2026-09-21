@@ -185,13 +185,15 @@ inferred step failure는 기존 BlockerReport → AlternativePlan → policy/cap
 `stage2:parity`, 기본 E2E, packed-install과 injected/mock adapter는 local contract 검증이며 production registry/cloud/database/browser/SCM에 접속하지 않는다. live production 검증은 별도 승인된 integration harness와 rollback 계획이 필요하다.
 
 
-## Phase 14: MCP General Agent 계약
+## Phase 11: MCP General Agent 계약
+
+> 이 문서는 현재 검증된 `unrestricted_general` 경계만 설명한다. 이 mode는 임의 작업을 무제한으로 수행하거나 안전 검사를 우회하는 기능이 아니다.
 
 ### Mode와 명시적 활성화
 
 MCP 기본 mode는 `safe`다. `supervised`는 local mutation 승인, `authorized_external`은 승인된 external adapter, `unrestricted`는 정형 목표의 allowlist 실행, `unrestricted_general`은 자연어 목표의 general loop, `always_blocked`는 영구 차단을 뜻한다.
 
-`unrestricted_general`은 기본 비활성이다. 요청은 `mode: "unrestricted_general"`와 `confirm_unrestricted_general: true`를 포함해야 하며 runtime permission `unrestricted_general_autonomous`, auto-accept, repository `goal.unrestricted_general.enabled`, capability allowlist, budget, audit persistence와 integrity preflight가 모두 필요하다. `unrestricted_autonomous` permission이나 `confirm_unrestricted`만으로 general mode를 활성화하지 않는다.
+`unrestricted_general`은 기본 비활성이다. 요청은 `mode: "unrestricted_general"`와 `confirm_unrestricted_general: true`를 포함해야 하며 runtime permission `unrestricted_general_autonomous`, `auto_accept`, repository `goal.unrestricted_general.enabled`, general capability allowlist, `max_plan_depth`/`max_replan_count`/`max_assumption_count` budget, audit persistence와 integrity preflight가 모두 필요하다. `unrestricted_autonomous` permission이나 `confirm_unrestricted`만으로 general mode를 활성화하지 않는다. MCP argument schema의 알 수 없는 필드는 거부한다.
 
 ```json
 {
@@ -227,7 +229,7 @@ goal
 → evaluator evidence 또는 escalation
 ```
 
-explicit requirement는 사용자가 직접 준 계약이고, inferred requirement는 rationale·target criterion·verification이 있는 필수 연관 작업이다. optional follow-up은 `optional_steps`와 `deferred`로 분리한다. 모호하거나 deterministic verifier가 없는 목표는 `clarification_required`/`unsupported`로 반환하며 임의 completion criteria를 확정하지 않는다. `goal_plan`, `inferred_steps`, `assumptions`, `provisional_success_criteria`, `replanning_trace`, `out_of_scope_candidates`를 응답에서 확인한다.
+explicit requirement는 사용자가 직접 준 계약이고, inferred requirement는 rationale·target criterion·verification이 있는 필수 연관 작업이다. optional follow-up은 `optional_steps`와 `deferred`로 분리한다. 목표가 추상적이거나 대상·범위·완료 결과·검증 방법이 모호하거나 deterministic verifier가 없으면 `clarification_required`/`unsupported`로 반환하고 executor를 시작하지 않는다. provisional criteria는 추론된 후보일 뿐 사용자 확인을 대체하지 않으며 완료 근거가 될 수 없다. `goal_plan`, `inferred_steps`, `assumptions`, `provisional_success_criteria`, `replanning_trace`, `out_of_scope_candidates`를 응답에서 확인한다.
 
 ### Capability, blocker, rollback/resume
 
@@ -241,7 +243,7 @@ continue/resume은 저장된 general permission을 자동 상속하지 않는다
 
 세션은 `<repository>/.minitok/goals/<goal_id>/`에, audit는 기본 `~/.minitok/audit.jsonl`에 redacted 형태로 저장한다. MCP response/evidence에는 credential 값, private key, authorization header, password, token, URL query/userinfo와 raw adapter response를 포함하지 않는다.
 
-benchmark, `stage2:parity`, mock/injected adapter와 E2E는 local 계약 검증이다. production registry/cloud/database/browser/SCM의 성공, 권한, 비용, 가용성, rollback을 증명하지 않으며 live 연결은 별도 승인 harness와 rollback 계획이 필요하다. 모델이 만든 provisional criteria가 실제 의도와 다를 수 있으므로 모호한 목표는 clarification 또는 supervised로 낮춘다.
+Registry가 아는 adapter kind는 `filesystem`, `shell`, `repository`, `test_runner`, `package_manager`, `local_http`, `process_health`, `browser`, `api`, `database_read_only`, `database_mutation`, `deployment`, `publish`, `scm`이다. descriptor는 injected executor와 verifier evidence 계약을 표현할 뿐 자동으로 live 연결을 만들지 않는다. `api`, `database_mutation`, `deployment`, `publish`, `scm`은 authorized-external 정책과 별도 gate가 필요하다. benchmark, `stage2:parity`, mock/injected adapter와 E2E는 local 계약 검증이다. production registry/cloud/database/browser/SCM의 성공, 권한, 비용, 가용성, rollback을 증명하지 않으며 live 연결은 별도 승인 harness와 rollback 계획이 필요하다. 모델이 만든 provisional criteria가 실제 의도와 다를 수 있으므로 모호한 목표는 clarification 또는 supervised로 낮춘다.
 
 위험하면 pause/cancel 후 다음처럼 safe로 되돌린다.
 

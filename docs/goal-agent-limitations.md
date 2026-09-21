@@ -53,7 +53,7 @@ resume은 저장된 unrestricted 정책을 자동 신뢰하지 않는다. CLI/MC
 
 모든 risk execution에는 preflight/final audit가 필요하다. 기본 audit fallback은 사용자 home의 `~/.minitok/audit.jsonl`이며, `auditPath`를 지정한 실행·테스트에서는 repository-local 파일을 사용할 수 있고 session state에도 redacted audit reference가 남는다. credential 값, private key 원문, authorization header, password, token, URL query/userinfo와 adapter raw result는 evidence·응답·로그에 남기지 않는다. redaction은 운영자가 비밀값을 입력하거나 외부 adapter가 별도 로그를 남기는 것을 방지하는 대체 수단이 아니다.
 
-현재 unrestricted adapter는 injected/mock 계약을 검증하는 단계다. 실제 production registry, cloud, database, browser, SCM 시스템의 가용성·권한·롤백·비용은 검증하지 않았다. production 연결은 별도 승인과 dry-run/integration 검증이 필요하다.
+현재 general/unrestricted adapter 실행은 injected executor와 local/mock 계약을 검증하는 단계다. registry가 표현하는 adapter kind는 filesystem, shell, repository, test_runner, package_manager, local_http, process_health, browser, api, database_read_only, database_mutation, deployment, publish, scm이지만, descriptor 등록은 live connector나 production authorization을 뜻하지 않는다. 실제 production registry, cloud, database, browser, SCM 시스템의 가용성·권한·롤백·비용은 검증하지 않았다. production 연결은 별도 승인과 dry-run/integration 검증이 필요하다.
 
 safe로 복귀하려면 새 CLI/MCP 요청에 `mode: safe`를 명시하고 unrestricted capability와 auto-accept를 제거한다. 이전 unrestricted session state만 읽어서는 재실행되지 않는다.
 
@@ -94,9 +94,9 @@ inferred step에서 blocker가 발생하면 기존 BlockerReport, AlternativePla
 local/mock/injected 테스트와 `stage2:parity`는 구현 계약과 보안 경계를 검증하지만 실제 production registry, cloud, database, browser, SCM 가용성·권한·롤백·비용을 증명하지 않는다. live production 검증은 별도 승인, dry-run, credential 운영 및 rollback 계획이 필요하다.
 
 
-## Phase 14: General mode의 운영 한계
+## Phase 11: General mode의 운영 한계
 
-`unrestricted_general`은 기본 비활성이다. `minitok.yml`의 `goal.unrestricted_general.enabled: true`, 명시적 mode, `confirm_unrestricted_general`, `unrestricted_general_autonomous` runtime permission, auto-accept, capability allowlist, plan/replan/assumption budget, audit persistence와 integrity preflight를 모두 통과해야 한다. `unrestricted` 설정이나 `auto_accept`만으로 general mode가 켜지지 않는다.
+`unrestricted_general`은 기본 비활성이다. `minitok.yml`의 `goal.unrestricted_general.enabled: true`, 명시적 mode, `confirm_unrestricted_general` 또는 `--confirm-unrestricted-general`, `unrestricted_general_autonomous` runtime permission, auto-accept, general capability allowlist, `max_plan_depth`/`max_replan_count`/`max_assumption_count`, audit persistence와 integrity preflight를 모두 통과해야 한다. `unrestricted` 설정, 일반 `confirm_unrestricted`, `unrestricted_autonomous` permission 또는 `auto_accept`만으로 general mode가 켜지지 않는다.
 
 ### Mode 차이
 

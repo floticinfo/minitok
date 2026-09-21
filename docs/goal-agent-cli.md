@@ -181,7 +181,9 @@ inferred step failure는 기존 BlockerReport, AlternativePlan, recovery 정책�
 세션은 `<repository>/.minitok/goals/<goal_id>/`에, 일반 audit는 `~/.minitok/audit.jsonl`에 redacted 형태로 저장된다. `stage2:parity`, mock/injected E2E와 packed-install은 local contract 검증이며 실제 production publish/deploy를 검증하지 않는다. live production 검증은 별도 승인된 harness가 필요하다.
 
 
-## Phase 14: 자연어 General Agent CLI
+## Phase 11: 자연어 General Agent CLI
+
+> 이 문서는 현재 검증된 `unrestricted_general` 경계만 설명한다. 이 mode는 임의 작업을 무제한으로 수행하거나 안전 검사를 우회하는 기능이 아니다.
 
 ### Mode 선택
 
@@ -194,7 +196,7 @@ CLI의 기본 mode는 계속 `safe`다. mode별 의미는 다음과 같다.
 - `unrestricted_general`: 자연어 목표를 해석하고 criteria, dependency, Plan DAG, 도구 관찰, blocker 대안과 replanning을 추론한다.
 - `always_blocked`: 어떤 mode에서도 실행하지 않는 시스템 무결성 작업이다.
 
-`unrestricted_general`은 기본 비활성이다. repository 설정의 `goal.unrestricted_general.enabled: true`, `--mode unrestricted_general`, `--confirm-unrestricted-general`, `--allow-unrestricted-general`, `--auto-accept`, general capability allowlist와 budget이 모두 필요하다. 설정이 요구하지 않는 flag라도 명시적 confirmation과 runtime gate가 없으면 거부된다.
+`unrestricted_general`은 기본 비활성이다. `minitok.yml`의 `goal.unrestricted_general.enabled: true`, `--mode unrestricted_general`, `--confirm-unrestricted-general`, `--allow-unrestricted-general`, `--auto-accept`, general capability allowlist와 `max_plan_depth`/`max_replan_count`/`max_assumption_count` budget이 모두 필요하다. audit persistence와 integrity preflight도 통과해야 한다. 설정이 요구하지 않는 flag라도 명시적 confirmation과 runtime gate가 없으면 거부된다. `--confirm-unrestricted`나 일반 `unrestricted_autonomous` permission만으로 general mode가 활성화되지 않는다.
 
 ### 자연어 목표 처리
 
@@ -210,7 +212,7 @@ objective
 → verifier evidence 또는 escalation
 ```
 
-명시된 요구는 `explicit_steps`/기준으로, 필요한 연관 작업은 rationale과 `target_criteria`를 가진 `inferred_steps`로 저장한다. optional follow-up은 자동 완료와 분리해 deferred로 남긴다. scope 밖 작업은 `out_of_scope_candidates`로 반환한다. 성공 기준 또는 verifier를 결정적으로 만들 수 없으면 `clarification_required`이며 임의 기준으로 완료하지 않는다.
+명시된 요구는 `explicit_steps`/기준으로, 필요한 연관 작업은 rationale과 `target_criteria`를 가진 `inferred_steps`로 저장한다. optional follow-up은 자동 완료와 분리해 deferred로 남긴다. scope 밖 작업은 `out_of_scope_candidates`로 반환한다. 목표가 추상적이거나 대상·범위·완료 결과·검증 방법이 비어 있거나 여러 해석이 가능하면 `clarification_required` 질문을 반환하고 executor를 호출하지 않는다. provisional criteria는 계획 후보일 뿐 사용자 요구가 아니므로 required completion evidence로 승격되지 않는다. 성공 기준 또는 verifier를 결정적으로 만들 수 없으면 임의 기준으로 완료하지 않는다.
 
 ### General start 예시
 
@@ -244,7 +246,7 @@ General planning capability(`goal_inference`, `criteria_inference`, `plan_expans
 
 ### 완료, blocker, resume
 
-`completed`는 required criterion의 실행된 valid verifier evidence와 독립 evaluator가 모두 확인할 때만 반환한다. 모델의 `done`, `completed`, `APPROVE`는 권한이 아니다. blocker 발생 시 benefit/risk/permission/cost/reversibility/verification을 비교해 현재 policy에서 실행 가능한 최소 위험 대안을 선택하고, 외부/승인 대안은 request와 resume action으로 멈춘다. replanning은 blocker나 assumption invalidation 후 plan version과 evidence를 남기며, 변경 전 rollback/checkpoint를 만든다.
+CLI의 `unrestricted_general` 요청은 `executeGoal()`에서 general execution으로 판별된 뒤 `runGeneralGoalLoop()`로 라우팅된다. loop는 환경 관찰, tool/adapter preflight, step 실행, dynamic verifier, blocker 분류, alternative 선택, replan, checkpoint/persistence를 순서대로 수행한다. `completed`는 required criterion의 실행된 valid verifier evidence와 독립 evaluator가 모두 확인할 때만 반환한다. 모델의 `done`, `completed`, `APPROVE`는 권한이 아니다. blocker 발생 시 benefit/risk/permission/cost/reversibility/verification을 비교해 현재 policy에서 실행 가능한 최소 위험 대안을 선택하고, 외부/승인 대안은 request와 resume action으로 멈춘다. replanning은 blocker, verifier failure 또는 assumption invalidation 후 plan version과 evidence를 남기며, 변경 전 rollback/checkpoint를 만든다.
 
 resume은 저장된 unrestricted 정책을 자동 사용하지 않는다. 새 요청에서 mode, confirmation, capability와 auto-accept를 다시 전달해야 하고, checkpoint 이후 tracked file이 바뀌면 read-only verifier 전에는 executor를 호출하지 않는다.
 
@@ -252,4 +254,4 @@ resume은 저장된 unrestricted 정책을 자동 사용하지 않는다. 새 �
 
 세션 evidence는 `<repository>/.minitok/goals/<goal_id>/`에, 기본 audit는 `~/.minitok/audit.jsonl`에 있다. credential 값, private key, authorization header, password, token, URL query/userinfo와 raw adapter response는 출력하거나 저장하지 않는다.
 
-deterministic benchmark/mock 결과는 production publish/deploy/database/browser/SCM의 성공을 증명하지 않는다. 모호한 목표에서 모델이 만든 provisional criteria는 실제 사용자 의도와 다를 수 있으므로 중요한 작업은 clarification, supervised 또는 authorized_external로 낮춘다. 위험하면 즉시 pause/cancel 후 새 요청을 `--mode safe`로 실행하고 general capability, confirmation, `--auto-accept`를 제거한다.
+Registry가 아는 adapter kind는 `filesystem`, `shell`, `repository`, `test_runner`, `package_manager`, `local_http`, `process_health`, `browser`, `api`, `database_read_only`, `database_mutation`, `deployment`, `publish`, `scm`이다. 기본 descriptor는 injected executor와 검증 evidence가 있어야 실행되며, `api`, `database_mutation`, `deployment`, `publish`, `scm`은 authorized-external 정책과 별도 gate가 필요하다. 현재 검증은 local/mock/injected 계약 중심이며 descriptor가 실제 provider, production registry, cloud, database, browser, SCM 연결을 제공하지 않는다. deterministic benchmark/mock 결과는 production publish/deploy/database/browser/SCM의 성공을 증명하지 않는다. 모호한 목표에서 모델이 만든 provisional criteria는 실제 사용자 의도와 다를 수 있으므로 중요한 작업은 clarification, supervised 또는 authorized_external로 낮춘다. 위험하면 즉시 pause/cancel 후 새 요청을 `--mode safe`로 실행하고 general capability, confirmation, `--auto-accept`를 제거한다.
