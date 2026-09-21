@@ -293,8 +293,8 @@
       "embedded": "d25f0b5771dbfeb380d8ac8b90d9afbe421173732e5ac454bbaab956b72dd2f7"
     },
     "goal/general_loop.js": {
-      "source": "6e1b091eff0a77ef38fadd5fca914472fe886aa5e94fd81494f78e31731eb4a1",
-      "embedded": "6e1b091eff0a77ef38fadd5fca914472fe886aa5e94fd81494f78e31731eb4a1"
+      "source": "b90c516ca24dab020225f8d4f3c71803333bcdfe8224c2556d00cc45724d6bf0",
+      "embedded": "b90c516ca24dab020225f8d4f3c71803333bcdfe8224c2556d00cc45724d6bf0"
     },
     "goal/general_planner.js": {
       "source": "4d615f1e13207b9c2acb745388e1426d858869ee780374af67d185f396ad19b6",
@@ -329,16 +329,16 @@
       "embedded": "db6de841e0bb9d94286e0e1fccf4e0645fda8e19bea8c7610fa0b070ca8a1f5d"
     },
     "goal/replanner.js": {
-      "source": "561bbfda2dda3e0d6af594245213eff784d672aa4d81e5b35155f29219e750a8",
-      "embedded": "561bbfda2dda3e0d6af594245213eff784d672aa4d81e5b35155f29219e750a8"
+      "source": "f9ac23017f27caf45a99ccb4d2d1096f4e92afbf2831d6a53a6738ee9957afda",
+      "embedded": "f9ac23017f27caf45a99ccb4d2d1096f4e92afbf2831d6a53a6738ee9957afda"
     },
     "goal/risk_execution.js": {
       "source": "305c6637083d515f3bc1d81e1c677933ed3c02cb1ae6728f674d4f1cfb4cbbbc",
       "embedded": "305c6637083d515f3bc1d81e1c677933ed3c02cb1ae6728f674d4f1cfb4cbbbc"
     },
     "goal/session.js": {
-      "source": "f70980c4d07718c41e0414596ab314fc078453b60a38ea0226f4103f7af63ab1",
-      "embedded": "f70980c4d07718c41e0414596ab314fc078453b60a38ea0226f4103f7af63ab1"
+      "source": "6441c4a1590f90c11bc4b41471ab096ce7c18dc755cfd5e4323fb8d3ac6e2290",
+      "embedded": "6441c4a1590f90c11bc4b41471ab096ce7c18dc755cfd5e4323fb8d3ac6e2290"
     },
     "goal/spec.js": {
       "source": "db7492cece7da2c3f73057424be667270263a9a015de1b1544a6394455c0ee24",
