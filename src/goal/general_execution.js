@@ -4,8 +4,9 @@ const { runGoal } = require("./controller");
 const { runGeneralGoalLoop } = require("./general_loop");
 const { interpretNaturalLanguageGoal } = require("./intent");
 const { evaluateGoal } = require("./evaluator");
-const { observeEnvironment } = require("./environment_observer");
-const { createAdapterRegistry } = require("./adapter_registry");
+const { observeEnvironment, isObservationStale, preflightEnvironment } = require("./environment_observer");
+const { createAdapterRegistry, executeAdapter, adapterFailureToBlockerInput, getAdapter } = require("./adapter_registry");
+const { redactValue } = require("./evidence");
 
 function array(value) { return Array.isArray(value) ? value : []; }
 function isGeneralExecution(options = {}) {
@@ -22,12 +23,33 @@ function evidenceVerifier(spec, options) {
     return evaluateGoal(spec, { repoRoot: options.workspaceRoot, changedFiles: value?.changes?.changed_files || [], commandRunner: options.commandRunner });
   };
 }
+async function routeGeneralStep(step, context = {}, options = {}) {
+  const observation = context.environment || {};
+  const requirements = { commands: step.required_commands || step.verification?.commands || [], tools: step.required_tools || [], external: step.external === true || step.side_effects?.includes?.("external_call") };
+  const preflight = preflightEnvironment(observation, requirements, { capabilities: options.capabilities, external_capability: options.external_capability === true, now: Date.now() });
+  if (!preflight.ready) return redactValue({ status: "blocked", success: false, executed: false, category: preflight.reasons.some(item => /stale/.test(item)) ? "environment_failure" : preflight.reasons.some(item => /capability|approval/.test(item)) ? "missing_capability" : "tool_unavailable", reason: preflight.reasons.join("; "), step_id: step.id, blocker: { category: preflight.reasons.some(item => /stale/.test(item)) ? "environment_failure" : "tool_unavailable", reasons: preflight.reasons } });
+  const adapterName = step.adapter || step.adapter_name;
+  if (adapterName) {
+    const adapter = getAdapter(options.adapterRegistry, adapterName);
+    if (!adapter) return redactValue({ status: "blocked", success: false, executed: false, category: "tool_unavailable", code: "ADAPTER_NOT_FOUND", reason: `adapter not found: ${adapterName}`, step_id: step.id });
+    const externalAdapter = adapter.side_effects?.includes?.("external_call") || adapter.execution_policy === "authorized_external" || adapter.execution_policy === "unrestricted";
+    if (externalAdapter && !(options.external_capability === true && options.explicit_confirmation === true && options.runtime_permission === true && options.audit_persisted === true && options.integrity_preflight === true)) return redactValue({ status: "blocked", success: false, executed: false, category: "permission_blocked", code: "EXTERNAL_CAPABILITY_REQUIRED", reason: "external adapter requires explicit capability, confirmation, runtime permission, audit persistence, and integrity preflight", step_id: step.id });
+    const result = executeAdapter(options.adapterRegistry, adapterName, step.adapter_input || step.inputs || {}, { ...options, capabilities: options.capabilities || [], external_capability: options.external_capability === true, production_adapter_opt_in: options.production_adapter_opt_in === true, audit_persisted: options.audit_persisted === true, integrity_preflight: options.integrity_preflight === true });
+    if (result.completed === true) return redactValue({ ...result, status: "passed", success: true, valid: true, executed: true, step_id: step.id, verification: { status: "passed", valid: true, executed: true, evidence: (Array.isArray(result.verifier_evidence) ? result.verifier_evidence : Array.isArray(result.evidence) ? result.evidence : []).find(item => item?.valid === true && item?.executed === true) || null } });
+    const failure = adapterFailureToBlockerInput(result, { step_id: step.id });
+    return redactValue({ ...result, step_id: step.id, category: failure.category, blocker: failure });
+  }
+  if (typeof options.taskExecutor !== "function") return redactValue({ status: "blocked", success: false, executed: false, category: "environment_failure", code: "TASK_EXECUTOR_MISSING", reason: "injected executor is required", step_id: step.id });
+  return options.taskExecutor(step.description || step.purpose || step.id, { ...options, step, environment: observation });
+}
 function executionCallbacks(spec, options) {
   const taskExecutor = options.execute || options.taskExecutor;
+  const rawObserver = options.observeEnvironment || (options.environmentObserver ? input => options.environmentObserver(input) : async input => observeEnvironment({ workspaceRoot: options.workspaceRoot, ...(options.environment_options || {}), ...input }));
+  const observeFresh = async input => { let observation = await rawObserver(input); if (isObservationStale(observation, Date.now())) observation = await rawObserver({ ...input, reobserve: true }); return observation; };
   return {
-    observeEnvironment: options.observeEnvironment || (options.environmentObserver ? input => options.environmentObserver(input) : async input => observeEnvironment({ workspaceRoot: options.workspaceRoot, ...(options.environment_options || {}), ...input })),
+    observeEnvironment: observeFresh,
     plan: options.plan || (options.goalPlan ? async () => ({ goal_plan: options.goalPlan, status: "ready" }) : undefined),
-    execute: typeof taskExecutor === "function" ? async step => taskExecutor(step.description || step.purpose || step.id, { ...options, step, goalSpec: spec }) : undefined,
+    execute: async (step, context) => routeGeneralStep(step, context, { ...options, taskExecutor }),
     verify: evidenceVerifier(spec, options),
     replan: options.replan,
   };
