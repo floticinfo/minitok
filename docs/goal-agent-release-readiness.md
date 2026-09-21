@@ -4,7 +4,7 @@
 
 - `implementation_complete`: **true** — GoalSpec, GoalEvaluator, GoalController, persistent Goal Session, recovery, capability routing, MCP goal API, Repository ODD, local HTTP application observation, E2E harness, benchmark runner, and observed capability profiles are present in the working tree.
 - `verification_complete`: **true for the executed local verification set** — focused Goal/E2E/benchmark checks, full `npm test`, lint, typecheck, docs, version metadata, MCP registry, extension tests, package dry-run, and diff checks passed. Live/provider and external production checks remain unavailable.
-- `benchmark_complete`: **true for deterministic mock evidence** — current raw artifacts exist, use the Prompt 2 schema, retain all 14 scenarios, and validate. This is not a live-provider benchmark and does not support a product superiority claim.
+- `benchmark_complete`: **true only for the validated deterministic mock/local contract** — the current canonical suite defines 25 scenarios and requires 17 lifecycle scenario IDs plus safety metrics in newly generated raw artifacts. Historical raw artifacts may retain the earlier 14-scenario schema and must not be treated as current Phase 10 evidence. This is not a live-provider benchmark and does not support claims about all natural-language goals, production success, live-provider performance, external service success, or real deploy/publish/database/SCM success.
 - `release_ready`: **false** — audit-only validation found a dirty worktree, stale release manifest identity, no release tag at HEAD, and no approved release commit.
 - `production_ready`: **false** — no live provider, browser, production database, deployment, or external production validation was performed.
 
@@ -77,7 +77,7 @@ Generated under `.minitok/benchmarks/`:
 - `evidence.json`
 - `live.unavailable.json`
 
-The mock benchmark generated 70 records across 14 scenarios and 5 capability profiles. Negative/security scenarios were retained; 40 records have `expected_negative_case=true`. The paired raw artifacts use `measurement_status=deterministic_mock`, `publishable_claim=false`, and the local-only claim boundary. `benchmark:validate` returned `valid_input`.
+The historical mock benchmark artifact in this directory generated 70 records across 14 scenarios and 5 capability profiles. It is retained for provenance only. Newly generated Phase 10 artifacts must use `measurement_status=deterministic_mock` or `deterministic_local`, `publishable_claim=false`, the local-only claim boundary, all required lifecycle scenario IDs, and all required safety/quality metrics before `benchmark:validate` can return `valid_input`.
 
 Current minitok metrics:
 

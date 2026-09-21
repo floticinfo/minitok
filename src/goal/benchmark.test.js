@@ -5,9 +5,9 @@ const assert = require("node:assert/strict");
 const { BENCHMARK_SCENARIOS, MODEL_PROFILES, runBenchmarkScenario, runBenchmarkSuite, calculateBenchmarkMetrics, summarizeBenchmark, isBenchmarkRecord, validateBenchmarkRaw } = require("./benchmark");
 
 test("defines all required local benchmark scenarios without external actions", () => {
-  assert.equal(BENCHMARK_SCENARIOS.length, 14);
+  assert.equal(BENCHMARK_SCENARIOS.length, 25);
   assert.ok(BENCHMARK_SCENARIOS.every(scenario => scenario.external_access === false));
-  for (const id of ["simple_bug_fix", "multi_file_feature", "incomplete_requirement", "ambiguous_goal", "verifier_failure", "environment_failure", "repeated_failure", "weak_model", "model_switch", "interruption_resume", "approval_required", "scope_violation", "false_completion_claim", "unknown_verifier_state"]) assert.ok(BENCHMARK_SCENARIOS.some(scenario => scenario.id === id));
+  for (const id of ["simple_bug_fix", "multi_file_feature", "incomplete_requirement", "ambiguous_goal", "hidden_dependency", "verifier_failure", "environment_failure", "tool_discovery", "missing_verifier", "blocker_recovery", "alternative_selection", "assumption_invalidation", "plan_rewrite", "rollback", "resume", "external_action", "security_boundary", "repeated_failure", "weak_model", "model_switch", "interruption_resume", "approval_required", "scope_violation", "false_completion_claim", "unknown_verifier_state"]) assert.ok(BENCHMARK_SCENARIOS.some(scenario => scenario.id === id));
 });
 
 test("records capability-based model outcome and evidence fields", async () => {
@@ -30,8 +30,8 @@ test("calculates false completion and unsafe action as first-class metrics", () 
 
 test("runs each scenario for each capability profile without external access", async () => {
   const suite = await runBenchmarkSuite({ models: MODEL_PROFILES.slice(0, 2), execute: async (_scenario, model) => ({ model_profile: model.id, goal_achieved: false, missing_goal: true }) });
-  assert.equal(suite.records.length, 28);
-  assert.equal(suite.metrics.total_runs, 28);
+  assert.equal(suite.records.length, 50);
+  assert.equal(suite.metrics.total_runs, 50);
   assert.equal(suite.metrics.unsafe_action_rate, 0);
 });
 
@@ -115,4 +115,20 @@ test("records behavioral outcome metrics and observed capability profiles", asyn
 
 test("empty benchmark input cannot validate as a raw measurement", () => {
   assert.equal(validateBenchmarkRaw({ schema_version: 1, artifact_type: "goal_agent_benchmark_raw", result_kind: "mock", mode: "mock", measurement_status: "deterministic_mock", synthetic: false, example: false, publishable_claim: false, claim_boundary: "Local deterministic benchmark evidence only", model: "m", provider: "none", repository_commit: "commit", task: "task", verification_exit_code: 0, duration_ms: 0, total_tokens: 0, total_cost_usd: 0, manual_interventions: 0, records: [], metrics: {} }), false);
+});
+
+test("Phase 10 benchmark contract requires all lifecycle scenarios and safety metrics", async () => {
+  const { REQUIRED_BENCHMARK_SCENARIO_IDS, REQUIRED_BENCHMARK_METRICS, validateBenchmarkCoverage } = require("./benchmark");
+  const suite = await runBenchmarkSuite({ models: [MODEL_PROFILES[0]], execute: async scenario => ({ completed: false, goal_achieved: false, verifier_executed: false, verifier_execution_rate: 0, verifier_evidence: [], evidence_complete: false, negative_case_handled_correctly: scenario.expected_negative_case, status: scenario.expected_negative_case ? "blocked" : "incomplete", secret: "token=hidden" }) });
+  const raw = { schema_version: 1, artifact_type: "goal_agent_benchmark_raw", result_kind: "mock", mode: "mock", measurement_status: "deterministic_mock", synthetic: false, example: false, publishable_claim: false, claim_boundary: "Local deterministic benchmark evidence only; no production or live provider claim", model: "mock", provider: "none", repository_commit: "commit", task: "deterministic local benchmark", verification_exit_code: 0, duration_ms: 1, total_tokens: 0, total_cost_usd: 0, manual_interventions: 0, records: suite.records, metrics: suite.metrics };
+  assert.equal(REQUIRED_BENCHMARK_SCENARIO_IDS.every(id => suite.records.some(record => record.scenario_id === id)), true);
+  assert.equal(REQUIRED_BENCHMARK_METRICS.every(metric => typeof suite.metrics[metric] === "number"), true);
+  assert.equal(validateBenchmarkCoverage(raw).valid, true);
+  assert.doesNotMatch(JSON.stringify(raw), /token=hidden/i);
+});
+
+test("benchmark coverage rejects a live or production success claim", () => {
+  const { validateBenchmarkCoverage } = require("./benchmark");
+  const invalid = { schema_version: 1, artifact_type: "goal_agent_benchmark_raw", result_kind: "mock", mode: "mock", measurement_status: "deterministic_mock", synthetic: false, example: false, publishable_claim: true, claim_boundary: "Production deploy succeeded with live provider", model: "mock", provider: "none", repository_commit: "commit", task: "task", verification_exit_code: 0, duration_ms: 0, total_tokens: 0, total_cost_usd: 0, manual_interventions: 0, records: [{ scenario_id: "simple_bug_fix" }], metrics: {} };
+  assert.equal(validateBenchmarkCoverage(invalid).valid, false);
 });

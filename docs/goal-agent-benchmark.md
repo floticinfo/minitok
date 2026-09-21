@@ -2,7 +2,7 @@
 
 ## 범위
 
-benchmark는 실제 외부 접근 없는 deterministic local suite다. 기존 14개 scenario는 backward-compatible하게 유지하고, Phase 13은 16개 category taxonomy와 opt-in deterministic fixture를 추가한다. `runBenchmarkSuite({ includeFixtures: true })` 또는 `npm run benchmark:goal -- --include-fixtures`로 category fixture를 포함할 수 있다.
+benchmark는 실제 외부 접근 없는 deterministic mock/local suite다. canonical suite는 25개 scenario를 측정하며, 그중 17개는 Phase 10 lifecycle coverage 계약으로 필수 검증한다. `runBenchmarkSuite({ includeFixtures: true })` 또는 `npm run benchmark:goal -- --include-fixtures`로 16개 category fixture를 추가할 수 있다. 이 결과는 모든 자연어 목표 지원, live provider 성능, production 성공, 외부 서비스 성공, deploy/publish/database/SCM 성공을 주장하지 않는다.
 
 - simple bug fix
 - multi-file feature
