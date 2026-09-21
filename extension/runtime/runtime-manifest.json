@@ -253,8 +253,8 @@
       "embedded": "adb01a1bf7937666c15ff260e4883e3ad4ebfc05753956a846c42a3dbc4b8e47"
     },
     "goal/dynamic_verifier.js": {
-      "source": "c8bc303bdc19fa7b6dfa19626fe4699599f2451aa83363ac260716023fb66f02",
-      "embedded": "c8bc303bdc19fa7b6dfa19626fe4699599f2451aa83363ac260716023fb66f02"
+      "source": "3d8b82f65dee7571af313a88b1defa1dcdb09e8143e2855a8f716daee8bbc530",
+      "embedded": "3d8b82f65dee7571af313a88b1defa1dcdb09e8143e2855a8f716daee8bbc530"
     },
     "goal/environment_observer.js": {
       "source": "7f16ae54a7896bd48a6c269579b32c5932d47fb7c0682f4f93885875733db4c8",
@@ -293,8 +293,8 @@
       "embedded": "d25f0b5771dbfeb380d8ac8b90d9afbe421173732e5ac454bbaab956b72dd2f7"
     },
     "goal/general_loop.js": {
-      "source": "70aa1c5f2fef60b6b45ddce4bb4a856c5f7721cd6bd7dc520f2a7d65701363c3",
-      "embedded": "70aa1c5f2fef60b6b45ddce4bb4a856c5f7721cd6bd7dc520f2a7d65701363c3"
+      "source": "6e1b091eff0a77ef38fadd5fca914472fe886aa5e94fd81494f78e31731eb4a1",
+      "embedded": "6e1b091eff0a77ef38fadd5fca914472fe886aa5e94fd81494f78e31731eb4a1"
     },
     "goal/general_planner.js": {
       "source": "4d615f1e13207b9c2acb745388e1426d858869ee780374af67d185f396ad19b6",
@@ -337,8 +337,8 @@
       "embedded": "305c6637083d515f3bc1d81e1c677933ed3c02cb1ae6728f674d4f1cfb4cbbbc"
     },
     "goal/session.js": {
-      "source": "7655eca61da53fa642e818dd0920eb5270a48bc6b157a368d700d2d4b248a34d",
-      "embedded": "7655eca61da53fa642e818dd0920eb5270a48bc6b157a368d700d2d4b248a34d"
+      "source": "f70980c4d07718c41e0414596ab314fc078453b60a38ea0226f4103f7af63ab1",
+      "embedded": "f70980c4d07718c41e0414596ab314fc078453b60a38ea0226f4103f7af63ab1"
     },
     "goal/spec.js": {
       "source": "db7492cece7da2c3f73057424be667270263a9a015de1b1544a6394455c0ee24",
