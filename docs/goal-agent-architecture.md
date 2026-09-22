@@ -83,14 +83,14 @@ providers:
     base_url: https://stream.camelai.com/v1
     api_key_env: CAMEL_API_KEY
     models:
-      - id: camel-stream/auto
+      - id: auto
 roles:
   plan:
     provider: camelstream
-    model: camel-stream/auto
+    model: auto
 ```
 
-raw `api_key`는 설정에서 거부하며 `CAMEL_API_KEY`의 존재 여부만 gate에서 확인한다. 실제 값은 응답, audit, live evidence, 로그에 기록하지 않는다. Camelstream 요청은 `/v1/responses`와 `camel-stream/auto`로 제한한다.
+raw `api_key`는 설정에서 거부하며 `CAMEL_API_KEY`의 존재 여부만 gate에서 확인한다. 실제 값은 응답, audit, live evidence, 로그에 기록하지 않는다. Camelstream 요청은 `/v1/responses`와 registry-confirmed model `auto`로 제한한다.
 
 실제 호출은 `supervised_live` mode, `--confirm-live`, `--allow-network`, `--allow-camelstream`, `CAMEL_API_KEY`가 모두 있어야 한다. 기본 canary budget은 요청 1회, 출력 1024 tokens, timeout 30초다. `npm run camelstream:live-smoke`는 이러한 gate가 없으면 네트워크 전에 blocked evidence만 기록한다.
 

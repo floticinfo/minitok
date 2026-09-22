@@ -64,7 +64,7 @@ P2는 live adapter 성능이나 외부 서비스 성공률을 측정하지 않�
 
 ## Camelstream supervised live smoke (P3-P5)
 
-Camelstream 연결은 기존 deterministic evaluation과 분리된 supervised live boundary다. 공식 preset은 `https://stream.camelai.com/v1`, model `camel-stream/auto`, credential handle `CAMEL_API_KEY`, Responses API `/v1/responses`를 사용한다. raw key를 config나 evidence에 넣지 않는다.
+Camelstream 연결은 기존 deterministic evaluation과 분리된 supervised live boundary다. 공식 preset은 `https://stream.camelai.com/v1`, registry-confirmed model `auto`, credential handle `CAMEL_API_KEY`, Responses API `/v1/responses`를 사용한다. raw key를 config나 evidence에 넣지 않는다.
 
 실행 경계:
 

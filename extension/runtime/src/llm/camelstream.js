@@ -2,7 +2,7 @@
 
 const CAMELSTREAM_PROVIDER = "camelstream";
 const CAMELSTREAM_BASE_URL = "https://stream.camelai.com/v1";
-const CAMELSTREAM_MODEL = "camel-stream/auto";
+const CAMELSTREAM_MODEL = "auto";
 const CAMELSTREAM_CREDENTIAL_HANDLE = "CAMEL_API_KEY";
 const CAMELSTREAM_CONTEXT_WINDOW = 260000;
 function camelstreamPreset(extra = {}) {

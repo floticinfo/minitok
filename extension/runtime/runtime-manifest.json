@@ -369,12 +369,12 @@
       "embedded": "7e29b59c3338628597349042d17baf914719b464535df8e48b5b7767d691b827"
     },
     "llm/camelstream.js": {
-      "source": "b70d5f58c951fb434b9d6eeeb07b7159fa4b0a65fb6cb9484065fb848dda363b",
-      "embedded": "b70d5f58c951fb434b9d6eeeb07b7159fa4b0a65fb6cb9484065fb848dda363b"
+      "source": "a1baf1233b05236a4c0fdf447639567d6301a99dbc6d04ed8189d9702bc1328c",
+      "embedded": "a1baf1233b05236a4c0fdf447639567d6301a99dbc6d04ed8189d9702bc1328c"
     },
     "llm/live_provider.js": {
-      "source": "58e25a5bdae5312a2c7ac0c87622432c67cc3a49caddc66e71ae77da72a0ddb7",
-      "embedded": "58e25a5bdae5312a2c7ac0c87622432c67cc3a49caddc66e71ae77da72a0ddb7"
+      "source": "0ab870ccdce6a5ad8f92ffc74296d60a8ab063d9c4b5eb31e5f3fa83d6b4ddae",
+      "embedded": "0ab870ccdce6a5ad8f92ffc74296d60a8ab063d9c4b5eb31e5f3fa83d6b4ddae"
     },
     "llm/models.js": {
       "source": "392760a8a7ac47305f5745c019b68fd55434da62fb760be5497c0264c15e7920",
