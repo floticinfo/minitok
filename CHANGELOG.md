@@ -5,6 +5,7 @@
 ### Changed
 
 - Added explicit general-autonomy support boundaries for local repository, clarification-only, approval-required external, and unsupported intent domains. Ambiguous or low-confidence goals now preserve candidate interpretations and execution boundaries instead of silently granting authority.
+- Added an injected-provider offline/local evaluation harness with structured-output, intent, criteria, plan, tool/recovery, latency, token, intervention, redaction, and safety metrics. Evaluation artifacts are non-publishable and explicitly bounded to deterministic local evidence.
 
 ### Documentation
 

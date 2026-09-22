@@ -38,6 +38,18 @@ Phase 10 category taxonomy:
 - security_boundary
 - false_completion
 
+## Provider evaluation harness (Phase P1)
+
+`src/goal/provider_evaluation.js`는 injected provider만 사용해 offline/local structured-output 평가를 수행한다. `deterministic_offline`과 `deterministic_local` 외의 measurement mode는 거부하며, live provider나 production endpoint를 호출하지 않는다. 각 record는 intent/domain 경계, structured output, criteria/plan validity, tool/recovery proposal 품질, latency, token usage, manual interventions와 안전 metric을 보존한다. raw provider 응답과 secret-like 값은 저장하지 않으며, numeric `metrics`와 `token_usage`는 구조화된 관측값으로만 저장한다.
+
+모든 provider evaluation artifact는 다음 claim boundary를 사용한다.
+
+```text
+Local deterministic provider evaluation evidence only; no live-provider, production, or product-superiority claim.
+```
+
+`publishable_claim`은 항상 `false`다. Provider 평가 통과는 제품 성공, production readiness 또는 모든 자연어 목표 지원을 의미하지 않는다.
+
 ## Model matrix
 
 실제 모델 이름으로 결과를 해석하지 않는다. 다음 capability contract profile을 사용한다.
