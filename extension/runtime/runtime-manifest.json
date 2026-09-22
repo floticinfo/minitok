@@ -49,6 +49,7 @@
     "goal/execution_policy.js",
     "goal/expansion.js",
     "goal/expansion_general.js",
+    "goal/external_operation_contract.js",
     "goal/failure.js",
     "goal/general_execution.js",
     "goal/general_loop.js",
@@ -230,8 +231,8 @@
       "embedded": "26d689131d68eaf4b0d247af5cbd0d3a6d6ca7dcfc1216392769bca7ba0ec72c"
     },
     "goal/adapter_registry.js": {
-      "source": "3325a941c7d7322b3d06ccad5378f87fe4c4a91e94c43cd32e7e798bd41e9886",
-      "embedded": "3325a941c7d7322b3d06ccad5378f87fe4c4a91e94c43cd32e7e798bd41e9886"
+      "source": "b5c9f897cab20cce0d5b4a8a703c96f71af6ccc2c024f3a57178cfbb6155c955",
+      "embedded": "b5c9f897cab20cce0d5b4a8a703c96f71af6ccc2c024f3a57178cfbb6155c955"
     },
     "goal/application.js": {
       "source": "fdccc81100e3c029a7a284605aca4e5e7ac4bbf6ea8f6b28beb62d217f827972",
@@ -285,13 +286,17 @@
       "source": "d6e81c2f965ede1bfc4cd3b7fb4a9d09c726713511556778c7f79a582a7a2cf8",
       "embedded": "d6e81c2f965ede1bfc4cd3b7fb4a9d09c726713511556778c7f79a582a7a2cf8"
     },
+    "goal/external_operation_contract.js": {
+      "source": "1230ec652ef9c0a7b068ce12ace4aeee293ea354a16f6026553fea5859120fa5",
+      "embedded": "1230ec652ef9c0a7b068ce12ace4aeee293ea354a16f6026553fea5859120fa5"
+    },
     "goal/failure.js": {
       "source": "2b6d0dd416212750ae6501c716a2ec416fe67af939eaa629784bc140df1454c9",
       "embedded": "2b6d0dd416212750ae6501c716a2ec416fe67af939eaa629784bc140df1454c9"
     },
     "goal/general_execution.js": {
-      "source": "4ea0d729beacb3d9f876acfb067a2f5aa953118db59082c32d464fe47ce110d1",
-      "embedded": "4ea0d729beacb3d9f876acfb067a2f5aa953118db59082c32d464fe47ce110d1"
+      "source": "c6caf4f53e51d5631d3d88ff08c8f720c893f1e47af77fb49743d6d638a10f94",
+      "embedded": "c6caf4f53e51d5631d3d88ff08c8f720c893f1e47af77fb49743d6d638a10f94"
     },
     "goal/general_loop.js": {
       "source": "e3009ccdd8fe4897258fd6b841591403623dba7d7896798451ec50b82936709b",

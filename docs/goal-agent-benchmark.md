@@ -50,6 +50,17 @@ Local deterministic provider evaluation evidence only; no live-provider, product
 
 `publishable_claim`은 항상 `false`다. Provider 평가 통과는 제품 성공, production readiness 또는 모든 자연어 목표 지원을 의미하지 않는다.
 
+## External-operation contract (Phase P2)
+
+P2는 live adapter 성능이나 외부 서비스 성공률을 측정하지 않는다. injected/mock adapter 경계에서만 다음 계약을 검증한다.
+
+- target binding과 capability validation
+- idempotency key, request fingerprint, operation ledger와 duplicate-operation prevention
+- read-after-write verification, expected/observed external-state fingerprint, drift/unknown 보존
+- timeout, partial success, unknown handling과 명시적 retry policy
+- redacted operation audit와 source/runtime parity
+
+외부 mutation은 read-after-write observer와 ledger가 없으면 executor 이후에도 `completed`가 될 수 없다. 모든 P2 결과는 local deterministic evidence이며 live provider, production, database, deploy, publish 또는 SCM 성공을 주장하지 않는다.
 ## Model matrix
 
 실제 모델 이름으로 결과를 해석하지 않는다. 다음 capability contract profile을 사용한다.

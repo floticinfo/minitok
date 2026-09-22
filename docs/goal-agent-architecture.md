@@ -61,3 +61,14 @@ explicit mode + confirmation + configured capability allowlist
 어느 하나라도 실패하면 adapter와 후속 executor를 호출하지 않는다. path traversal, workspace escape, dangerous key, protected path/verifier tampering, secret/private-key logging 및 `always_blocked` (always-blocked) operation은 mode와 무관하게 차단된다. audit에는 safe relative path와 URL protocol/hostname/port/pathname만 남기고 민감한 query/userinfo/raw result는 제거한다.
 
 runtime parity는 기능을 production에 연결했다는 뜻이 아니다. 현재 adapter는 injected/mock 중심이며 실제 registry, cloud, database, browser, SCM production 동작은 별도 승인된 integration 단계의 대상이다.
+
+### P2 verified external-operation contract
+
+외부 side effect를 선언한 injected adapter는 `external_operation_contract`를 통해 다음을 모두 명시한다.
+
+- `target_binding`과 required capabilities: target이 없거나 capability가 부족하면 executor 전에 fail-closed
+- idempotency key, canonical request fingerprint, operation ledger: 동일 key의 duplicate 실행 금지
+- mutation의 read-after-write verification과 expected/observed external-state fingerprint: drift나 verification unknown은 completion으로 승격하지 않음
+- `timeout`, `partial_success`, `unknown` 상태 보존과 명시적 retry status allowlist
+
+계약 adapter에는 injected `read_after_write_executor`가 필요하며 descriptor/public response에서는 executor를 제거한다. ledger, fingerprint, operation status만 redacted audit로 남기고 raw adapter result와 secret-like 값은 저장하지 않는다. P2 테스트는 deterministic mock/local adapter만 사용하며 live endpoint, production credential, external service를 호출하지 않는다.
