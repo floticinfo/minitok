@@ -37,6 +37,12 @@ function collectFiles() {
       "general_planner.js",
       "general_execution.js",
       "replanner.js",
+    ].map(file => path.join(sourceRoot, "goal", file)),
+    ...[
+      "camelstream.js",
+      "live_provider.js",
+    ].map(file => path.join(sourceRoot, "llm", file)),
+    ...[
       "tool_registry.js",
     ].map(file => path.join(sourceRoot, "goal", file)),
   ];

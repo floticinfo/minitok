@@ -7,6 +7,7 @@
 - Added explicit general-autonomy support boundaries for local repository, clarification-only, approval-required external, and unsupported intent domains. Ambiguous or low-confidence goals now preserve candidate interpretations and execution boundaries instead of silently granting authority.
 - Added an injected-provider offline/local evaluation harness with structured-output, intent, criteria, plan, tool/recovery, latency, token, intervention, redaction, and safety metrics. Evaluation artifacts are non-publishable and explicitly bounded to deterministic local evidence.
 - Added verified external-operation contracts for injected adapters: target/capability binding, idempotency and request fingerprints, duplicate prevention, operation ledgers, read-after-write verification, external-state fingerprints, drift detection, explicit retry policy, timeout/partial-success/unknown preservation, and redacted operation audit metadata. No live service or production adapter is contacted.
+- Added a Camelstream OpenAI-compatible preset and supervised live-smoke boundary. The preset fixes `https://stream.camelai.com/v1`, `camel-stream/auto`, and the `CAMEL_API_KEY` credential handle, rejects raw credentials, uses the Responses API, requires explicit confirmation/network/endpoint opt-ins, and records separate non-publishable live evidence with a one-request canary budget. Implementation tests use fetch/DNS mocks only.
 
 ### Documentation
 

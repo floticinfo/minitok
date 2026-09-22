@@ -61,6 +61,24 @@ P2는 live adapter 성능이나 외부 서비스 성공률을 측정하지 않�
 - redacted operation audit와 source/runtime parity
 
 외부 mutation은 read-after-write observer와 ledger가 없으면 executor 이후에도 `completed`가 될 수 없다. 모든 P2 결과는 local deterministic evidence이며 live provider, production, database, deploy, publish 또는 SCM 성공을 주장하지 않는다.
+
+## Camelstream supervised live smoke (P3-P5)
+
+Camelstream 연결은 기존 deterministic evaluation과 분리된 supervised live boundary다. 공식 preset은 `https://stream.camelai.com/v1`, model `camel-stream/auto`, credential handle `CAMEL_API_KEY`, Responses API `/v1/responses`를 사용한다. raw key를 config나 evidence에 넣지 않는다.
+
+실행 경계:
+
+```text
+mode=supervised_live
++ --confirm-live
++ --allow-network
++ --allow-camelstream
++ CAMEL_API_KEY present
++ max_requests=1, max_tokens=1024, timeout_ms=30000
+```
+
+`npm run camelstream:live-smoke`는 gate가 충족되지 않으면 network request 없이 blocked evidence를 생성한다. 통과하면 최대 한 번의 completion request만 실행하고 provider, endpoint hostname/path, model, status, latency, numeric token usage, redacted error, budget을 별도 `supervised_live_provider_smoke` artifact에 기록한다. `publishable_claim`은 항상 `false`이며 live smoke 결과를 P1/P2 deterministic artifact나 production claim으로 승격하지 않는다. 구현 테스트는 fetch/DNS mock만 사용한다.
+
 ## Model matrix
 
 실제 모델 이름으로 결과를 해석하지 않는다. 다음 capability contract profile을 사용한다.

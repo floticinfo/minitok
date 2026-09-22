@@ -13,6 +13,7 @@ const { ConfigError } = require("../core/errors");
 const { normalizeProvider } = require("../auth/aliases");
 const { EXECUTION_POLICY_MODES } = require("../goal/execution_policy");
 const { EXECUTION_CAPABILITIES, GENERAL_CAPABILITIES, isAlwaysBlockedCapability } = require("../goal/capabilities");
+const { CAMELSTREAM_PROVIDER, camelstreamPreset } = require("../llm/camelstream");
 
 const ENV_ALLOWLIST = new Set([
   "minitok_offline", "minitok_default_provider", "minitok_model", "minitok_server_url",
@@ -211,7 +212,8 @@ function normalizeProviderConfig(config) {
     const aliases = [];
     for (const [name, value] of Object.entries(config.providers)) {
       const canonical = normalizeProvider(name);
-      if (canonical === name.toLowerCase()) providers[canonical] = value;
+      if (canonical === CAMELSTREAM_PROVIDER) providers[canonical] = camelstreamPreset(value || {});
+      else if (canonical === name.toLowerCase()) providers[canonical] = value;
       else aliases.push([canonical, value]);
     }
     // A canonical key is authoritative when both `gpt` and `openai` exist.

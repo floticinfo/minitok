@@ -69,6 +69,8 @@
     "goal/task_executor.js",
     "goal/tool_registry.js",
     "goal/validator.js",
+    "llm/camelstream.js",
+    "llm/live_provider.js",
     "llm/models.js",
     "llm/provider.js",
     "mcp/goal-tools.js",
@@ -135,8 +137,8 @@
       "embedded": "0f86e6c56aa35589b35c7940696ee2b819fad071e46e280cb136b8e006656fe9"
     },
     "config/loader.js": {
-      "source": "98102e1f49b5710e0634f3ce8d95c72cd4399038475017cab229343e53c914e6",
-      "embedded": "98102e1f49b5710e0634f3ce8d95c72cd4399038475017cab229343e53c914e6"
+      "source": "b1974eefe12620917ddfa7e29a218110ea885a2069af9a6a828b20a38a607ec8",
+      "embedded": "b1974eefe12620917ddfa7e29a218110ea885a2069af9a6a828b20a38a607ec8"
     },
     "context/compaction.js": {
       "source": "0475f4c5ed57462603366a047689064c136cf596822394fff72f0c456bb27cdf",
@@ -366,13 +368,21 @@
       "source": "7e29b59c3338628597349042d17baf914719b464535df8e48b5b7767d691b827",
       "embedded": "7e29b59c3338628597349042d17baf914719b464535df8e48b5b7767d691b827"
     },
+    "llm/camelstream.js": {
+      "source": "b70d5f58c951fb434b9d6eeeb07b7159fa4b0a65fb6cb9484065fb848dda363b",
+      "embedded": "b70d5f58c951fb434b9d6eeeb07b7159fa4b0a65fb6cb9484065fb848dda363b"
+    },
+    "llm/live_provider.js": {
+      "source": "58e25a5bdae5312a2c7ac0c87622432c67cc3a49caddc66e71ae77da72a0ddb7",
+      "embedded": "58e25a5bdae5312a2c7ac0c87622432c67cc3a49caddc66e71ae77da72a0ddb7"
+    },
     "llm/models.js": {
-      "source": "ed51e13d2df28376c4257a5203db3f915039d79dc908d7c00d0936b141c3cbd0",
-      "embedded": "ed51e13d2df28376c4257a5203db3f915039d79dc908d7c00d0936b141c3cbd0"
+      "source": "392760a8a7ac47305f5745c019b68fd55434da62fb760be5497c0264c15e7920",
+      "embedded": "392760a8a7ac47305f5745c019b68fd55434da62fb760be5497c0264c15e7920"
     },
     "llm/provider.js": {
-      "source": "57c2d171d131f56b7227fae0417a0412ce713d5280bcd6da5298c289ca3c013e",
-      "embedded": "57c2d171d131f56b7227fae0417a0412ce713d5280bcd6da5298c289ca3c013e"
+      "source": "a768a226c962a51071f7d11c2f12618244732e67a75ca189993085e402f051db",
+      "embedded": "a768a226c962a51071f7d11c2f12618244732e67a75ca189993085e402f051db"
     },
     "mcp/goal-tools.js": {
       "source": "2f0acfdb586d92f84098a2ad79bbaca4d40ea4d4dbfee01021572505e285abfe",
