@@ -64,6 +64,7 @@
     "goal/risk_execution.js",
     "goal/session.js",
     "goal/spec.js",
+    "goal/supported_domains.js",
     "goal/task_executor.js",
     "goal/tool_registry.js",
     "goal/validator.js",
@@ -281,8 +282,8 @@
       "embedded": "5df7b31a86bf770ab118e0a75e5fd060ca8c1dbb67d79ca4b3a9662ca86b76ab"
     },
     "goal/expansion_general.js": {
-      "source": "ba918f010c5fe40711e878e06c73c7acfdc42611ded0cd83a0e79bc292fe004f",
-      "embedded": "ba918f010c5fe40711e878e06c73c7acfdc42611ded0cd83a0e79bc292fe004f"
+      "source": "d6e81c2f965ede1bfc4cd3b7fb4a9d09c726713511556778c7f79a582a7a2cf8",
+      "embedded": "d6e81c2f965ede1bfc4cd3b7fb4a9d09c726713511556778c7f79a582a7a2cf8"
     },
     "goal/failure.js": {
       "source": "2b6d0dd416212750ae6501c716a2ec416fe67af939eaa629784bc140df1454c9",
@@ -301,8 +302,8 @@
       "embedded": "4d615f1e13207b9c2acb745388e1426d858869ee780374af67d185f396ad19b6"
     },
     "goal/general_response.js": {
-      "source": "910fa2e1e8de09b44c4c7efc80829af7f01451e7cacf04cf81d107c756b2d863",
-      "embedded": "910fa2e1e8de09b44c4c7efc80829af7f01451e7cacf04cf81d107c756b2d863"
+      "source": "18c048d40a8d91afee31ae82ec1d69378ed712e21f805a18775eeff21df9a69d",
+      "embedded": "18c048d40a8d91afee31ae82ec1d69378ed712e21f805a18775eeff21df9a69d"
     },
     "goal/hypothesis.js": {
       "source": "dcf589f74b1ad8857a186bfd328e8f748bfcdac6bb2b37654bd428cf04e9ad5d",
@@ -313,8 +314,8 @@
       "embedded": "9c9265f1fcd57104bae9d8e0975b859716554ef1582360e247d2d30946083596"
     },
     "goal/intent.js": {
-      "source": "a30d0caf8b245fd35e499bdf519712a5d049f61a2c0b9b07f049b5bce0216b96",
-      "embedded": "a30d0caf8b245fd35e499bdf519712a5d049f61a2c0b9b07f049b5bce0216b96"
+      "source": "dbf63f5fee69166cbdabab0336f46f77bffece989d5302a34542c38f7254c293",
+      "embedded": "dbf63f5fee69166cbdabab0336f46f77bffece989d5302a34542c38f7254c293"
     },
     "goal/odd.js": {
       "source": "614567cbad38a201959c91bb43c31e09e9bef1fad54b20a807df8b7d5072c22b",
@@ -343,6 +344,10 @@
     "goal/spec.js": {
       "source": "db7492cece7da2c3f73057424be667270263a9a015de1b1544a6394455c0ee24",
       "embedded": "db7492cece7da2c3f73057424be667270263a9a015de1b1544a6394455c0ee24"
+    },
+    "goal/supported_domains.js": {
+      "source": "d549803ae8bdf566111709bb408234feb5471d868dd1c68fb940404bbebd78ea",
+      "embedded": "d549803ae8bdf566111709bb408234feb5471d868dd1c68fb940404bbebd78ea"
     },
     "goal/task_executor.js": {
       "source": "d07fe950a069575930b5c5e10556a07695ae00f389bfe2e12e9db45bf86a7188",

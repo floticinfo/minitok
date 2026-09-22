@@ -40,6 +40,11 @@ function responseProjection(session, extra = {}) {
   const resumeAction = requiredUserAction ? `minitok goal resume after explicit approval: ${requiredUserAction}` : resumeRequired ? "Run the read-only verifier, then resume the goal" : state.status === "paused" ? "minitok goal resume after reauthorization" : null;
   return redactValue(safeLifecycleValue({
     interpretation: state.interpreted_intent || extra.interpretation || null,
+    candidate_interpretations: state.interpreted_intent?.candidate_interpretations || extra.candidate_interpretations || [],
+    supported_domain: state.interpreted_intent?.supported_domain || extra.supported_domain || null,
+    support_status: state.interpreted_intent?.support_status || extra.support_status || "unknown",
+    support_reasons: state.interpreted_intent?.support_reasons || extra.support_reasons || [],
+    execution_boundary: state.interpreted_intent?.execution_boundary || extra.execution_boundary || "clarification_only",
     goal_hypotheses: state.goal_hypotheses || extra.goal_hypotheses || extra.hypotheses || [],
     assumptions: state.assumption_ledger || state.assumptions || extra.assumptions || [],
     candidate_success_criteria: state.candidate_criteria || extra.candidate_criteria || criteria,

@@ -52,7 +52,7 @@ profile별로 `structured_output`, `tool_calling`, repository navigation, code e
 
 ## Metrics
 
-각 record는 scenario type, expected negative case, system completion, goal achievement, system false completion, unsafe action attempted/blocked/executed, negative case handling, release blocker, capability profile, cycle, token usage, recovery, escalation, repeated action, verifier execution/evidence, resume를 기록한다. artifact에는 총 21개 required release/quality metric이 있어야 하며, 검증기는 누락 metric, 누락 required scenario, redaction 실패와 local-only claim boundary 위반을 release blocker로 처리한다.
+각 record는 scenario type, expected negative case, system completion, goal achievement, system false completion, unsafe action attempted/blocked/executed, negative case handling, release blocker, capability profile, cycle, token usage, recovery, escalation, repeated action, verifier execution/evidence, resume를 기록한다. General intent records additionally preserve supported domain, support status, execution boundary, candidate interpretation count, clarification required, and support reasons. These fields measure interpretation boundaries; they do not establish task success. artifact에는 총 21개 required release/quality metric이 있어야 하며, 검증기는 누락 metric, 누락 required scenario, redaction 실패와 local-only claim boundary 위반을 release blocker로 처리한다.
 
 계산 지표:
 

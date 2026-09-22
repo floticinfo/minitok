@@ -31,7 +31,7 @@ test("general response projection exposes additive evidence fields and redacts s
   const box = session();
   try {
     const projection = responseProjection(box.value);
-    for (const field of ["interpretation", "goal_hypotheses", "assumptions", "candidate_success_criteria", "provisional_success_criteria", "goal_plan", "plan_versions", "current_plan_version", "inferred_steps", "optional_steps", "completed_steps", "pending_steps", "replanning_trace", "tool_observations", "blocker", "alternatives", "recommended_action", "policy_decision", "execution_mode", "execution_audits", "verification_status", "rollback_status", "confidence", "next_action"]) assert.ok(Object.prototype.hasOwnProperty.call(projection, field), field);
+    for (const field of ["interpretation", "candidate_interpretations", "supported_domain", "support_status", "support_reasons", "execution_boundary", "goal_hypotheses", "assumptions", "candidate_success_criteria", "provisional_success_criteria", "goal_plan", "plan_versions", "current_plan_version", "inferred_steps", "optional_steps", "completed_steps", "pending_steps", "replanning_trace", "tool_observations", "blocker", "alternatives", "recommended_action", "policy_decision", "execution_mode", "execution_audits", "verification_status", "rollback_status", "confidence", "next_action"]) assert.ok(Object.prototype.hasOwnProperty.call(projection, field), field);
     assert.equal(projection.current_plan_version, 2);
     assert.deepEqual(projection.pending_steps, ["observe"]);
     assert.doesNotMatch(JSON.stringify(projection), /password=hidden/i);
@@ -43,7 +43,7 @@ test("CLI and MCP session response projections expose the same general field set
   try {
     const cli = sessionResponse(box.value);
     const mcp = resultForSession(box.value);
-    const fields = ["interpretation", "goal_hypotheses", "assumptions", "candidate_success_criteria", "provisional_success_criteria", "goal_plan", "plan_versions", "current_plan_version", "inferred_steps", "optional_steps", "completed_steps", "pending_steps", "replanning_trace", "tool_observations", "blocker", "alternatives", "recommended_action", "policy_decision", "execution_mode", "execution_audits", "verification_status", "rollback_status", "confidence", "next_action"];
+    const fields = ["interpretation", "candidate_interpretations", "supported_domain", "support_status", "support_reasons", "execution_boundary", "goal_hypotheses", "assumptions", "candidate_success_criteria", "provisional_success_criteria", "goal_plan", "plan_versions", "current_plan_version", "inferred_steps", "optional_steps", "completed_steps", "pending_steps", "replanning_trace", "tool_observations", "blocker", "alternatives", "recommended_action", "policy_decision", "execution_mode", "execution_audits", "verification_status", "rollback_status", "confidence", "next_action"];
     for (const field of fields) { assert.ok(Object.prototype.hasOwnProperty.call(cli, field), `CLI ${field}`); assert.ok(Object.prototype.hasOwnProperty.call(mcp, field), `MCP ${field}`); }
     assert.equal(cli.execution_mode, mcp.execution_mode);
     assert.equal(cli.current_plan_version, mcp.current_plan_version);

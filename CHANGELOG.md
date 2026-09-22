@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Changed
+
+- Added explicit general-autonomy support boundaries for local repository, clarification-only, approval-required external, and unsupported intent domains. Ambiguous or low-confidence goals now preserve candidate interpretations and execution boundaries instead of silently granting authority.
+
 ### Documentation
 
 - Documented the verified `unrestricted_general` CLI/MCP routing and its fail-closed boundaries: explicit opt-in, general runtime permission, capability allowlists, plan/replan/assumption budgets, audit/integrity preflight, clarification for ambiguous goals, and required verifier evidence for completion.

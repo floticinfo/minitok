@@ -113,6 +113,8 @@ local/mock/injected 테스트와 `stage2:parity`는 구현 계약과 보안 경�
 
 general agent는 explicit requirement와 inferred requirement를 구분하고, inference의 rationale·confidence·dependency를 저장한다. 정보가 부족하면 assumption ledger와 provisional success criteria를 만들 수 있지만 이는 사용자 요구가 아니다. 모호한 목표, 관찰 불가능한 결과, 결정적 verifier가 없는 목표는 clarification/unsupported로 남겨야 한다. 모델이 만든 기준을 실제 완료 기준으로 승격하면 false completion과 scope expansion이 발생할 수 있으므로 evaluator evidence와 사용자 확인이 우선이다.
 
+지원 도메인은 intent 단계에서 `repository_local`, `repository_improvement`, `external_operation`, `unknown`으로 분류한다. `repository_local`만 bounded local execution 대상으로 간주하며, `repository_improvement`와 `unknown`은 clarification-only, 외부·release·deployment 목표는 `approval_required`/`authorized_external` 경계로 남긴다. 후보 해석이 여러 개이거나 confidence가 낮으면 자동으로 하나를 선택하지 않고 `candidate_interpretations`, `support_reasons`, `execution_boundary`를 응답과 session에 보존한다. `unsupported` 또는 unsafe intent는 General Plan을 만들지 않고 fail-closed한다. 이 분류는 지원 가능성을 표현할 뿐 실제 작업 성공이나 production 연결을 보장하지 않는다.
+
 replanning은 blocker, 환경 관찰, assumption invalidation, verifier failure 때만 기존 목표와 검증된 step을 보존하면서 수행한다. 반복 patch와 동일 alternative는 금지하며, 대안이 없거나 외부 승인이 필요하면 escalation한다. 변경에는 rollback plan과 checkpoint가 필요하고 rollback 실패는 completed가 아니다. resume은 checkpoint 변경을 read-only verifier로 확인하고 이전 unrestricted 권한을 자동 상속하지 않는다.
 
 ### 완료와 검증의 한계
