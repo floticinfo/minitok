@@ -4,7 +4,7 @@
 
 - GitHub: https://github.com/floticinfo/minitok
 - npm: https://www.npmjs.com/package/@flotic/minitok
-- Local canonical CLI: `@flotic/minitok@1.4.10`
+- Local canonical CLI: `@flotic/minitok@1.4.11`
 - Publication state: unverified until an approved release manifest, npm evidence, and MCP Registry evidence are present
 - MCP Registry metadata: `server.json`
 - Downstream marketplace metadata: `mcp-marketplace.json`
@@ -15,7 +15,7 @@
 ## Demo recording
 
 1. Create a disposable repository and record the exact commit.
-2. Run `npm install -g @flotic/minitok@1.4.10`.
+2. Run `npm install -g @flotic/minitok@1.4.11`.
 3. Run `minitok doctor` and show provider configuration without exposing keys.
 4. Run `minitok migrate`.
 5. Run a small task with tests and documentation.

@@ -93,7 +93,7 @@ function createAlwaysRejectProvider() {
 // ================================================================
 // TEST SUITE
 // ================================================================
-describe("PHASE 9: REJECT Recovery E2E", () => {
+describe("PHASE 9: REJECT Recovery E2E", { concurrency: false }, () => {
   let repoDir;
   let pm;
   let origCreateProvider;

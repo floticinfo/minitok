@@ -15,6 +15,8 @@
 - Documented pause/resume, checkpoint verification, blocker classification, alternative selection, rollback, and replan behavior without implying that deterministic mock/local results validate live providers or production adapters.
 - Clarified the supported adapter descriptor categories and the current injected/mock/local verification scope. Browser, API, database mutation, deployment, publish, and SCM descriptors do not constitute a live production connection.
 
+## 1.4.11 - 2026-09-23
+
 ## 1.4.10 - 2026-09-20
 
 ### Fixed
