@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.4.15 - 2026-09-24
+
+### Fixed
+
+- Preserved Git-generated patch line endings on Windows so isolated workspace changes apply correctly to CRLF working trees.
+- Aligned CLI, MCP metadata, runtime metadata, and Extension compatibility for the release candidate.
+
 ## 1.4.14 - 2026-09-24
 
 ### Fixed
