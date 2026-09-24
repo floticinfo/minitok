@@ -41,7 +41,9 @@ function cachedWorkspacePatch(repo, baselineTree) {
   // hosted Git version cannot resolve the temporary baseline tree as a diff
   // endpoint. The isolated baseline is committed as HEAD before pipeline work.
   if (!patch.trim()) patch = runGit(repo, ["diff", "--cached", "--binary", "--full-index", "--"]);
-  return `${patch}\n`.replace(/\r\n/g, "\n");
+  // Preserve Git's original patch line endings. On Windows, normalizing CRLF
+  // context to LF makes git apply reject a valid patch against a CRLF checkout.
+  return `${patch}\n`;
 }
 
 function sameWorkspacePath(left, right) {
