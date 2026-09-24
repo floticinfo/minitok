@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+## 1.4.14 - 2026-09-24
+
+### Fixed
+
+- Preserved Git-generated patch line endings on Windows so isolated workspace changes apply correctly to CRLF working trees.
+- Aligned the CLI, MCP metadata, and VS Code Extension compatibility metadata for the 1.4.14 release candidate.
+
 ### Changed
 
 - Added explicit general-autonomy support boundaries for local repository, clarification-only, approval-required external, and unsupported intent domains. Ambiguous or low-confidence goals now preserve candidate interpretations and execution boundaries instead of silently granting authority.
