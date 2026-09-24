@@ -3,15 +3,15 @@
   "release": {
     "package": "@flotic/minitok",
     "version": "1.4.14",
-    "commit": "2cd54292ded4b121cab5363921c90c31faba377a",
-    "tree": "a66f6154f8934fed060efb520842b4f3f1c4ff2e",
+    "commit": "dc11384dd059576a2da32a0ac18f93329640ace3",
+    "tree": "b5512bf1a4582411c3914ecfee480b96a92e6675",
     "tag": "v1.4.14",
     "changelog": "## 1.4.14",
     "artifact": {
       "filename": "flotic-minitok-1.4.14.tgz",
-      "size": 408708,
-      "sha256": "a981f6e26908aa825d1fee01e905ac34ff1449841c4889f053707b43b032b3bf",
-      "integrity": "sha512-Z7gFYKRBKi6pyzGgFvAkjtCZNgU8hWvSfVt+G1GDMjj000VmmVTmI+VNJ5eOD+TbLOI1QIeJHQ/cqy1aSybqLg==",
+      "size": 408802,
+      "sha256": "ab8348551958309961b188a13900f099a115d18ce76d58af5875ae80fe93d034",
+      "integrity": "sha512-F4AKu56FI31sQZmuf5IwsyOlriEB9FIaPH3EG6tIXZ0jqXBw+uhY9Dp6XPpqLxVkxKxu2XIm6JzuCiBVmzp68Q==",
       "files": [
         {
           "path": "BENCHMARK_EVIDENCE.json",
@@ -20,8 +20,8 @@
         },
         {
           "path": "CHANGELOG.md",
-          "size": 54425,
-          "sha256": "3d58ff8201715bb3388a373766bf4a5b04b43d2659b2a4c6dba6de94fd288f6f"
+          "size": 54705,
+          "sha256": "4d91e6e12f6f6744ba3a47d3cad11c07e581cee9bae9f34985bd94191c655c8b"
         },
         {
           "path": "DATA_CLASSIFICATION.md",
