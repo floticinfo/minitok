@@ -145,7 +145,11 @@ export function mcpCommand() {
   return packagedMcpCommand(path.resolve(__dirname, "../.."), process.execPath);
 }
 
-export const MCP_SCOPES = ["read", "write", "auto_accept", "verify_exec"] as const;
+export const MCP_SCOPES = ["read", "write", "auto_accept", "verify_exec", "unrestricted_autonomous", "unrestricted_general_autonomous"] as const;
+
+export function capabilityFile() {
+  return path.join(os.homedir(), ".minitok", "entitlement", "capability-token.json");
+}
 
 export function normalizeProviderName(value: string) {
   const aliases: Record<string, string> = { claude: "anthropic", gpt: "openai", gemini: "google" };
@@ -165,7 +169,7 @@ export function configuredMcpScopes() {
 
 export function mcpEnvironment() {
   const scopes = configuredMcpScopes().join(",");
-  return { ...process.env, minitok_server_url: configuredServerUrl(), MINITOK_MCP_AUTH_TOKEN_FILE: path.join(os.homedir(), ".minitok", "mcp", "runtime-token.json"), MINITOK_MCP_SCOPES: scopes };
+  return { ...process.env, minitok_server_url: configuredServerUrl(), MINITOK_MCP_AUTH_TOKEN_FILE: path.join(os.homedir(), ".minitok", "mcp", "runtime-token.json"), MINITOK_CAPABILITY_FILE: capabilityFile(), MINITOK_MCP_SCOPES: scopes };
 }
 
 export function mcpAuthToken() {

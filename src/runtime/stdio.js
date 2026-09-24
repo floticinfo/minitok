@@ -10,6 +10,7 @@ const os = require("os");
 const crypto = require("crypto");
 const { readRuntimeToken } = require("../mcp/runtime-token");
 const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
+const { capabilityPermissions, FULL_TEST_PROFILE } = require("../entitlement/capability");
 const LOCAL_MCP_SCOPES = new Set(["read", "write", "auto_accept", "unrestricted_autonomous", "unrestricted_general_autonomous", "verify_exec"]);
 
 function parseLocalMcpScopes(value = "read") {
@@ -190,7 +191,10 @@ class RuntimeStdio {
     // every destructive MCP tool failed with PERMISSION_DENIED no matter how
     // the server was launched. MINITOK_MCP_SCOPES lets `mcp connect --scopes`
     // and `runtime start --scopes` deliver the grant to the server process.
-    this._permissions = new Set(parseLocalMcpScopes(options.permissions || process.env.MINITOK_MCP_SCOPES || "read"));
+    const explicitPermissions = parseLocalMcpScopes(options.permissions || process.env.MINITOK_MCP_SCOPES || "read");
+    const capability = capabilityPermissions({ filePath: options.capabilityFile || process.env.MINITOK_CAPABILITY_FILE });
+    this._capabilityProfile = capability.record?.profile || null;
+    this._permissions = new Set([...explicitPermissions, ...capability.permissions]);
     this._authRequired = true;
     this._entitlementRequired = true;
     // Which file the startup credential came from, when that file is the rotating
@@ -513,7 +517,7 @@ class RuntimeStdio {
       // null, so all four failed schema validation through the transport.
       const toolArguments = { ...(params.arguments || {}) };
       if (runId) toolArguments.run_id = runId;
-      const result = await getToolHandler(params.name, toolArguments, this._services, { safeResult: true, signal: controller.signal, model: this._model, runs: this._runs, runPipeline: this._runPipeline, recoveredRuns: this._recoveredRuns, persistence: this._persistence, workspaceRoot: this._workspaceRoot, permissions: this._permissions, createSelection: selection => {
+      const result = await getToolHandler(params.name, toolArguments, this._services, { safeResult: true, signal: controller.signal, model: this._model, runs: this._runs, runPipeline: this._runPipeline, recoveredRuns: this._recoveredRuns, persistence: this._persistence, workspaceRoot: this._workspaceRoot, permissions: this._permissions, capabilityProfile: this._capabilityProfile === FULL_TEST_PROFILE ? FULL_TEST_PROFILE : null, createSelection: selection => {
          const selectionId = crypto.randomBytes(16).toString("hex");
          const record = { schema_version: 1, workspace_root: path.resolve(selection.workspace_root || this._workspaceRoot), provider: selection.provider || null, status: selection.status, candidates: [...new Set(selection.candidates || [])], selected_at: selection.provider ? new Date().toISOString() : null };
          this._selections.set(selectionId, record);

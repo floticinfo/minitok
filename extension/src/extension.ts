@@ -3,7 +3,7 @@ import { spawn, execFile, ChildProcessWithoutNullStreams } from "node:child_proc
 import { minitokPanel } from "./panel";
 import { spawnSpec, requireTrustedWorkspace } from "./workspace";
 import { minitokSidebar } from "./sidebar";
-import { cliPath, workspacePath, autoApprove, isCliCompatible, mcpCommand, mcpEnvironment, configuredMcpScopes, ensureMcpAuthToken, spawnOptionsFor } from "./workspace";
+import { cliPath, workspacePath, autoApprove, isCliCompatible, mcpCommand, mcpEnvironment, configuredMcpScopes, ensureMcpAuthToken, spawnOptionsFor, capabilityFile } from "./workspace";
 import { checkEntitlement, EntitlementState } from "./entitlement";
 import { redactSensitiveText } from "./redaction";
 
@@ -139,7 +139,7 @@ try { requireTrustedWorkspace(workspacePath()); } catch (error) { vscode.window.
       // Pass --repo explicitly: without it cmdRun targets the globally registered
       // workspace, which may be a different repository than the open folder.
       const evidencePath = vscode.workspace.getConfiguration("minitok").get<string>("evidencePath", ".minitok/evidence/runs/latest.json").trim() || ".minitok/evidence/runs/latest.json";
-      const runArgs = ["run", task, "--repo", cwd, "--evidence-path", evidencePath, ...(approved ? ["--auto-accept"] : [])];
+      const runArgs = ["run", task, "--repo", cwd, "--evidence-path", evidencePath, "--capability-file", capabilityFile(), ...(approved ? ["--auto-accept"] : [])];
       // Run inside a cancellable notification. The spawned CLI has no TTY of its
       // own, so this is the only way to stop a long run short of reloading the
       // window (the promise used to have no timeout and no cancel path).

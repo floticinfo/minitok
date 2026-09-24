@@ -7,6 +7,7 @@ const { PREAUTHORIZED } = require("../../pipeline/authorization");
 const { resolveExecutionPolicy } = require("../../goal/execution_policy");
 const { loadConfig } = require("../../config/loader");
 const path = require("path");
+const { capabilityPermissions, FULL_TEST_PROFILE } = require("../../entitlement/capability");
 
 function classifyProviderHealth(name, available, health) {
   if (!available.includes(name)) return "absent";
@@ -17,7 +18,10 @@ function classifyProviderHealth(name, available, health) {
 }
 
 async function cmdRun(task, opts = {}) {
-  const requestedCapabilities = typeof opts.capabilities === "string" ? opts.capabilities.split(",").map(item => item.trim()).filter(Boolean) : opts.capabilities;
+  const capability = capabilityPermissions({ filePath: opts.capabilityFile });
+  const capabilityGranted = capability.record?.profile === FULL_TEST_PROFILE ? capability.record.capabilities : [];
+  const requestedCapabilities = typeof opts.capabilities === "string" ? opts.capabilities.split(",").map(item => item.trim()).filter(Boolean) : (opts.capabilities || (capabilityGranted.length ? capabilityGranted : undefined));
+  const autoAcceptGranted = opts.autoAccept === true || capabilityGranted.includes("auto_accept");
   let config;
   let policyDecision = null;
   if (!task) {
@@ -42,7 +46,7 @@ async function cmdRun(task, opts = {}) {
   }
   if (opts.mode) {
     config = loadConfig(path.join(repoRoot, "minitok.yml"), { repoRoot });
-    policyDecision = resolveExecutionPolicy({ mode: opts.mode, capabilities: requestedCapabilities, explicit_confirmation: opts.explicitConfirmation === true, auto_accept: opts.autoAccept === true, source: "cli", actor: opts.actor, config });
+    policyDecision = resolveExecutionPolicy({ mode: opts.mode, capabilities: requestedCapabilities, explicit_confirmation: opts.explicitConfirmation === true || capabilityGranted.length > 0, auto_accept: autoAcceptGranted, runtime_permission: capabilityGranted.includes("unrestricted_autonomous") || capabilityGranted.includes("unrestricted_general_autonomous"), source: "cli", actor: opts.actor, config });
     if (!policyDecision.allowed && !policyDecision.approval_required) {
       console.error(`Execution policy denied: ${policyDecision.reason}`);
       return 1;

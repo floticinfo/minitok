@@ -4,6 +4,8 @@ const { fetchWithTimeout } = require("../core/http");
 const { loadCustomerToken } = require("../auth/customer-token");
 const { OAuthFlow } = require("../auth/oauth");
 const { TokenStore } = require("../auth/token-store");
+const { capabilityPermissions, safeRecord, FULL_TEST_PROFILE } = require("../entitlement/capability");
+const { postJson } = require("../core/http");
 const TRUSTED_MCP_AUTH_HOSTS = new Set(["api.minitok.dev"]);
 const REMOTE_MCP_TOOLS = Object.freeze(new Set(["minitok_status", "minitok_compact"]));
 
@@ -47,12 +49,37 @@ function remoteError(message, classification, details = {}) {
   return Object.assign(new Error(message), { code: "REMOTE_MCP_ERROR", classification, ...details });
 }
 
+function remoteCapabilityPreflight(options = {}, toolName = null) {
+  const capabilityFile = options.capabilityFile || process.env.MINITOK_CAPABILITY_FILE;
+  const configured = Boolean(capabilityFile || options.capabilityToken || options.capabilityRecord);
+  const capability = options.capabilityRecord ? { record: options.capabilityRecord } : capabilityPermissions({ filePath: capabilityFile });
+  if (!configured) return { configured: false, policy_decision: "legacy_auth" };
+  const record = capability.record;
+  const valid = Boolean(record && safeRecord(record) && record.profile === FULL_TEST_PROFILE && Array.isArray(record.capabilities) && (!options.installationId || record.installation_id === options.installationId));
+  const granted = valid ? [...new Set(record.capabilities)] : [];
+  const requested = toolName ? [toolName === "minitok_status" || toolName === "minitok_compact" ? "read" : "remote_tool_call"] : ["read"];
+  const denied = valid && granted.includes("read") ? [] : requested;
+  const result = { configured: true, token_valid: valid, profile: record?.profile || null, installation_id: record?.installation_id || null, expires_at: record?.expires_at || null, granted_capabilities: granted, denied_capabilities: denied, approval_required_capabilities: [], always_blocked_capabilities: [], blocked_external_operations: ["credential_use", "external_call", "publish", "deploy"], policy_decision: denied.length ? "denied" : "allowed" };
+  if (!valid) result.reason = "Remote capability record is missing, expired, revoked, or not server-validated";
+  return result;
+}
+
+async function validateRemoteCapability(options = {}) {
+  if (typeof options.validateCapability === "function") return options.validateCapability();
+  if (!options.capabilityToken || !options.capabilityServerUrl) return null;
+  const serverUrl = String(options.capabilityServerUrl).replace(/\/$/, "");
+  const response = await (options.postJson || postJson)(`${serverUrl}/v1/capability/validate`, { token: options.capabilityToken, installation_id: options.installationId, subscription_id: options.subscriptionId });
+  return response?.ok && response.body?.valid === true ? response.body : null;
+}
+
 class RemoteMcpClient {
   constructor(options = {}) {
     this.url = validateRemoteUrl(options.url);
     this.token = options.token || loadCustomerToken(options.tokenFile);
     this.accountOptions = options.accountOptions || {};
     this.allowOAuth = options.allowOAuth !== false;
+    this._capabilityOptions = { ...options };
+    this.capabilityPreflight = remoteCapabilityPreflight(options);
     this.clientId = options.clientId || "minitok-cli";
     this.tokenStore = options.tokenStore || new TokenStore(options.tokensDir);
     this.resourceKey = `mcp-${new URL(this.url).host}`;
@@ -138,16 +165,30 @@ class RemoteMcpClient {
   }
 
   async handshake() {
+    /** @type {{ capabilityToken?: string; capabilityServerUrl?: string; installationId?: string; subscriptionId?: string; validateCapability?: () => Promise<any> }} */
+    const capabilityOptions = this._capabilityOptions;
+    if (capabilityOptions.capabilityToken) {
+      const validated = await validateRemoteCapability(capabilityOptions);
+      if (!validated) throw remoteError("Remote capability validation failed", "auth", { code: "REMOTE_CAPABILITY_REQUIRED", capability_preflight: this.capabilityPreflight });
+      const claims = validated.claims || {};
+      const validatedRecord = { token: capabilityOptions.capabilityToken, profile: validated.profile, installation_id: claims.installation_id, capabilities: claims.capabilities, validated_at: new Date().toISOString(), expires_at: new Date(Number(claims.exp) * 1000).toISOString() };
+      this.capabilityPreflight = remoteCapabilityPreflight({ ...capabilityOptions, capabilityRecord: validatedRecord }, "minitok_status");
+      if (!this.capabilityPreflight.token_valid) throw remoteError("Remote capability validation failed", "auth", { code: "REMOTE_CAPABILITY_REQUIRED", capability_preflight: this.capabilityPreflight });
+    } else if (this.capabilityPreflight.configured && !this.capabilityPreflight.token_valid) {
+      throw remoteError("Remote capability validation failed", "auth", { code: "REMOTE_CAPABILITY_REQUIRED", capability_preflight: this.capabilityPreflight });
+    }
     const initialize = await this.request("initialize", { protocolVersion: MCP_PROTOCOL_VERSION, capabilities: {}, clientInfo: { name: "minitok-remote-client", version: "1" } });
     const listed = await this.request("tools/list");
     const tools = Array.isArray(listed?.tools) ? listed.tools : [];
-    return { protocolVersion: initialize?.protocolVersion, sessionId: this.sessionId, tools: tools.filter(tool => REMOTE_READ_ONLY_TOOLS.has(tool.name)) };
+    return { protocolVersion: initialize?.protocolVersion, sessionId: this.sessionId, tools: tools.filter(tool => REMOTE_READ_ONLY_TOOLS.has(tool.name)), capability_preflight: this.capabilityPreflight };
   }
 
-  async listTools() { return ((await this.request("tools/list"))?.tools || []).filter(tool => REMOTE_READ_ONLY_TOOLS.has(tool.name)); }
+  async listTools() { if (this.capabilityPreflight.configured && !this.capabilityPreflight.token_valid) throw remoteError("Remote capability validation failed", "auth", { code: "REMOTE_CAPABILITY_REQUIRED", capability_preflight: this.capabilityPreflight }); return ((await this.request("tools/list"))?.tools || []).filter(tool => REMOTE_READ_ONLY_TOOLS.has(tool.name)); }
 
   async callTool(name, argumentsValue = {}) {
     if (LOCAL_ONLY_TOOLS.has(name) || !REMOTE_READ_ONLY_TOOLS.has(name)) throw remoteError(`Remote MCP tool is not supported: ${name}`, "configuration", { code: "REMOTE_TOOL_UNSUPPORTED" });
+    const preflight = remoteCapabilityPreflight(this._capabilityOptions, name);
+    if (preflight.configured && preflight.policy_decision !== "allowed") throw remoteError("Remote capability preflight denied the tool", "auth", { code: "REMOTE_CAPABILITY_DENIED", capability_preflight: preflight });
     return this.request("tools/call", { name, arguments: argumentsValue });
   }
 }
@@ -169,4 +210,4 @@ async function executeRemoteWithLocalFallback({ remote, local, allowFallback = f
   }
 }
 
-module.exports = { RemoteMcpClient, remoteHealth, validateRemoteUrl, classifyRemoteError, canFallbackToLocal, executeRemoteWithLocalFallback, REMOTE_READ_ONLY_TOOLS, LOCAL_ONLY_TOOLS, REMOTE_PATH };
+module.exports = { RemoteMcpClient, remoteHealth, validateRemoteUrl, classifyRemoteError, canFallbackToLocal, executeRemoteWithLocalFallback, remoteCapabilityPreflight, validateRemoteCapability, REMOTE_READ_ONLY_TOOLS, LOCAL_ONLY_TOOLS, REMOTE_PATH };

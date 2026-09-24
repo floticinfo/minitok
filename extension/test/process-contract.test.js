@@ -73,7 +73,7 @@ test("MCP stdio transport contract", () => {
   assert.match(workspace, /packagedMcpCommand/);
   assert.doesNotMatch(workspace, /runtime start/);
   assert.match(workspace, /MINITOK_MCP_AUTH_TOKEN_FILE/);
-  assert.match(workspace, /MCP_SCOPES = \["read", "write", "auto_accept", "verify_exec"\]/);
+  assert.match(workspace, /export const MCP_SCOPES = \[[\s\S]*"read"[\s\S]*"write"[\s\S]*"auto_accept"[\s\S]*"verify_exec"/);
   assert.match(workspace, /Unsupported MCP scope/);
   assert.match(sidebar, /configuredMcpScopes\(\)/);
   assert.match(extension, /configuredMcpScopes\(\)/);
@@ -124,7 +124,9 @@ test("interactive consent is forwarded to the spawned CLI", () => {
   // A run spawned from the extension has no TTY: the CLI refuses every file
   // change without --auto-accept, so each consent path must forward it. The
   // command palette used to collect consent and drop it.
-  assert.match(extension, /approved = true;[\s\S]{0,500}\["--auto-accept"\]/);
+  assert.match(extension, /const runArgs = /);
+  assert.match(extension, /"--capability-file", capabilityFile\(\)/);
+  assert.match(extension, /\.\.\.\(approved \? \["--auto-accept"\] : \[\]\)/);
   assert.match(panel, /args\.push\("--auto-accept"\)/);
   assert.match(sidebar, /"--approval-file"/);
   assert.match(sidebar, /"--approval-timeout-ms"/);

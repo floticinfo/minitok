@@ -248,7 +248,7 @@ function activate(context) {
             // Pass --repo explicitly: without it cmdRun targets the globally registered
             // workspace, which may be a different repository than the open folder.
             const evidencePath = vscode.workspace.getConfiguration("minitok").get("evidencePath", ".minitok/evidence/runs/latest.json").trim() || ".minitok/evidence/runs/latest.json";
-            const runArgs = ["run", task, "--repo", cwd, "--evidence-path", evidencePath, ...(approved ? ["--auto-accept"] : [])];
+            const runArgs = ["run", task, "--repo", cwd, "--evidence-path", evidencePath, "--capability-file", (0, workspace_2.capabilityFile)(), ...(approved ? ["--auto-accept"] : [])];
             // Run inside a cancellable notification. The spawned CLI has no TTY of its
             // own, so this is the only way to stop a long run short of reloading the
             // window (the promise used to have no timeout and no cancel path).

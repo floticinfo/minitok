@@ -18,6 +18,7 @@
     "core/http.js",
     "core/package-manager.js",
     "discovery/index.js",
+    "entitlement/capability.js",
     "entitlement/gate.js",
     "entitlement/model.js",
     "entitlement/online.js",
@@ -39,6 +40,7 @@
     "goal/application.js",
     "goal/blocker.js",
     "goal/capabilities.js",
+    "goal/capability-preflight.js",
     "goal/compiler.js",
     "goal/controller.js",
     "goal/dynamic_verifier.js",
@@ -129,8 +131,8 @@
       "embedded": "4edfb2ae7b61790cc7d62315ed8b0aeadbd6c0a44686753f6b62a4534680f7a2"
     },
     "cli/commands/goal.js": {
-      "source": "1466b002db3005ab0eb1eaa009789ed1f10c0d9643b9624d5d89bae5361a8ed7",
-      "embedded": "1466b002db3005ab0eb1eaa009789ed1f10c0d9643b9624d5d89bae5361a8ed7"
+      "source": "07169401f23bf71b507a19e8054720710eb880a47ce75680b2adbf30bb3c742c",
+      "embedded": "07169401f23bf71b507a19e8054720710eb880a47ce75680b2adbf30bb3c742c"
     },
     "cli/commands/server-config.js": {
       "source": "0f86e6c56aa35589b35c7940696ee2b819fad071e46e280cb136b8e006656fe9",
@@ -163,6 +165,10 @@
     "discovery/index.js": {
       "source": "eaa4c3f9bd2147a82f852256a0c842112f4d8916259338e7e73bbe4a43a75fc7",
       "embedded": "eaa4c3f9bd2147a82f852256a0c842112f4d8916259338e7e73bbe4a43a75fc7"
+    },
+    "entitlement/capability.js": {
+      "source": "660c6283cc516e0d812a3adbe0c8369ef4dc6bcaf805e40ec4a3bc4aa2d2832f",
+      "embedded": "660c6283cc516e0d812a3adbe0c8369ef4dc6bcaf805e40ec4a3bc4aa2d2832f"
     },
     "entitlement/gate.js": {
       "source": "804857f8b52c62853aea965d05981c28bf2b0ec5b9efa4fda982ac86e1d8666b",
@@ -245,8 +251,12 @@
       "embedded": "a43be9214c490b302886f373d3195f53d1b20c5922279558902e101be8064064"
     },
     "goal/capabilities.js": {
-      "source": "3a262f2fa22bea9dce59d9df5b824dafe85ea134ce12c5ae15036b06f9b6dd06",
-      "embedded": "3a262f2fa22bea9dce59d9df5b824dafe85ea134ce12c5ae15036b06f9b6dd06"
+      "source": "df24b36d037d972dbff319badaf2a0d421f49c94c873e47cb05995e6cc51b65f",
+      "embedded": "df24b36d037d972dbff319badaf2a0d421f49c94c873e47cb05995e6cc51b65f"
+    },
+    "goal/capability-preflight.js": {
+      "source": "bc5ddf9519edf996934927a13e11a27976849ddfb5eb2844dd8f8801fce924cb",
+      "embedded": "bc5ddf9519edf996934927a13e11a27976849ddfb5eb2844dd8f8801fce924cb"
     },
     "goal/compiler.js": {
       "source": "675521fbbe443483de7780574dfe66761384ffcb97901b5ea8365a5a32fead16",
@@ -321,8 +331,8 @@
       "embedded": "9c9265f1fcd57104bae9d8e0975b859716554ef1582360e247d2d30946083596"
     },
     "goal/intent.js": {
-      "source": "dbf63f5fee69166cbdabab0336f46f77bffece989d5302a34542c38f7254c293",
-      "embedded": "dbf63f5fee69166cbdabab0336f46f77bffece989d5302a34542c38f7254c293"
+      "source": "d46c7d4274f21e12a05f2fb611adb97e7e6b67aa4f9f7233b3681e76c7ff2924",
+      "embedded": "d46c7d4274f21e12a05f2fb611adb97e7e6b67aa4f9f7233b3681e76c7ff2924"
     },
     "goal/odd.js": {
       "source": "614567cbad38a201959c91bb43c31e09e9bef1fad54b20a807df8b7d5072c22b",
@@ -385,8 +395,8 @@
       "embedded": "a768a226c962a51071f7d11c2f12618244732e67a75ca189993085e402f051db"
     },
     "mcp/goal-tools.js": {
-      "source": "2f0acfdb586d92f84098a2ad79bbaca4d40ea4d4dbfee01021572505e285abfe",
-      "embedded": "2f0acfdb586d92f84098a2ad79bbaca4d40ea4d4dbfee01021572505e285abfe"
+      "source": "03255735184af0c348a4f3fa58bf0aa8d820a637d178bbeddb89b48a4d056ecc",
+      "embedded": "03255735184af0c348a4f3fa58bf0aa8d820a637d178bbeddb89b48a4d056ecc"
     },
     "mcp/runtime-token.js": {
       "source": "d07663e879ad91f12b327101f7b747e8bfc527bed6abc8aa2018ee393f4382d4",
@@ -485,8 +495,8 @@
       "embedded": "4023e87bc6dd66a33cd8bbaaab20cc07af46584ced03e6093aaa762e097fef02"
     },
     "runtime/stdio.js": {
-      "source": "2cdc231b8dd134dcec88ea960dd74abf7b40dac783898af47eca188e6c8c642d",
-      "embedded": "2cdc231b8dd134dcec88ea960dd74abf7b40dac783898af47eca188e6c8c642d"
+      "source": "229a56c9fb7162e251d038b66c1f28a67ecbf88ba37f996b4e1bcb76722b0929",
+      "embedded": "229a56c9fb7162e251d038b66c1f28a67ecbf88ba37f996b4e1bcb76722b0929"
     },
     "runtime/workspace.js": {
       "source": "1ccbe48769fd72363230d4a914849ce6b5fc52f5db6496e0b35ce8ac655ff220",
