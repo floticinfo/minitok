@@ -30,7 +30,8 @@ function updateJson(file, transform) {
   const before = readFileSync(absolute, "utf8");
   const value = JSON.parse(before);
   transform(value);
-  const after = `${JSON.stringify(value, null, 2)}\n`;
+  const newline = before.includes("\r\n") ? "\r\n" : "\n";
+  const after = `${JSON.stringify(value, null, 2).replace(/\n/g, newline)}${newline}`;
   if (before !== after && !checkOnly) writeFileSync(absolute, after, "utf8");
   return before !== after;
 }

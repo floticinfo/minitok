@@ -2,6 +2,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { spawnSync } = require("node:child_process");
+const os = require("node:os");
 const path = require("node:path");
 
 const script = path.resolve(__dirname, "../scripts/readiness-checks.mjs");
@@ -10,7 +11,7 @@ function run(...args) {
   return spawnSync(process.execPath, [script, ...args, "--json"], {
     cwd: path.resolve(__dirname, ".."),
     encoding: "utf8",
-    env: { ...process.env, MINITOK_UPDATE_CHECK: "0", MINITOK_STAGE2_LIVE_SMOKE: "" },
+    env: { ...process.env, USERPROFILE: os.tmpdir(), HOME: os.tmpdir(), APPDATA: undefined, XDG_CONFIG_HOME: path.join(os.tmpdir(), `minitok-readiness-xdg-${process.pid}`), MINITOK_NO_COLOR: "1", NO_COLOR: "1", MINITOK_UPDATE_CHECK: "0", MINITOK_STAGE2_LIVE_SMOKE: "" },
   });
 }
 

@@ -1,7 +1,7 @@
 "use strict";
 
 const crypto = require("crypto");
-const { capabilityPermissions, DENIED_CAPABILITIES } = require("../entitlement/capability");
+const { capabilityPermissions, DENIED_CAPABILITIES, UNRESTRICTED_LOCAL_PROFILE, UNRESTRICTED_LOCAL_CAPABILITIES } = require("../entitlement/capability");
 
 const EXTERNAL_CAPABILITIES = new Set(["external_call", "credential_use", "publish", "deploy", "database_mutation", "force_push", "tag_overwrite"]);
 const ALWAYS_BLOCKED = new Set(["always_blocked", "irreversible_operation", "safety_bypass", "protected_path_write"]);
@@ -21,12 +21,14 @@ function capabilityPreflight(input = {}) {
   const record = input.record === undefined ? capabilityPermissions({ filePath: input.filePath }).record : input.record;
   const snapshot = capabilitySnapshot({ ...input, record });
   const granted = new Set(snapshot.granted_capabilities);
-  const denied = [...new Set(requested.filter(item => !granted.has(item) && !["read", "inspect", "verify"].includes(item)))];
+  const profileDenied = snapshot.profile === UNRESTRICTED_LOCAL_PROFILE ? requested.filter(item => !UNRESTRICTED_LOCAL_CAPABILITIES.includes(item)) : [];
+  const denied = [...new Set([...requested.filter(item => !granted.has(item) && !["read", "inspect", "verify"].includes(item)), ...profileDenied])];
   const alwaysBlocked = [...new Set(requested.filter(item => ALWAYS_BLOCKED.has(item)))];
   const blockedExternal = [...new Set(requested.filter(item => EXTERNAL_CAPABILITIES.has(item) || DENIED_CAPABILITIES.includes(item)))];
   const policyDenied = Array.isArray(input.policyDecision?.denied_capabilities) ? input.policyDecision.denied_capabilities : [];
   const approval = [...new Set([...(input.policyDecision?.approval_required ? requested.filter(item => !alwaysBlocked.includes(item) && !blockedExternal.includes(item)) : []), ...policyDenied.filter(item => !alwaysBlocked.includes(item))])];
   const deniedCapabilities = [...new Set([...denied, ...policyDenied, ...blockedExternal])].filter(item => !approval.includes(item));
+  if (snapshot.profile === UNRESTRICTED_LOCAL_PROFILE) for (const item of requested) if (!UNRESTRICTED_LOCAL_CAPABILITIES.includes(item) && !deniedCapabilities.includes(item)) deniedCapabilities.push(item);
   return { capability_profile: snapshot.profile, capability_token_valid: snapshot.token_valid, capability_snapshot_id: snapshot.snapshot_id, granted_capabilities: snapshot.granted_capabilities, denied_capabilities: deniedCapabilities, approval_required_capabilities: approval, always_blocked_capabilities: alwaysBlocked, blocked_external_operations: blockedExternal, policy_decision: input.policyDecision?.allowed === true ? "allowed" : approval.length ? "approval_required" : "denied" };
 }
 

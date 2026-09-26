@@ -15,13 +15,15 @@ const { prepareGoalExecution } = require("../goal/integration");
 const { recordGeneralPolicyPreflight } = require("../goal/execution_audit");
 const { responseProjection, normalizeExecutionMode } = require("../goal/general_response");
 
+const { FULL_TEST_PROFILE, UNRESTRICTED_LOCAL_PROFILE, UNRESTRICTED_LOCAL_CAPABILITIES, UNRESTRICTED_LOCAL_DENIED_CAPABILITIES } = require("../entitlement/capability");
 const ACTIVE_GOALS = new Map();
 const GOAL_MODES = new Set(["safe", "supervised", "authorized_external", "unrestricted", "unrestricted_general", "unrestricted-general", "workspace", "autonomous"]);
 function capabilityGrants(args = {}, runtimeOptions = {}) {
+  if (runtimeOptions.capabilityProfile === UNRESTRICTED_LOCAL_PROFILE) return Array.isArray(args.capabilities) ? args.capabilities : [...UNRESTRICTED_LOCAL_CAPABILITIES];
   if (Array.isArray(args.capabilities)) return args.capabilities;
   const permissions = runtimeOptions.permissions;
   const grants = [];
-  if (runtimeOptions.capabilityProfile === "full_test") return ["read", "inspect", "verify", "workspace_write", "local_mutation", "goal_inference", "criteria_inference", "plan_expansion", "replanning", "tool_discovery"];
+  if (runtimeOptions.capabilityProfile === FULL_TEST_PROFILE) return ["read", "inspect", "verify", "workspace_write", "local_mutation", "goal_inference", "criteria_inference", "plan_expansion", "replanning", "tool_discovery"];
   if (permissions?.has?.("read") || permissions?.has?.("write")) grants.push("read", "inspect");
   if (permissions?.has?.("verify_exec")) grants.push("verify");
   return [...new Set(grants)];
@@ -30,19 +32,25 @@ function policyInput(args = {}, runtimeOptions = {}, source = "mcp", config) {
   const general = config?.goal?.unrestricted_general || {};
   const generalMode = normalizeExecutionMode(args.mode) === "unrestricted_general";
   const mode = normalizeExecutionMode(args.mode);
-  return { mode, capabilities: Array.isArray(args.capabilities) ? args.capabilities : (["unrestricted", "unrestricted_general"].includes(mode) ? undefined : capabilityGrants(args, runtimeOptions)), explicit_confirmation: ["unrestricted", "unrestricted_general"].includes(mode) ? args.confirm_unrestricted === true || args.confirm_unrestricted_general === true : args.explicit_confirmation === true, auto_accept: ["unrestricted", "unrestricted_general"].includes(mode) ? runtimeOptions.permissions?.has?.("auto_accept") === true || runtimeOptions.capabilityProfile === "full_test" || args.auto_accept === true : args.auto_accept === true && (runtimeOptions.permissions?.has?.("auto_accept") || runtimeOptions.capabilityProfile === "full_test"), runtime_permission: generalMode && (runtimeOptions.permissions?.has?.("unrestricted_general_autonomous") === true || runtimeOptions.capabilityProfile === "full_test") || args.mode === "unrestricted" && (runtimeOptions.permissions?.has?.("unrestricted_autonomous") === true || runtimeOptions.capabilityProfile === "full_test"), audit_persisted: generalMode && runtimeOptions.general_audit_persisted === true, integrity_preflight: generalMode && runtimeOptions.general_integrity_preflight === true, max_plan_depth: args.max_plan_depth ?? general.max_plan_depth, max_replan_count: args.max_replan_count ?? general.max_replan_count, max_assumption_count: args.max_assumption_count ?? general.max_assumption_count, source, actor: runtimeOptions.actor, config };
+  if (runtimeOptions.capabilityProfile === UNRESTRICTED_LOCAL_PROFILE && mode !== "unrestricted") return { mode, capabilities: Array.isArray(args.capabilities) ? args.capabilities : [...UNRESTRICTED_LOCAL_CAPABILITIES], explicit_confirmation: false, auto_accept: false, runtime_permission: false, audit_persisted: false, integrity_preflight: false, source, actor: runtimeOptions.actor, config };
+  const localGrant = runtimeOptions.capabilityProfile === UNRESTRICTED_LOCAL_PROFILE && mode === "unrestricted";
+  const unrestricted = ["unrestricted", "unrestricted_general"].includes(mode);
+  const capabilities = localGrant ? [...UNRESTRICTED_LOCAL_CAPABILITIES] : Array.isArray(args.capabilities) ? args.capabilities : unrestricted ? undefined : capabilityGrants(args, runtimeOptions);
+  return { mode, capabilities, explicit_confirmation: unrestricted ? args.confirm_unrestricted === true || args.confirm_unrestricted_general === true || localGrant || runtimeOptions.capabilityProfile === FULL_TEST_PROFILE : args.explicit_confirmation === true, auto_accept: unrestricted ? runtimeOptions.permissions?.has?.("auto_accept") === true || runtimeOptions.capabilityProfile === FULL_TEST_PROFILE || localGrant || args.auto_accept === true : args.auto_accept === true && (runtimeOptions.permissions?.has?.("auto_accept") || runtimeOptions.capabilityProfile === FULL_TEST_PROFILE), runtime_permission: generalMode && (runtimeOptions.permissions?.has?.("unrestricted_general_autonomous") === true || runtimeOptions.capabilityProfile === FULL_TEST_PROFILE) || mode === "unrestricted" && (runtimeOptions.permissions?.has?.("unrestricted_autonomous") === true || runtimeOptions.capabilityProfile === FULL_TEST_PROFILE || localGrant), audit_persisted: generalMode && runtimeOptions.general_audit_persisted === true, integrity_preflight: generalMode && runtimeOptions.general_integrity_preflight === true, max_plan_depth: args.max_plan_depth ?? general.max_plan_depth, max_replan_count: args.max_replan_count ?? general.max_replan_count, max_assumption_count: args.max_assumption_count ?? general.max_assumption_count, source, actor: runtimeOptions.actor, config };
 }
 function auditId(policyDecision) { return `audit-${crypto.createHash("sha256").update(JSON.stringify({ mode: policyDecision.mode, capabilities: policyDecision.capabilities, denied: policyDecision.denied_capabilities, decision: policyDecision.allowed ? "allowed" : policyDecision.approval_required ? "approval_required" : "denied" })).digest("hex").slice(0, 16)}`; }
 function policyResponse(policyDecision) { return { execution_mode: policyDecision.mode, requested_capabilities: policyDecision.capabilities || [], granted_capabilities: policyDecision.allowed ? policyDecision.capabilities || [] : [], denied_capabilities: policyDecision.denied_capabilities || [], policy_decision: policyDecision.allowed ? "allowed" : policyDecision.approval_required ? "approval_required" : "denied", audit_id: auditId(policyDecision) }; }
-function capabilityRequest(args = {}, prepared = {}) { return [...new Set([...(Array.isArray(args.capabilities) ? args.capabilities : []), ...(Array.isArray(prepared.requested_capabilities) ? prepared.requested_capabilities : [])])]; }
+function capabilityRequest(args = {}, prepared = {}, runtimeOptions = {}) { return [...new Set([...(Array.isArray(args.capabilities) ? args.capabilities : runtimeOptions.capabilityProfile === UNRESTRICTED_LOCAL_PROFILE ? [...UNRESTRICTED_LOCAL_CAPABILITIES] : []), ...(Array.isArray(prepared.requested_capabilities) ? prepared.requested_capabilities : [])])]; }
 function prepareInput(args, mode, existingGoalPlan, config, runtimeOptions = {}) {
   const goalSpec = args.goal_spec && typeof args.goal_spec === "object" ? args.goal_spec : undefined;
-  const policy = policyInput({ ...args, mode }, runtimeOptions, "mcp", config);
-  const input = { goal_spec: goalSpec, objective: args.goal, success_criteria: args.success_criteria, repository_context: args.repository_context, environment_state: args.environment_state, existing_goal_plan: existingGoalPlan, mode, general_inference: args.general_inference === true, capabilities: args.capabilities, explicit_confirmation: policy.explicit_confirmation, auto_accept: policy.auto_accept, runtime_permission: policy.runtime_permission, audit_persisted: policy.audit_persisted, integrity_preflight: policy.integrity_preflight, max_plan_depth: policy.max_plan_depth, max_replan_count: policy.max_replan_count, max_assumption_count: policy.max_assumption_count, actor: runtimeOptions.actor, config, source: "mcp" };
+  const localGrant = runtimeOptions.capabilityProfile === UNRESTRICTED_LOCAL_PROFILE && mode === "unrestricted";
+  const inputArgs = localGrant ? { ...args, capabilities: [...UNRESTRICTED_LOCAL_CAPABILITIES] } : args;
+  const policy = policyInput({ ...inputArgs, mode }, runtimeOptions, "mcp", config);
+  const input = { goal_spec: goalSpec, objective: args.goal, success_criteria: args.success_criteria, repository_context: args.repository_context, environment_state: args.environment_state, existing_goal_plan: existingGoalPlan, mode, general_inference: args.general_inference === true, capabilities: localGrant ? [...UNRESTRICTED_LOCAL_CAPABILITIES] : Array.isArray(args.capabilities) ? args.capabilities : policy.capabilities, explicit_confirmation: policy.explicit_confirmation, auto_accept: policy.auto_accept, runtime_permission: policy.runtime_permission, audit_persisted: policy.audit_persisted, integrity_preflight: policy.integrity_preflight, max_plan_depth: policy.max_plan_depth, max_replan_count: policy.max_replan_count, max_assumption_count: policy.max_assumption_count, actor: runtimeOptions.actor, config, source: "mcp" };
   return prepareGoalExecution(input);
 }
 function policyForPrepared(args, runtimeOptions, config, mode, prepared) {
-  const requested = capabilityRequest(args, prepared);
+  const requested = capabilityRequest(args, prepared, runtimeOptions);
   return resolveExecutionPolicy({ ...policyInput(args, runtimeOptions, "mcp", config), mode, capabilities: requested });
 }
 function persistPreparedSession(session, prepared, policyDecision) {
@@ -71,8 +79,9 @@ function unrestrictedError(args, runtimeOptions) {
   if (!["unrestricted", "unrestricted_general"].includes(mode)) return null;
   const general = mode === "unrestricted_general";
   const permission = general ? "unrestricted_general_autonomous" : "unrestricted_autonomous";
-  const confirmed = args.confirm_unrestricted === true || args.confirm_unrestricted_general === true;
-  const denied = !runtimeOptions.permissions?.has?.(permission) ? [permission] : !confirmed ? [general ? "confirm_unrestricted_general" : "confirm_unrestricted"] : [];
+  const localGrant = !general && runtimeOptions.capabilityProfile === UNRESTRICTED_LOCAL_PROFILE;
+  const confirmed = args.confirm_unrestricted === true || args.confirm_unrestricted_general === true || localGrant || runtimeOptions.capabilityProfile === FULL_TEST_PROFILE;
+  const denied = general && runtimeOptions.capabilityProfile === UNRESTRICTED_LOCAL_PROFILE ? ["unrestricted_general_autonomous"] : !runtimeOptions.permissions?.has?.(permission) && !localGrant && runtimeOptions.capabilityProfile !== FULL_TEST_PROFILE ? [permission] : !confirmed ? [general ? "confirm_unrestricted_general" : "confirm_unrestricted"] : [];
   if (!denied.length) return null;
   const policy = { mode, capabilities: Array.isArray(args.capabilities) ? args.capabilities : [], allowed: false, approval_required: false, denied_capabilities: denied, always_blocked_capabilities: [], reason: denied[0] === permission ? `${mode} runtime permission is required` : "unrestricted request confirmation is required" };
   const code = denied[0] === permission ? (general ? "UNRESTRICTED_GENERAL_PERMISSION_DENIED" : "UNRESTRICTED_PERMISSION_DENIED") : "UNRESTRICTED_CONFIRMATION_REQUIRED";
@@ -126,6 +135,8 @@ async function startGoal(args, runtimeOptions = {}) {
   if (mode === "autonomous" && !runtimeOptions.permissions?.has?.("auto_accept")) throw Object.assign(new Error("autonomous goal mode requires explicit auto_accept permission"), { code: "AUTO_ACCEPT_DENIED" });
   const unrestrictedFailure = unrestrictedError(args, runtimeOptions);
   if (unrestrictedFailure) throw unrestrictedFailure;
+  if (runtimeOptions.capabilityProfile === UNRESTRICTED_LOCAL_PROFILE && normalizeExecutionMode(args.mode) !== "unrestricted") throw Object.assign(new Error("The unrestricted_local grant only authorizes unrestricted local execution"), { code: "CAPABILITY_PROFILE_MODE_DENIED" });
+  if (runtimeOptions.capabilityProfile === UNRESTRICTED_LOCAL_PROFILE && Array.isArray(args.capabilities) && args.capabilities.some(item => !UNRESTRICTED_LOCAL_CAPABILITIES.includes(item))) throw Object.assign(new Error("The unrestricted_local grant does not include one or more requested capabilities"), { code: "CAPABILITY_PREFLIGHT_DENIED" });
   const repoRoot = requireGoalRepo(args.repo || runtimeOptions.workspaceRoot, runtimeOptions.workspaceRoot);
   const config = loadConfig(path.join(repoRoot, "minitok.yml"), { repoRoot });
   const compiled = compileInput({ ...args, mode }); const compiledRecord = /** @type {Record<string, any>} */ (compiled); const compiledSource = /** @type {any} */ (compiled).source;
@@ -136,14 +147,15 @@ async function startGoal(args, runtimeOptions = {}) {
     try { recordGeneralPolicyPreflight({ execution_mode: mode, goal_id: compiledRecord.spec.goal_id, source: "mcp", actor: runtimeOptions.actor, requested_capabilities: args.capabilities }, { auditPath: args.audit_path }); generalAuditPersisted = true; } catch { generalAuditPersisted = false; }
   }
   const preparedRuntime = { ...runtimeOptions, general_audit_persisted: generalAuditPersisted, general_integrity_preflight: mode === "unrestricted_general" };
-  const initialPrepared = prepareInput({ ...args, mode, general_inference: compiledSource === "general-inference", goal_spec: compiledRecord.spec }, mode, null, config, preparedRuntime);
+  const preparedArgs = runtimeOptions.capabilityProfile === UNRESTRICTED_LOCAL_PROFILE && mode === "unrestricted" ? { ...args, capabilities: [...UNRESTRICTED_LOCAL_CAPABILITIES] } : args;
+  const initialPrepared = prepareInput({ ...preparedArgs, mode, general_inference: compiledSource === "general-inference", goal_spec: compiledRecord.spec }, mode, null, config, preparedRuntime);
   if (initialPrepared.status !== "ready") return clarificationResponse(compiledRecord.spec, initialPrepared);
-  const policyDecision = policyForPrepared(args, { ...preparedRuntime, general_audit_persisted: generalAuditPersisted }, config, mode, initialPrepared);
+  const policyDecision = policyForPrepared(preparedArgs, { ...preparedRuntime, general_audit_persisted: generalAuditPersisted }, config, mode, initialPrepared);
   if (!policyDecision.allowed && !policyDecision.approval_required) throw policyError(policyDecision, config);
-  const prepared = prepareInput({ ...args, mode: policyDecision.mode, general_inference: compiledSource === "general-inference", goal_spec: compiledRecord.spec }, policyDecision.mode, initialPrepared.goal_plan, config, { ...preparedRuntime, general_audit_persisted: generalAuditPersisted });
+  const prepared = prepareInput({ ...preparedArgs, mode: policyDecision.mode, general_inference: compiledSource === "general-inference", goal_spec: compiledRecord.spec }, policyDecision.mode, initialPrepared.goal_plan, config, { ...preparedRuntime, general_audit_persisted: generalAuditPersisted });
   if (prepared.status !== "ready") return clarificationResponse(compiledRecord.spec, prepared);
-  const capabilityPreflightResult = capabilityPreflight({ requested: policyDecision.capabilities, policyDecision, filePath: runtimeOptions.capabilityFile });
-  if (capabilityPreflightResult.always_blocked_capabilities.length || capabilityPreflightResult.blocked_external_operations.length) throw Object.assign(new Error("Capability preflight blocked one or more requested operations"), { code: "CAPABILITY_PREFLIGHT_DENIED", policy: policyDecision, capability_preflight: capabilityPreflightResult });
+  const capabilityPreflightResult = capabilityPreflight({ requested: policyDecision.capabilities, policyDecision, profile: runtimeOptions.capabilityProfile, filePath: runtimeOptions.capabilityFile });
+  if (capabilityPreflightResult.always_blocked_capabilities.length || capabilityPreflightResult.blocked_external_operations.length || runtimeOptions.capabilityProfile === UNRESTRICTED_LOCAL_PROFILE && (capabilityPreflightResult.denied_capabilities.length || policyDecision.capabilities.some(item => UNRESTRICTED_LOCAL_DENIED_CAPABILITIES.includes(item) || !UNRESTRICTED_LOCAL_CAPABILITIES.includes(item)))) throw Object.assign(new Error("Capability preflight blocked one or more requested operations"), { code: "CAPABILITY_PREFLIGHT_DENIED", policy: policyDecision, capability_preflight: capabilityPreflightResult });
   const session = createGoalSession({ workspaceRoot: repoRoot, goalSpec: prepared.goal_spec || compiledRecord.spec, model: runtimeOptions.model, provider: args.provider_override, generalExecution: compiledSource === "general-inference", approvalState: policyDecision.approval_required ? "approval_required" : "not_requested" });
   session.state.capability_preflight = capabilityPreflightResult;
   if (policyDecision.approval_required || capabilityPreflightResult.approval_required_capabilities.length) { session.state.status = "approval_required"; session.state.capability_checkpoint = createCheckpoint(session, { label: "capability-preflight", resume_context: { mode: policyDecision.mode, capabilities: policyDecision.capabilities } }); saveGoalSession(session); session.lock?.release?.(); return resultForSession(session, { state: "approval_required", capability_preflight: capabilityPreflightResult, checkpoint_id: session.state.capability_checkpoint.checkpoint_id, resume_command: "minitok_goal_continue" }); }
@@ -159,12 +171,15 @@ async function continueGoal(args, runtimeOptions = {}) {
   const config = loadConfig(path.join(repoRoot, "minitok.yml"), { repoRoot });
   const unrestrictedFailure = unrestrictedError(args, runtimeOptions);
   if (unrestrictedFailure) throw unrestrictedFailure;
+  if (runtimeOptions.capabilityProfile === UNRESTRICTED_LOCAL_PROFILE && normalizeExecutionMode(args.mode) !== "unrestricted") throw Object.assign(new Error("The unrestricted_local grant only authorizes unrestricted local execution"), { code: "CAPABILITY_PROFILE_MODE_DENIED" });
+  if (runtimeOptions.capabilityProfile === UNRESTRICTED_LOCAL_PROFILE && Array.isArray(args.capabilities) && args.capabilities.some(item => !UNRESTRICTED_LOCAL_CAPABILITIES.includes(item))) throw Object.assign(new Error("The unrestricted_local grant does not include one or more requested capabilities"), { code: "CAPABILITY_PREFLIGHT_DENIED" });
   const session = resumeGoalSession(repoRoot, args.goal_id, { model: runtimeOptions.model, provider: args.provider_override, migrate: true });
-  const currentCapabilityPreflight = capabilityPreflight({ requested: Array.isArray(args.capabilities) ? args.capabilities : [], filePath: runtimeOptions.capabilityFile });
+  const currentCapabilityPreflight = capabilityPreflight({ requested: runtimeOptions.capabilityProfile === UNRESTRICTED_LOCAL_PROFILE && !Array.isArray(args.capabilities) ? [...UNRESTRICTED_LOCAL_CAPABILITIES] : Array.isArray(args.capabilities) ? args.capabilities : [], profile: runtimeOptions.capabilityProfile, filePath: runtimeOptions.capabilityFile });
   const storedCapability = session.state.capability_preflight;
   if (storedCapability && !sameCapabilitySnapshot(storedCapability, currentCapabilityPreflight)) { session.lock?.release?.(); throw Object.assign(new Error("Capability grant changed or was revoked since the checkpoint"), { code: "CAPABILITY_REAUTHORIZATION_REQUIRED", capability_preflight: currentCapabilityPreflight, expected_capability_snapshot_id: storedCapability.capability_snapshot_id }); }
   const storedMode = normalizeExecutionMode(session.state.execution_policy?.mode || session.goalSpec.execution_policy?.mode || "safe");
   const mode = normalizeExecutionMode(args.mode || "safe");
+  if (runtimeOptions.capabilityProfile === UNRESTRICTED_LOCAL_PROFILE && Array.isArray(args.capabilities) && args.capabilities.some(item => !UNRESTRICTED_LOCAL_CAPABILITIES.includes(item))) { session.lock?.release?.(); throw Object.assign(new Error("The unrestricted_local grant does not include one or more requested capabilities"), { code: "CAPABILITY_PREFLIGHT_DENIED" }); }
   const generalInference = session.state.general_execution === true;
   if (["unrestricted", "unrestricted_general"].includes(storedMode) && !["unrestricted", "unrestricted_general"].includes(mode)) { session.lock?.release?.(); throw Object.assign(new Error(`A previously ${storedMode} goal requires explicit mode reauthorization`), { code: "GOAL_REAUTHORIZATION_REQUIRED" }); }
   let generalAuditPersisted = false;
@@ -174,7 +189,8 @@ async function continueGoal(args, runtimeOptions = {}) {
   const preparedRuntime = { ...runtimeOptions, general_audit_persisted: generalAuditPersisted, general_integrity_preflight: mode === "unrestricted_general" };
   const initialPrepared = prepareInput({ ...args, mode, general_inference: generalInference, goal_spec: session.goalSpec, existing_goal_plan: session.state.goal_plan }, mode, session.state.goal_plan, config, preparedRuntime);
   if (initialPrepared.status !== "ready") { session.lock?.release?.(); return resultForSession(session, { state: initialPrepared.status, current_state: initialPrepared.status, questions: initialPrepared.questions || [], errors: initialPrepared.errors || [], goal_plan: initialPrepared.goal_plan, inferred_steps: initialPrepared.inferred_steps || [], optional_steps: initialPrepared.optional_steps || [], out_of_scope_candidates: initialPrepared.out_of_scope_candidates || [], requires_user_confirmation: initialPrepared.requires_user_confirmation }); }
-  const policyDecision = policyForPrepared(args, preparedRuntime, config, mode, initialPrepared);
+  const policyArgs = runtimeOptions.capabilityProfile === UNRESTRICTED_LOCAL_PROFILE && mode === "unrestricted" ? { ...args, capabilities: [...UNRESTRICTED_LOCAL_CAPABILITIES] } : args;
+  const policyDecision = policyForPrepared(policyArgs, preparedRuntime, config, mode, initialPrepared);
   if (!policyDecision.allowed && !policyDecision.approval_required) { session.lock?.release?.(); throw policyError(policyDecision, config); }
   const prepared = prepareInput({ ...args, mode: policyDecision.mode, general_inference: generalInference, goal_spec: session.goalSpec, existing_goal_plan: initialPrepared.goal_plan }, policyDecision.mode, initialPrepared.goal_plan, config, preparedRuntime);
   if (prepared.status !== "ready") { session.lock?.release?.(); return resultForSession(session, { state: prepared.status, current_state: prepared.status, goal_plan: prepared.goal_plan, questions: prepared.questions || [], errors: prepared.errors || [], inferred_steps: prepared.inferred_steps || [], optional_steps: prepared.optional_steps || [], out_of_scope_candidates: prepared.out_of_scope_candidates || [], requires_user_confirmation: prepared.requires_user_confirmation }); }

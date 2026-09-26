@@ -89,11 +89,20 @@ describe("config: explicit unrestricted goal policy", () => {
     assert.equal(DEFAULTS.goal.default_mode, "safe");
     assert.equal(DEFAULTS.goal.unrestricted.enabled, false);
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), "mt-goal-cfg-"));
+    const previous = { home: os.homedir, xdg: process.env.XDG_CONFIG_HOME, appdata: process.env.APPDATA };
     try {
+      os.homedir = () => dir;
+      process.env.XDG_CONFIG_HOME = path.join(dir, "xdg");
+      process.env.APPDATA = path.join(dir, "appdata");
       const config = loadConfig(path.join(dir, "missing.yml"));
       assert.equal(config.goal.default_mode, "safe");
       assert.equal(config.goal.unrestricted.enabled, false);
-    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+    } finally {
+      os.homedir = previous.home;
+      if (previous.xdg === undefined) delete process.env.XDG_CONFIG_HOME; else process.env.XDG_CONFIG_HOME = previous.xdg;
+      if (previous.appdata === undefined) delete process.env.APPDATA; else process.env.APPDATA = previous.appdata;
+      fs.rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it("validates goal mode, booleans, capability allowlist, and always-blocked floor", () => {

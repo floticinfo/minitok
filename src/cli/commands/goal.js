@@ -13,7 +13,7 @@ const { loadConfig, redactGoalExecutionConfig } = require("../../config/loader")
 const { prepareGoalExecution } = require("../../goal/integration");
 const { recordGeneralPolicyPreflight } = require("../../goal/execution_audit");
 const { responseProjection, normalizeExecutionMode } = require("../../goal/general_response");
-const { capabilityPermissions, FULL_TEST_PROFILE } = require("../../entitlement/capability");
+const { capabilityPermissions, revalidateCapabilityRecord, FULL_TEST_PROFILE, UNRESTRICTED_LOCAL_PROFILE, UNRESTRICTED_LOCAL_CAPABILITIES, isAuthorizedCapabilityProfile } = require("../../entitlement/capability");
 const { capabilityPreflight, sameCapabilitySnapshot } = require("../../goal/capability-preflight");
 
 function repoPath(options = {}) { return path.resolve(options.repo || process.cwd()); }
@@ -25,7 +25,6 @@ function capabilityOptions(options = {}) {
 function effectiveConfirmation(options = {}) { return options.confirmUnrestricted === true || options.confirmUnrestrictedGeneral === true || options.explicitConfirmation === true; }
 function auditId(policyDecision) { return `audit-${crypto.createHash("sha256").update(JSON.stringify({ mode: policyDecision.mode, capabilities: policyDecision.capabilities, denied: policyDecision.denied_capabilities, decision: policyDecision.allowed ? "allowed" : policyDecision.approval_required ? "approval_required" : "denied" })).digest("hex").slice(0, 16)}`; }
 function policyResponse(policyDecision) { return { execution_mode: policyDecision.mode, requested_capabilities: policyDecision.capabilities || [], granted_capabilities: policyDecision.allowed ? policyDecision.capabilities || [] : [], denied_capabilities: policyDecision.denied_capabilities || [], policy_decision: policyDecision.allowed ? "allowed" : policyDecision.approval_required ? "approval_required" : "denied", audit_id: auditId(policyDecision) }; }
-function preflightResponse(policyDecision, options = {}, requested = []) { return capabilityPreflight({ filePath: options.capabilityFile, requested, policyDecision }); }
 function warnUnrestricted(options, policyDecision) { if (!options.json && policyDecision.mode === "unrestricted") console.error("WARNING: unrestricted autonomous execution is enabled only for the explicitly requested and configured capabilities; always-blocked operations remain denied."); }
 function output(value, options = {}) { const safe = redactValue(value); if (options.json) console.log(JSON.stringify(safe)); else console.log(JSON.stringify(safe, null, 2)); }
 function sessionResponse(session, extra = {}) {
@@ -53,15 +52,18 @@ async function cmdGoalStart(goal, options = {}) {
   const config = loadConfig(path.join(repoPath(options), "minitok.yml"), { repoRoot: repoPath(options) });
   const requestedMode = normalizeExecutionMode(options.mode || config.goal?.default_mode || "safe");
   const capability = capabilityPermissions({ filePath: options.capabilityFile });
-  const capabilityGranted = capability.record?.profile === FULL_TEST_PROFILE ? capability.record.capabilities : [];
-  const confirmation = effectiveConfirmation(options) || capability.record?.profile === FULL_TEST_PROFILE;
-  const autoAccept = options.autoAccept === true || options.auto_accept === true || capabilityGranted.includes("auto_accept");
+  const capabilityRecord = capability.record?.profile === UNRESTRICTED_LOCAL_PROFILE ? await revalidateCapabilityRecord({ filePath: options.capabilityFile }) : capability.record;
+  const capabilityGranted = isAuthorizedCapabilityProfile(capabilityRecord?.profile) ? capabilityRecord.capabilities : [];
+  const localGrant = capabilityRecord?.profile === UNRESTRICTED_LOCAL_PROFILE;
+  const confirmation = effectiveConfirmation(options) || (localGrant && requestedMode === "unrestricted") || capabilityRecord?.profile === FULL_TEST_PROFILE;
+  const autoAccept = options.autoAccept === true || options.auto_accept === true || requestedMode === "unrestricted" && capabilityGranted.includes("auto_accept");
   const generalMode = requestedMode === "unrestricted_general";
-  const runtimePermission = generalMode ? options.allowUnrestrictedGeneral === true || options.unrestrictedGeneralPermission === true || capabilityGranted.includes("unrestricted_general_autonomous") : true;
+  const runtimePermission = generalMode ? options.allowUnrestrictedGeneral === true || options.unrestrictedGeneralPermission === true || capabilityGranted.includes("unrestricted_general_autonomous") : !localGrant || capabilityGranted.includes("unrestricted_autonomous");
   const integrityPreflight = generalMode;
   if (["unrestricted", "unrestricted_general"].includes(requestedMode) && confirmation !== true) { output({ state: "policy_denied", ...policyResponse(resolveExecutionPolicy({ mode: requestedMode, capabilities: capabilityOptions(options), explicit_confirmation: false, auto_accept: autoAccept, source: "cli", actor: options.actor, config })), reason: `explicit confirmation is required for ${requestedMode} mode` }, options); return 1; }
   if (autoAccept && !["unrestricted", "unrestricted_general"].includes(requestedMode)) { output({ state: "policy_denied", reason: "--auto-accept is only valid with an explicitly enabled unrestricted mode" }, options); return 1; }
-  const requestedCapabilities = [...new Set([...capabilityOptions(options), ...(generalMode && !options.capabilities && capabilityGranted.length ? capabilityGranted : [])])];
+  const requestedCapabilities = [...new Set([...capabilityOptions(options), ...(!options.capabilities && !options.capability && capabilityGranted.length && (generalMode && capabilityRecord?.profile === FULL_TEST_PROFILE || localGrant && requestedMode === "unrestricted") ? capabilityGranted : [])])];
+  if (localGrant && requestedMode === "unrestricted" && requestedCapabilities.some(item => !UNRESTRICTED_LOCAL_CAPABILITIES.includes(item))) { output({ state: "policy_denied", reason: "The unrestricted_local grant does not include one or more requested capabilities" }, options); return 1; }
   let persistedGeneralAudit = false;
   if (generalMode) {
     try { recordGeneralPolicyPreflight({ execution_mode: requestedMode, goal_id: goalSpec.goal_id, source: "cli", actor: options.actor, requested_capabilities: requestedCapabilities }, { auditPath: options.auditPath }); persistedGeneralAudit = true; } catch { persistedGeneralAudit = false; }
@@ -70,9 +72,9 @@ async function cmdGoalStart(goal, options = {}) {
   if (initialPrepared.status !== "ready") { output({ state: initialPrepared.status, objective: goalSpec.objective, questions: initialPrepared.questions || [], errors: initialPrepared.errors || [], ...initialPrepared }, options); return initialPrepared.status === "clarification_required" ? 2 : 1; }
   const policyCapabilities = [...new Set([...requestedCapabilities, ...(initialPrepared.requested_capabilities || [])])];
   const policyDecision = resolveExecutionPolicy({ mode: requestedMode, capabilities: policyCapabilities, explicit_confirmation: confirmation, auto_accept: autoAccept, runtime_permission: runtimePermission, audit_persisted: persistedGeneralAudit, integrity_preflight: integrityPreflight, source: "cli", actor: options.actor, config });
-  const capabilityPreflightResult = preflightResponse(policyDecision, options, policyCapabilities);
+  const capabilityPreflightResult = capabilityPreflight({ filePath: options.capabilityFile, requested: policyCapabilities, policyDecision, profile: capabilityRecord?.profile });
   if (!policyDecision.allowed && !policyDecision.approval_required) { output({ state: "policy_denied", ...policyResponse(policyDecision), capability_preflight: capabilityPreflightResult, policy: policyDecision, config: redactGoalExecutionConfig(config) }, options); return 1; }
-  if (capabilityPreflightResult.always_blocked_capabilities.length || capabilityPreflightResult.blocked_external_operations.length) { output({ state: "policy_denied", ...policyResponse(policyDecision), capability_preflight: capabilityPreflightResult, reason: "Capability preflight blocked one or more requested operations" }, options); return 1; }
+  if (capabilityPreflightResult.always_blocked_capabilities.length || capabilityPreflightResult.blocked_external_operations.length || localGrant && capabilityPreflightResult.denied_capabilities.length) { output({ state: "policy_denied", ...policyResponse(policyDecision), capability_preflight: capabilityPreflightResult, reason: "Capability preflight blocked one or more requested operations" }, options); return 1; }
   const prepared = /** @type {any} */ (prepareGoalExecution({ goal_spec: goalSpec, existing_goal_plan: initialPrepared.goal_plan, mode: policyDecision.mode, capabilities: policyDecision.capabilities, explicit_confirmation: confirmation, auto_accept: autoAccept, runtime_permission: runtimePermission, audit_persisted: persistedGeneralAudit, integrity_preflight: integrityPreflight, actor: options.actor, config, source: "cli", general_inference: generalInference }));
   if (prepared.status !== "ready") { output({ state: prepared.status, objective: goalSpec.objective, questions: prepared.questions || [], errors: prepared.errors || [], ...prepared }, options); return prepared.status === "clarification_required" ? 2 : 1; }
   warnUnrestricted(options, policyDecision);
@@ -118,20 +120,24 @@ async function cmdGoalContinue(goalId, options = {}) {
   const requestedMode = normalizeExecutionMode(options.mode || "safe");
   const generalMode = requestedMode === "unrestricted_general";
   const generalInference = stored.state.general_execution === true;
-  const runtimePermission = generalMode ? options.allowUnrestrictedGeneral === true || options.unrestrictedGeneralPermission === true : true;
-  const integrityPreflight = generalMode;
-  const confirmation = effectiveConfirmation(options);
-  if (["unrestricted", "unrestricted_general"].includes(storedMode) && !["unrestricted", "unrestricted_general"].includes(requestedMode)) { output({ state: "policy_denied", reason: `A previously ${storedMode} goal requires an explicit mode and reauthorization to continue or resume.` }, options); return 1; }
   const capability = capabilityPermissions({ filePath: options.capabilityFile });
-  const capabilityGranted = capability.record?.profile === FULL_TEST_PROFILE ? capability.record.capabilities : [];
-  const autoAccept = options.autoAccept === true || options.auto_accept === true || capabilityGranted.includes("auto_accept");
-  const currentCapabilityPreflight = capabilityPreflight({ filePath: options.capabilityFile, requested: capabilityOptions(options) });
+  const capabilityRecord = capability.record?.profile === UNRESTRICTED_LOCAL_PROFILE ? await revalidateCapabilityRecord({ filePath: options.capabilityFile }) : capability.record;
+  const capabilityGranted = isAuthorizedCapabilityProfile(capabilityRecord?.profile) ? capabilityRecord.capabilities : [];
+  const localGrant = capabilityRecord?.profile === UNRESTRICTED_LOCAL_PROFILE;
+  const runtimePermission = generalMode ? options.allowUnrestrictedGeneral === true || options.unrestrictedGeneralPermission === true : !localGrant || capabilityGranted.includes("unrestricted_autonomous");
+  const integrityPreflight = generalMode;
+  if (["unrestricted", "unrestricted_general"].includes(storedMode) && !["unrestricted", "unrestricted_general"].includes(requestedMode)) { output({ state: "policy_denied", reason: `A previously ${storedMode} goal requires an explicit mode and reauthorization to continue or resume.` }, options); return 1; }
+  const confirmation = effectiveConfirmation(options) || (localGrant && requestedMode === "unrestricted") || capabilityRecord?.profile === FULL_TEST_PROFILE;
+  const autoAccept = options.autoAccept === true || options.auto_accept === true || requestedMode === "unrestricted" && capabilityGranted.includes("auto_accept");
+  const currentCapabilityPreflight = capabilityPreflight({ filePath: options.capabilityFile, requested: capabilityOptions(options), profile: capabilityRecord?.profile });
+  if (localGrant && requestedMode !== "unrestricted") { output({ state: "policy_denied", reason: "The unrestricted_local grant only authorizes unrestricted local execution" }, options); return 1; }
   if (["unrestricted", "unrestricted_general"].includes(requestedMode) && confirmation !== true && capabilityGranted.length === 0) { output({ state: "policy_denied", reason: `explicit confirmation is required when continuing or resuming ${requestedMode} mode` }, options); return 1; }
   if (autoAccept && !["unrestricted", "unrestricted_general"].includes(requestedMode)) { output({ state: "policy_denied", reason: "--auto-accept is only valid with an explicitly enabled unrestricted mode" }, options); return 1; }
   const session = resumeGoalSession(repoPath(options), goalId, { model: options.model, provider: options.provider, migrate: true });
   const storedCapability = session.state.capability_preflight;
   if (storedCapability && !sameCapabilitySnapshot(storedCapability, currentCapabilityPreflight)) { session.lock?.release?.(); output({ state: "policy_denied", error_code: "CAPABILITY_REAUTHORIZATION_REQUIRED", reason: "Capability grant changed or was revoked since the checkpoint", capability_preflight: currentCapabilityPreflight, expected_capability_snapshot_id: storedCapability.capability_snapshot_id }, options); return 1; }
-  const requestedCapabilities = [...new Set([...capabilityOptions(options), ...(capabilityGranted.length ? capabilityGranted : [])])];
+  const requestedCapabilities = [...new Set([...capabilityOptions(options), ...(!options.capabilities && !options.capability && capabilityGranted.length && (generalMode && capabilityRecord?.profile === FULL_TEST_PROFILE || localGrant && requestedMode === "unrestricted") ? capabilityGranted : [])])];
+  if (localGrant && requestedMode === "unrestricted" && requestedCapabilities.some(item => !UNRESTRICTED_LOCAL_CAPABILITIES.includes(item))) { output({ state: "policy_denied", reason: "The unrestricted_local grant does not include one or more requested capabilities" }, options); return 1; }
   let persistedGeneralAudit = false;
   if (generalMode) {
     try { recordGeneralPolicyPreflight({ execution_mode: requestedMode, goal_id: session.goalSpec.goal_id, source: "cli", actor: options.actor, requested_capabilities: requestedCapabilities }, { auditPath: options.auditPath }); persistedGeneralAudit = true; } catch { persistedGeneralAudit = false; }
