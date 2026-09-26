@@ -19,6 +19,9 @@ test("general autonomy is disabled by default and aliases cannot bypass the expl
   const config = loadConfig(path.join(os.tmpdir(), "phase7-no-config.yml"));
   assert.equal(config.goal.default_mode, "safe"); assert.equal(config.goal.unrestricted_general.enabled, false);
   assert.equal(resolveExecutionPolicy({ ...generalInput, config }).allowed, false);
+  assert.equal(resolveExecutionPolicy({ ...generalInput, mode: "unrestricted-general" }).denied_capabilities[0], "invalid_mode");
+});
+
 test("config and resolver reject unknown, duplicate, and always-blocked general capabilities", () => {
   assert.throws(() => validateConfig({ goal: { unrestricted_general: { capabilities: ["unknown_general"] } } }), /unknown capability/);
   assert.throws(() => validateConfig({ goal: { unrestricted_general: { capabilities: ["read", "read"] } } }), /duplicate/);
@@ -45,8 +48,6 @@ test("redacted policy projection contains no credential material", () => {
   assert.doesNotMatch(JSON.stringify(safe), /secret-value|api_key|password|token|authorization/i); assert.equal(safe.unrestricted_general.enabled, true);
 });
 
-  assert.equal(resolveExecutionPolicy({ ...generalInput, mode: "unrestricted-general" }).denied_capabilities[0], "invalid_mode");
-});
 
 test("every unrestricted_general gate fails closed independently", () => {
   for (const field of ["explicit_confirmation", "auto_accept", "runtime_permission", "audit_persisted", "integrity_preflight"]) {

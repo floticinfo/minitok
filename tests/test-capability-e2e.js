@@ -26,7 +26,7 @@ async function requestRuntime(runtime, message) {
 test("disposable capability E2E covers import, status, Local MCP, and cleanup", async () => {
   const f = fixture();
   try {
-    const imported = await importCapabilityToken(f.record.token, { filePath: f.file, serverUrl: "https://test.invalid", validate: async () => ({ ok: true, body: { valid: true, profile: f.record.profile, claims: { installation_id: f.record.installation_id, capabilities: f.record.capabilities, iat: Date.now() / 1000 - 10, exp: Date.now() / 1000 + 3600 } } }) });
+    const imported = await importCapabilityToken(f.record.token, { filePath: f.file, serverUrl: "https://test.invalid", validate: async () => ({ ok: true, body: { valid: true, profile: f.record.profile, claims: { installation_id: f.record.installation_id, capabilities: f.record.capabilities, iat: Math.floor(Date.now() / 1000) - 10, exp: Math.floor(Date.now() / 1000) + 3600 } } }) });
     assert.equal(imported.success, true);
     assert.equal(readCapabilityRecord({ filePath: f.file }).profile, "full_test");
 

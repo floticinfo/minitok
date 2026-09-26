@@ -7,7 +7,7 @@ const { PREAUTHORIZED } = require("../../pipeline/authorization");
 const { resolveExecutionPolicy } = require("../../goal/execution_policy");
 const { loadConfig } = require("../../config/loader");
 const path = require("path");
-const { capabilityPermissions, FULL_TEST_PROFILE } = require("../../entitlement/capability");
+const { capabilityPermissions, revalidateCapabilityRecord, FULL_TEST_PROFILE, UNRESTRICTED_LOCAL_PROFILE, UNRESTRICTED_LOCAL_CAPABILITIES } = require("../../entitlement/capability");
 
 function classifyProviderHealth(name, available, health) {
   if (!available.includes(name)) return "absent";
@@ -19,9 +19,12 @@ function classifyProviderHealth(name, available, health) {
 
 async function cmdRun(task, opts = {}) {
   const capability = capabilityPermissions({ filePath: opts.capabilityFile });
-  const capabilityGranted = capability.record?.profile === FULL_TEST_PROFILE ? capability.record.capabilities : [];
-  const requestedCapabilities = typeof opts.capabilities === "string" ? opts.capabilities.split(",").map(item => item.trim()).filter(Boolean) : (opts.capabilities || (capabilityGranted.length ? capabilityGranted : undefined));
-  const autoAcceptGranted = opts.autoAccept === true || capabilityGranted.includes("auto_accept");
+  const capabilityRecord = capability.record?.profile === UNRESTRICTED_LOCAL_PROFILE ? await revalidateCapabilityRecord({ filePath: opts.capabilityFile }) : capability.record;
+  const capabilityGranted = capabilityRecord?.profile === FULL_TEST_PROFILE || capabilityRecord?.profile === UNRESTRICTED_LOCAL_PROFILE && opts.mode === "unrestricted" ? capabilityRecord.capabilities : [];
+  const useLocalGrant = capabilityRecord?.profile === UNRESTRICTED_LOCAL_PROFILE && opts.mode === "unrestricted";
+  const requestedCapabilities = typeof opts.capabilities === "string" ? opts.capabilities.split(",").map(item => item.trim()).filter(Boolean) : (opts.capabilities || (useLocalGrant || capabilityRecord?.profile === FULL_TEST_PROFILE ? capabilityGranted : undefined));
+  if (useLocalGrant && requestedCapabilities?.some(item => !UNRESTRICTED_LOCAL_CAPABILITIES.includes(item))) { console.error("Error: The unrestricted_local grant does not include one or more requested capabilities"); return 1; }
+  const autoAcceptGranted = opts.autoAccept === true || opts.mode === "unrestricted" && capabilityGranted.includes("auto_accept");
   let config;
   let policyDecision = null;
   if (!task) {
@@ -46,7 +49,7 @@ async function cmdRun(task, opts = {}) {
   }
   if (opts.mode) {
     config = loadConfig(path.join(repoRoot, "minitok.yml"), { repoRoot });
-    policyDecision = resolveExecutionPolicy({ mode: opts.mode, capabilities: requestedCapabilities, explicit_confirmation: opts.explicitConfirmation === true || capabilityGranted.length > 0, auto_accept: autoAcceptGranted, runtime_permission: capabilityGranted.includes("unrestricted_autonomous") || capabilityGranted.includes("unrestricted_general_autonomous"), source: "cli", actor: opts.actor, config });
+    policyDecision = resolveExecutionPolicy({ mode: opts.mode, capabilities: requestedCapabilities, explicit_confirmation: opts.explicitConfirmation === true || useLocalGrant || capabilityRecord?.profile === FULL_TEST_PROFILE, auto_accept: autoAcceptGranted, runtime_permission: capabilityGranted.includes("unrestricted_autonomous") || capabilityGranted.includes("unrestricted_general_autonomous"), source: "cli", actor: opts.actor, config });
     if (!policyDecision.allowed && !policyDecision.approval_required) {
       console.error(`Execution policy denied: ${policyDecision.reason}`);
       return 1;
@@ -175,7 +178,7 @@ async function cmdRun(task, opts = {}) {
       evidencePath: typeof opts.evidencePath === "string" ? opts.evidencePath : undefined,
       runId: typeof opts.runId === "string" ? opts.runId : undefined,
       signal: opts.signal,
-      autoAccept: policyDecision ? policyDecision.allowed === true && opts.autoAccept === true : opts.autoAccept === true,
+      autoAccept: policyDecision ? policyDecision.allowed === true && (opts.autoAccept === true || opts.mode === "unrestricted" && capabilityGranted.includes("auto_accept")) : opts.autoAccept === true,
       providerOverride: opts.providerOverride,
       codingAdapter: opts.codingAdapter,
       researchAdapter: opts.researchAdapter,

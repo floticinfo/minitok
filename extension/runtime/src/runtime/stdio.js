@@ -10,7 +10,7 @@ const os = require("os");
 const crypto = require("crypto");
 const { readRuntimeToken } = require("../mcp/runtime-token");
 const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
-const { capabilityPermissions, FULL_TEST_PROFILE } = require("../entitlement/capability");
+const { capabilityPermissions, revalidateCapabilityRecord, FULL_TEST_PROFILE, UNRESTRICTED_LOCAL_PROFILE } = require("../entitlement/capability");
 const LOCAL_MCP_SCOPES = new Set(["read", "write", "auto_accept", "unrestricted_autonomous", "unrestricted_general_autonomous", "verify_exec"]);
 
 function parseLocalMcpScopes(value = "read") {
@@ -184,6 +184,9 @@ class RuntimeStdio {
     this._runPipeline = options.runPipeline || null;
     this._workspaceRoot = options.workspaceRoot || process.cwd();
     this._model = options.model || null;
+    this._capabilityFile = options.capabilityFile || process.env.MINITOK_CAPABILITY_FILE;
+    this._entitlementDir = options.entitlementDir;
+    this._capabilityServerUrl = options.capabilityServerUrl || options.serverUrl || process.env.MINITOK_SERVER_URL || process.env.minitok_server_url;
     if (options.authRequired === false || options.entitlementRequired === false) throw new Error("MCP authentication and entitlement are mandatory");
     // Scopes are opt-in: the default stays read-only (tests/test-mcp-remote.js
     // asserts `["read"]`), and write/auto_accept must be granted explicitly.
@@ -192,7 +195,8 @@ class RuntimeStdio {
     // the server was launched. MINITOK_MCP_SCOPES lets `mcp connect --scopes`
     // and `runtime start --scopes` deliver the grant to the server process.
     const explicitPermissions = parseLocalMcpScopes(options.permissions || process.env.MINITOK_MCP_SCOPES || "read");
-    const capability = capabilityPermissions({ filePath: options.capabilityFile || process.env.MINITOK_CAPABILITY_FILE });
+    this._explicitPermissions = explicitPermissions;
+    const capability = capabilityPermissions({ filePath: this._capabilityFile, entitlementDir: this._entitlementDir });
     this._capabilityProfile = capability.record?.profile || null;
     this._permissions = new Set([...explicitPermissions, ...capability.permissions]);
     this._authRequired = true;
@@ -471,6 +475,12 @@ class RuntimeStdio {
           reply({ jsonrpc: "2.0", id, result: { protocolVersion, capabilities: { tools: { listChanged: false }, resources: { subscribe: false, listChanged: false }, prompts: { listChanged: false } }, serverInfo: { name: "minitok-runtime", version } } }); return;
     }
      if (method === "notifications/initialized") return;
+      if (this._capabilityProfile === UNRESTRICTED_LOCAL_PROFILE && ["tools/list", "tools/call"].includes(method)) {
+        const current = await revalidateCapabilityRecord({ filePath: this._capabilityFile, entitlementDir: this._entitlementDir, serverUrl: this._capabilityServerUrl });
+        if (!current) { this._permissions = new Set(this._explicitPermissions); this._capabilityProfile = null; }
+        else { this._permissions = new Set([...this._explicitPermissions, ...capabilityPermissions({ filePath: this._capabilityFile, entitlementDir: this._entitlementDir }).permissions]); }
+        if (!current && method === "tools/list") return this._error(id, MCP_ERROR_CODES.PERMISSION_DENIED, "Capability grant could not be revalidated", "CAPABILITY_REVALIDATION_FAILED", correlationId, {}, reply);
+      }
       if (this._entitlementRequired && ["resources/list", "resources/read", "prompts/list", "prompts/get", "tools/list", "tools/call"].includes(method)) {
         const policy = await this._services.entitlement.status();
         if (!policy?.allowed) return this._error(id, MCP_ERROR_CODES.PERMISSION_DENIED, policy?.message || "Paid entitlement required", "ENTITLEMENT_REQUIRED", correlationId, { state: policy?.state }, reply);
@@ -517,7 +527,7 @@ class RuntimeStdio {
       // null, so all four failed schema validation through the transport.
       const toolArguments = { ...(params.arguments || {}) };
       if (runId) toolArguments.run_id = runId;
-      const result = await getToolHandler(params.name, toolArguments, this._services, { safeResult: true, signal: controller.signal, model: this._model, runs: this._runs, runPipeline: this._runPipeline, recoveredRuns: this._recoveredRuns, persistence: this._persistence, workspaceRoot: this._workspaceRoot, permissions: this._permissions, capabilityProfile: this._capabilityProfile === FULL_TEST_PROFILE ? FULL_TEST_PROFILE : null, createSelection: selection => {
+      const result = await getToolHandler(params.name, toolArguments, this._services, { safeResult: true, signal: controller.signal, model: this._model, runs: this._runs, runPipeline: this._runPipeline, recoveredRuns: this._recoveredRuns, persistence: this._persistence, workspaceRoot: this._workspaceRoot, permissions: this._permissions, capabilityProfile: [FULL_TEST_PROFILE, UNRESTRICTED_LOCAL_PROFILE].includes(this._capabilityProfile) ? this._capabilityProfile : null, createSelection: selection => {
          const selectionId = crypto.randomBytes(16).toString("hex");
          const record = { schema_version: 1, workspace_root: path.resolve(selection.workspace_root || this._workspaceRoot), provider: selection.provider || null, status: selection.status, candidates: [...new Set(selection.candidates || [])], selected_at: selection.provider ? new Date().toISOString() : null };
          this._selections.set(selectionId, record);

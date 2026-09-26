@@ -36,7 +36,7 @@ function runCli(home, args, input) {
     encoding: "utf8",
     input,
     timeout: 60000,
-    env: { ...process.env, HOME: home, USERPROFILE: home },
+    env: { ...process.env, HOME: home, USERPROFILE: home, APPDATA: undefined },
   });
   return {
     status: result.status,
