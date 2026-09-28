@@ -27,7 +27,9 @@
  */
 
 // `trial` is a server-issued, quota-bound entitlement; it is not a free plan.
-const VALID_PLAN_IDS = ["open", "select", "private", "trial"];
+// `level1` is the canonical paid plan the server issues (see docs/DODO_PLAN_VALIDATION.md);
+// `open`, `select`, and `private` are retired ids kept for legacy entitlement parsing.
+const VALID_PLAN_IDS = ["level1", "open", "select", "private", "trial"];
 
 /**
  * Check whether a value is a valid ISO 8601 instant.
