@@ -9,6 +9,8 @@ const allowlist = new Set([
   "tests/test-security.js",
   "tests/test-cv33-attack-matrix.js",
   "tests/test-mcp-host-auth.js",
+  // Contains only placeholder capability tokens (e.g. "server-validated-capability") for tests.
+  "tests/test-mcp-remote-capability.js",
 ]);
 const patterns = [
   /sk_(?:live|test)_[A-Za-z0-9]{12,}/g,
