@@ -22,7 +22,7 @@ The Extension lint gate runs `tsc -p extension/tsconfig.json` over all Extension
 1. Install `@flotic/minitok` globally:
 
    ```bash
-   npm install -g @flotic/minitok@1.4.15
+   npm install -g @flotic/minitok@1.4.17
    ```
 
 2. Open a trusted VS Code workspace.

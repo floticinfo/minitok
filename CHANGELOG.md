@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+## 1.4.17 - 2026-09-30
+
+### Fixed
+
+- Restored the agent CLI command registration dropped from the CLI entrypoint during the merge.
+- Corrected the MCP tool-surface count to 22 (goal agent tools plus the `minitok_task` facade) in runtime and launch checks.
+- Restored the icon/representative rasterizers to render from the canonical palette source and SVG.
+- Extended the stdio read-scope tool allowlist with `minitok_discover` and `minitok_goal_status` for the goal tools.
+- Removed a stale global unrestricted-goal override that polluted config loading across projects.
+- Synchronized the extension runtime mirror and staged generated artifacts; full test suite green (1748 tests, 0 fail).
+
 ## 1.4.15 - 2026-09-24
 
 ### Fixed
