@@ -1,0 +1,40 @@
+"use strict";
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const { interpretNaturalLanguageGoal } = require("../src/goal/intent");
+const { runGeneralGoalLoop } = require("../src/goal/general_loop");
+const { createGoalSpec } = require("../src/goal/spec");
+const { createGoalSession, saveGoalSession, createCheckpoint, restoreCheckpoint, pauseGoalSession, resumeGoalSession, goalSessionPaths } = require("../src/goal/session");
+function box() { const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-phase6-")); return { root, clean: () => fs.rmSync(root, { recursive: true, force: true }) }; }
+function goal(id) { return createGoalSpec({ schema_version: 1, goal_id: id, objective: "Recover a persisted general goal", success_criteria: [{ id: "done", description: "verified completion", required: true, verifier: { type: "custom", id: "done", config: {} } }], constraints: { allowed_paths: [], blocked_paths: [".git"], max_cycles: 2, max_tokens: 0, timeout_ms: 0, stagnation_limit: 2, max_changed_files: 5, same_task_limit: 2, same_failure_limit: 2, requires_approval_for: [] }, execution_policy: { mode: "safe" } }); }
+function plan() { return { plan_version: 1, status: "ready", success_criteria: [{ id: "done", required: true }], steps: [{ id: "work", description: "perform work", depends_on: [], target_criteria: ["done"], status: "proposed" }] }; }
+function close(session) { session?.lock?.release?.(); }
+function validEvidence(id) { return { evidence_id: id, valid: true, executed: true, execution: { executed: true } }; }
+test("checkpoint integrity tampering is detected on resume and restore", () => {
+  const b = box(); const g = goal("phase6-checkpoint-integrity"); const session = createGoalSession({ workspaceRoot: b.root, goalSpec: g });
+  try { const checkpoint = createCheckpoint(session, { trackedPaths: [], label: "safe-point" }); close(session); const paths = goalSessionPaths(b.root, g.goal_id); const recordPath = path.join(paths.checkpoints, `${checkpoint.checkpoint_id}.json`); const record = JSON.parse(fs.readFileSync(recordPath, "utf8")); record.state.status = "completed"; fs.writeFileSync(recordPath, JSON.stringify(record)); const resumed = resumeGoalSession(b.root, g.goal_id, { lock: false }); assert.equal(resumed.state.status, "verification_required"); assert.equal(resumed.state.resume_check.checkpoint_integrity_valid, false); assert.throws(() => restoreCheckpoint(resumed, checkpoint.checkpoint_id), /integrity/i); close(resumed); } finally { b.clean(); }
+});
+test("tracked file drift blocks executor until read-only verification succeeds", async () => {
+  const b = box(); const g = goal("phase6-executor-gate"); const tracked = path.join(b.root, "tracked.txt"); fs.writeFileSync(tracked, "before"); const session = createGoalSession({ workspaceRoot: b.root, goalSpec: g, generalExecution: true });
+  try { const checkpoint = createCheckpoint(session, { trackedPaths: ["tracked.txt"] }); pauseGoalSession(session, "pause for recovery"); close(session); fs.writeFileSync(tracked, "changed"); const resumed = resumeGoalSession(b.root, g.goal_id, { lock: false }); let executeCalls = 0; const blocked = await runGeneralGoalLoop(interpretNaturalLanguageGoal("recover safely"), { session: resumed, max_cycles: 1, plan: async () => plan(), observeEnvironment: async () => ({}), execute: async () => { executeCalls += 1; return { status: "passed", executed: true }; } }); assert.equal(blocked.state, "verification_required"); assert.equal(executeCalls, 0); assert.match(blocked.final_reason, /read-only/i);
+    const verified = await runGeneralGoalLoop(interpretNaturalLanguageGoal("recover safely"), { session: resumed, max_cycles: 2, plan: async () => plan(), resumeVerifier: async input => ({ read_only: input.read_only, executed: true, evidence: [validEvidence("resume-read-only")] }), observeEnvironment: async () => ({}), execute: async () => { executeCalls += 1; return { status: "passed", success: true, executed: true, verification: { status: "passed", valid: true, executed: true, evidence: validEvidence("step") } }; }, verify: async () => ({ completed: true, evidence: [validEvidence("final")] }) }); assert.equal(verified.state, "completed"); assert.equal(executeCalls, 1); assert.equal(resumed.state.resume_check.requires_verification, false); assert.ok(resumed.state.resume_check.verification_evidence_ids.includes("resume-read-only")); assert.equal(checkpoint.checkpoint_id, resumed.state.last_checkpoint_id); close(resumed); } finally { b.clean(); }
+});
+
+test("failed read-only verification remains fail-closed", async () => {
+  const b = box(); const g = goal("phase6-read-only-failure"); const tracked = path.join(b.root, "tracked.txt"); fs.writeFileSync(tracked, "before"); const session = createGoalSession({ workspaceRoot: b.root, goalSpec: g });
+  try { createCheckpoint(session, { trackedPaths: ["tracked.txt"] }); pauseGoalSession(session); close(session); fs.writeFileSync(tracked, "changed"); const resumed = resumeGoalSession(b.root, g.goal_id, { lock: false }); let calls = 0; const result = await runGeneralGoalLoop(interpretNaturalLanguageGoal("do not execute"), { session: resumed, execute: async () => { calls += 1; return { status: "passed" }; }, resumeVerifier: async () => ({ read_only: true, executed: true, evidence: [{ evidence_id: "invalid-resume", valid: false, executed: true }] }) }); assert.equal(result.state, "verification_required"); assert.equal(calls, 0); assert.equal(resumed.state.resume_check.requires_verification, true); close(resumed); } finally { b.clean(); }
+});
+test("resume policy context drift is persisted and requires verification", () => {
+  const b = box(); const g = goal("phase6-context-drift"); const context = { mode: "supervised", capabilities: ["read"], explicit_confirmation: false, runtime_permission: true, audit_persisted: true, integrity_preflight: true, plan_version: 7 }; const session = createGoalSession({ workspaceRoot: b.root, goalSpec: g, resume_context: context });
+  try { saveGoalSession(session); close(session); const resumed = resumeGoalSession(b.root, g.goal_id, { lock: false, resume_context: { ...context, mode: "authorized_external", capabilities: ["write"] } }); assert.equal(resumed.state.status, "verification_required"); assert.equal(resumed.state.resume_check.requires_verification, true); assert.equal(resumed.state.external_state_drift.at(-1).context_drift, true); close(resumed); } finally { b.clean(); }
+});
+
+test("migration preserves Phase 6 fields and persisted files redact secrets", () => {
+  const { migrateState } = require("../src/goal/session"); const migrated = migrateState({ schema_version: 1, goal_id: "legacy", status: "paused", resume_context: { mode: "safe" }, checkpoint_integrity: "digest", checkpoints: [{ checkpoint_id: "c1" }], rollback_records: [{ rollback_id: "r1" }], replanning_traces: [{ trace_id: "t1" }], policy_decisions: [{ token: "secret" }] }, "C:\\workspace");
+  assert.equal(migrated.schema_version, 2); assert.deepEqual(migrated.resume_context, { mode: "safe" }); assert.equal(migrated.checkpoint_integrity, "digest"); assert.equal(migrated.checkpoints[0].checkpoint_id, "c1"); assert.equal(migrated.rollback_records[0].rollback_id, "r1"); assert.equal(migrated.replanning_traces[0].trace_id, "t1");
+  const b = box(); const g = goal("phase6-redaction"); const session = createGoalSession({ workspaceRoot: b.root, goalSpec: g, rawObjective: "token=secret" });
+  try { session.state.policy_decisions.push({ authorization: "Bearer secret", password: "secret" }); createCheckpoint(session, { label: "redact token=secret" }); close(session); const paths = goalSessionPaths(b.root, g.goal_id); const checkpointFile = fs.readdirSync(paths.checkpoints)[0]; const persisted = `${fs.readFileSync(paths.state, "utf8")}\n${fs.readFileSync(path.join(paths.checkpoints, checkpointFile), "utf8")}`; assert.doesNotMatch(persisted, /token=secret|Bearer secret|password.*secret/i); } finally { b.clean(); }
+});

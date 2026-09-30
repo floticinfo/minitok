@@ -16,7 +16,8 @@
     "spkiSha256": "0a1dab40cb5b8782bf6543d0d2885c81e5ccc2b0a60b8b0bf957e984eb920dc3"
   },
   "mcp": {
-    "protocolVersion": "2024-11-05",
+    "protocolVersions": ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05", "2024-10-07"],
+    "protocolVersion": "2025-11-25",
     "stdioEntry": "src/runtime/stdio-entry.js",
     "httpHost": "127.0.0.1",
     "httpPath": "/mcp",

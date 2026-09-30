@@ -35,11 +35,11 @@ const fingerprint = pemBase64 ? createHash("sha256").update(Buffer.from(pemBase6
 expect(keyIdMatch?.[1] === fixture.signing.keyId, "signing key identifier", fixture.signing.keyId);
 expect(fingerprint === fixture.signing.spkiSha256, "trusted public-key fingerprint", fingerprint || "missing");
 
-expect(stdio.includes(`const SUPPORTED_PROTOCOLS = ["${fixture.mcp.protocolVersion}"]`), "MCP protocol", fixture.mcp.protocolVersion);
+expect(fixture.mcp.protocolVersions.every(protocol => stdio.includes(`"${protocol}"`)) && stdio.includes("const SUPPORTED_PROTOCOLS = ["), "MCP protocol negotiation", fixture.mcp.protocolVersions.join(", "));
 expect(stdio.includes("MINITOK_MCP_AUTH_TOKEN_FILE") && stdio.includes("this._sessionToken"), "MCP stdio auth", "token file and session-bound authentication");
 expect(runtimeServer.includes(`const HOST = "${fixture.mcp.httpHost}"`) && runtimeServer.includes(`routeKey !== "POST /mcp"`), "MCP HTTP localhost boundary", "loopback-only /mcp");
 expect(runtimeServer.includes("Forbidden: localhost") && runtimeServer.includes("Bearer"), "MCP HTTP auth boundary", "remote socket rejection and bearer authentication");
-expect(mcpCommand.includes("runtime/stdio-entry.js") && mcpCommand.includes("MINITOK_MCP_AUTH_TOKEN_FILE"), "MCP stdio configuration", "packaged stdio entry and owner token file");
+expect(mcpCommand.includes("runtime/stdio-entry.js") && mcpCommand.includes("MINITOK_MCP_AUTH_TOKEN_FILE") && mcpCommand.includes("autoApprove: []"), "MCP stdio configuration", "packaged stdio entry, owner token file, and explicit approval default");
 expect(fixture.mcp.remoteHttpAllowed === false && serverConfig.includes("Remote http server URLs are not allowed"), "localhost versus deployable service", "HTTP is local-only; HTTPS is required for remote server URLs");
 
 const liveRequested = process.env.MINITOK_STAGE2_LIVE_SMOKE === "1";

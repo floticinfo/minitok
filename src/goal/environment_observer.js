@@ -1,0 +1,28 @@
+"use strict";
+
+const fs = require("fs");
+const path = require("path");
+const crypto = require("crypto");
+const { redactValue } = require("./evidence");
+const { discoverTools, preflightTool } = require("./tool_registry");
+
+const OBSERVATION_SCHEMA_VERSION = 1;
+const BAD_KEYS = new Set(["__proto__", "prototype", "constructor"]);
+function plain(value) { if (!value || typeof value !== "object" || Array.isArray(value)) return false; const proto = Object.getPrototypeOf(value); return proto === Object.prototype || proto === null; }
+function array(value) { return Array.isArray(value) ? value : []; }
+function idFor(value) { return `environment_${crypto.createHash("sha256").update(JSON.stringify(redactValue(value))).digest("hex").slice(0, 16)}`; }
+function hasBadKey(value) { if (Array.isArray(value)) return value.some(hasBadKey); if (!value || typeof value !== "object") return false; if (!plain(value)) return true; return Object.entries(value).some(([key, child]) => BAD_KEYS.has(key) || hasBadKey(child)); }
+function now(options = {}) { return options.now || new Date().toISOString(); }
+function fileList(root, max = 200) { const result = []; function walk(current) { if (result.length >= max) return; let entries; try { entries = fs.readdirSync(current, { withFileTypes: true }); } catch { return; } for (const entry of entries) { if (entry.name === ".git" || entry.name === "node_modules" || result.length >= max) continue; const absolute = path.join(current, entry.name); const relative = path.relative(root, absolute).replace(/\\/g, "/"); if (entry.isDirectory()) walk(absolute); else result.push(relative); } } walk(root); return result; }
+function packageScripts(root) { try { const value = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")); return { package_manager: fs.existsSync(path.join(root, "package-lock.json")) ? "npm" : fs.existsSync(path.join(root, "yarn.lock")) ? "yarn" : fs.existsSync(path.join(root, "pnpm-lock.yaml")) ? "pnpm" : null, scripts: plain(value.scripts) ? Object.keys(value.scripts) : [], name: typeof value.name === "string" ? value.name : null }; } catch { return { package_manager: null, scripts: [], name: null }; } }
+function commandAvailable(command, runner) { if (typeof runner === "function") { try { return runner(command) === true; } catch { return false; } } return false; }
+function observeEnvironment(options = {}) {
+  const root = path.resolve(options.workspaceRoot || process.cwd()); const observedAt = now(options); const ttlMs = Number.isSafeInteger(options.ttl_ms) && options.ttl_ms > 0 ? options.ttl_ms : 60000; const scripts = packageScripts(root); const credentialPresence = plain(options.credential_presence) ? Object.fromEntries(Object.keys(options.credential_presence).map(key => [key, options.credential_presence[key] === true])) : {};
+  const repository = { root, files: fileList(root, options.max_files || 200), branch: options.branch || null, dirty: options.dirty === true, protected_paths: array(options.protected_paths), allowed_paths: array(options.allowed_paths) }; const definitions = array(options.tool_definitions); const tools = discoverTools(definitions, { observed_at: observedAt, evidence_id: idFor({ root, observedAt, kind: "tools" }), external_capability: options.external_capability === true }); const commandNames = array(options.commands || ["npm", "node", "git"]); const commands = Object.fromEntries(commandNames.map(command => [command, commandAvailable(command, options.commandAvailable)])); const services = redactValue(plain(options.services) ? options.services : {}); const capabilities = redactValue(plain(options.capabilities) ? options.capabilities : {});
+  const result = { schema_version: OBSERVATION_SCHEMA_VERSION, observation_id: idFor({ root, observedAt }), observed_at: observedAt, ttl_ms: ttlMs, stale: false, repository: redactValue(repository), package: scripts, commands, services, capabilities, credential_presence: credentialPresence, external_connectivity: options.external_connectivity === true, adapters: array(options.adapters), tools, runtime_constraints: redactValue(plain(options.runtime_constraints) ? options.runtime_constraints : {}), evidence: { evidence_id: idFor({ root, observedAt, kind: "environment" }), kind: "environment_observation", executed: true, status: "observed", observed_at: observedAt } };
+  return result;
+}
+function isObservationStale(observation, nowMs = Date.now()) { const timestamp = Date.parse(observation?.observed_at || ""); return !Number.isFinite(timestamp) || nowMs - timestamp > (observation?.ttl_ms || 0); }
+function preflightEnvironment(observation, requirements = {}, context = {}) { if (!plain(observation) || hasBadKey(observation)) return { ready: false, reasons: ["invalid_observation"] }; const reasons = []; if (isObservationStale(observation, context.now || Date.now())) reasons.push("environment_observation_stale"); for (const command of array(requirements.commands)) if (observation.commands?.[command] !== true) reasons.push(`command_unavailable:${command}`); for (const toolName of array(requirements.tools)) { const tool = observation.tools?.find(item => item.name === toolName); if (!tool) reasons.push(`tool_missing:${toolName}`); else { const check = preflightTool(tool, context); if (!check.allowed) reasons.push(`${toolName}:${check.status}`); } } if (requirements.external === true && context.external_capability !== true) reasons.push("external_capability_required"); return { ready: reasons.length === 0, reasons };
+}
+module.exports = { OBSERVATION_SCHEMA_VERSION, observeEnvironment, isObservationStale, preflightEnvironment, fileList, packageScripts };

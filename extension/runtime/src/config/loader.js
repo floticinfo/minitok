@@ -11,6 +11,9 @@ const os = require("os");
 const yaml = require("js-yaml");
 const { ConfigError } = require("../core/errors");
 const { normalizeProvider } = require("../auth/aliases");
+const { EXECUTION_POLICY_MODES } = require("../goal/execution_policy");
+const { EXECUTION_CAPABILITIES, GENERAL_CAPABILITIES, isAlwaysBlockedCapability } = require("../goal/capabilities");
+const { CAMELSTREAM_PROVIDER, camelstreamPreset } = require("../llm/camelstream");
 
 const ENV_ALLOWLIST = new Set([
   "minitok_offline", "minitok_default_provider", "minitok_model", "minitok_server_url",
@@ -19,7 +22,7 @@ const ENV_ALLOWLIST = new Set([
   "minitok_custom_base_url", "minitok_openai_compatible_base_url",
   "minitok_plan_provider", "minitok_plan_model", "minitok_review_provider", "minitok_review_model",
   "minitok_work_provider", "minitok_work_model", "minitok_intel_provider", "minitok_intel_model",
-  "minitok_project_name", "minitok_project_stack",
+  "minitok_project_name", "minitok_project_stack", "minitok_goal_default_mode", "minitok_goal_unrestricted_enabled", "minitok_goal_unrestricted_require_explicit_confirmation", "minitok_goal_unrestricted_require_auto_accept", "minitok_goal_unrestricted_capabilities", "minitok_goal_unrestricted_general_enabled", "minitok_goal_unrestricted_general_require_explicit_confirmation", "minitok_goal_unrestricted_general_require_auto_accept", "minitok_goal_unrestricted_general_capabilities", "minitok_goal_unrestricted_general_max_plan_depth", "minitok_goal_unrestricted_general_max_replan_count", "minitok_goal_unrestricted_general_max_assumption_count",
   "minitok_budget_max_cycles", "minitok_budget_token_budget", "minitok_budget_max_cycles_hard_limit",
   "minitok_budget_token_hard_limit", "minitok_budget_stagnation_limit",
   "minitok_execution_max_retries", "minitok_execution_timeout_sec", "minitok_execution_retry_hard_limit",
@@ -33,6 +36,11 @@ const DEFAULTS = {
   offline: false,
   default_provider: "",
   project: { name: "unknown", stack: "generic" },
+  goal: {
+    default_mode: "safe",
+    unrestricted: { enabled: false, require_explicit_confirmation: true, require_auto_accept: true, capabilities: [] },
+    unrestricted_general: { enabled: false, require_explicit_confirmation: true, require_auto_accept: true, allow_goal_inference: true, allow_provisional_criteria: true, allow_replanning: true, allow_tool_discovery: true, allow_external_adapters: false, capabilities: [], max_plan_depth: 50, max_replan_count: 20, max_assumption_count: 100 },
+  },
   roles: {
     plan: { provider: "", adapter: "claude", model: "", effort: "medium", reasoning: null, thinking_budget: 0, fallback_model: "", fallback: [], timeout_sec: 300 },
     review: { provider: "", adapter: "claude", model: "", effort: "medium", reasoning: null, thinking_budget: 0, fallback_model: "", fallback: [], timeout_sec: 300 },
@@ -107,6 +115,18 @@ function loadEnvVars() {
     intel_model: ["intel", "model"],
     project_name: ["project", "name"],
     project_stack: ["project", "stack"],
+    goal_default_mode: ["goal", "default_mode"],
+    goal_unrestricted_enabled: ["goal", "unrestricted", "enabled"],
+    goal_unrestricted_require_explicit_confirmation: ["goal", "unrestricted", "require_explicit_confirmation"],
+    goal_unrestricted_require_auto_accept: ["goal", "unrestricted", "require_auto_accept"],
+    goal_unrestricted_capabilities: ["goal", "unrestricted", "capabilities"],
+    goal_unrestricted_general_enabled: ["goal", "unrestricted_general", "enabled"],
+    goal_unrestricted_general_require_explicit_confirmation: ["goal", "unrestricted_general", "require_explicit_confirmation"],
+    goal_unrestricted_general_require_auto_accept: ["goal", "unrestricted_general", "require_auto_accept"],
+    goal_unrestricted_general_capabilities: ["goal", "unrestricted_general", "capabilities"],
+    goal_unrestricted_general_max_plan_depth: ["goal", "unrestricted_general", "max_plan_depth"],
+    goal_unrestricted_general_max_replan_count: ["goal", "unrestricted_general", "max_replan_count"],
+    goal_unrestricted_general_max_assumption_count: ["goal", "unrestricted_general", "max_assumption_count"],
     budget_max_cycles: ["budget", "max_cycles"],
     budget_token_budget: ["budget", "token_budget"],
     budget_max_cycles_hard_limit: ["budget", "max_cycles_hard_limit"],
@@ -137,7 +157,7 @@ function loadEnvVars() {
       if (!nested[parts[i]] || typeof nested[parts[i]] !== "object") nested[parts[i]] = {};
       nested = nested[parts[i]];
     }
-    nested[parts[parts.length - 1]] = coerceValue(value);
+    nested[parts[parts.length - 1]] = parts.at(-1) === "capabilities" ? String(value).split(",").map(item => item.trim()).filter(Boolean) : coerceValue(value);
 
     if (_ROLE_KEYS.has(parts[0])) {
       if (!result.roles) result.roles = {};
@@ -212,7 +232,8 @@ function normalizeProviderConfig(config) {
     const aliases = [];
     for (const [name, value] of Object.entries(config.providers)) {
       const canonical = normalizeProvider(name);
-      if (canonical === name.toLowerCase()) providers[canonical] = value;
+      if (canonical === CAMELSTREAM_PROVIDER) providers[canonical] = camelstreamPreset(value || {});
+      else if (canonical === name.toLowerCase()) providers[canonical] = value;
       else aliases.push([canonical, value]);
     }
     // A canonical key is authoritative when both `gpt` and `openai` exist.
@@ -254,7 +275,74 @@ function validateConfig(config) {
   if (config.validation?.script_path !== undefined && typeof config.validation.script_path !== "string") throw new ConfigError("validation.script_path must be a string");
   if (config.validation?.environment_allowlist !== undefined && (!Array.isArray(config.validation.environment_allowlist) || config.validation.environment_allowlist.some(name => typeof name !== "string" || !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) || /(KEY|TOKEN|SECRET|PASSWORD|PASSWD|CREDENTIAL|PRIVATE|COOKIE|AUTH|CERT|PEM|JWT|DATABASE_URL|CONNECTION_STRING)/i.test(name)))) throw new ConfigError("validation.environment_allowlist may contain only non-secret environment variable names");
   if (config.security?.blocked_extensions !== undefined && (!Array.isArray(config.security.blocked_extensions) || config.security.blocked_extensions.some(value => typeof value !== "string"))) throw new ConfigError("security.blocked_extensions must be an array of strings");
+  validateGoalExecutionConfig(config.goal);
   return config;
+}
+
+function validateGoalExecutionConfig(goal) {
+  if (goal === undefined) return;
+  if (!goal || typeof goal !== "object" || Array.isArray(goal)) throw new ConfigError("goal must be a mapping");
+  for (const key of Object.keys(goal)) if (!["default_mode", "unrestricted", "unrestricted_general"].includes(key)) throw new ConfigError(`Unknown goal configuration field: ${key}`);
+  const allowedModes = EXECUTION_POLICY_MODES.filter(mode => mode !== "always_blocked");
+  if (goal.default_mode !== undefined && !allowedModes.includes(goal.default_mode)) throw new ConfigError(`goal.default_mode must be one of: ${allowedModes.join(", ")}`);
+  const unrestricted = goal.unrestricted;
+  const unrestrictedGeneral = goal.unrestricted_general;
+  if (unrestricted === undefined && unrestrictedGeneral === undefined) return;
+  if (unrestricted !== undefined && (!unrestricted || typeof unrestricted !== "object" || Array.isArray(unrestricted))) throw new ConfigError("goal.unrestricted must be a mapping");
+  if (unrestrictedGeneral !== undefined && (!unrestrictedGeneral || typeof unrestrictedGeneral !== "object" || Array.isArray(unrestrictedGeneral))) throw new ConfigError("goal.unrestricted_general must be a mapping");
+  validateUnrestrictedPolicy(unrestricted, "goal.unrestricted", false);
+  validateUnrestrictedPolicy(unrestrictedGeneral, "goal.unrestricted_general", true);
+}
+
+function validateUnrestrictedPolicy(policy, prefix, general) {
+  if (policy === undefined) return;
+  const common = ["enabled", "require_explicit_confirmation", "require_auto_accept", "capabilities"];
+  const generalKeys = ["allow_goal_inference", "allow_provisional_criteria", "allow_replanning", "allow_tool_discovery", "allow_external_adapters", "max_plan_depth", "max_replan_count", "max_assumption_count"];
+  const allowed = new Set(general ? [...common, ...generalKeys] : common);
+  for (const key of Object.keys(policy)) if (!allowed.has(key)) throw new ConfigError(`Unknown ${prefix} configuration field: ${key}`);
+  for (const key of ["enabled", "require_explicit_confirmation", "require_auto_accept", ...(general ? generalKeys.slice(0, 5) : [])]) if (policy[key] !== undefined && typeof policy[key] !== "boolean") throw new ConfigError(`${prefix}.${key} must be a boolean`);
+  for (const key of general ? ["max_plan_depth", "max_replan_count", "max_assumption_count"] : []) if (policy[key] !== undefined && (!Number.isSafeInteger(policy[key]) || policy[key] < (key === "max_replan_count" ? 0 : 1))) throw new ConfigError(`${prefix}.${key} must be a positive safe integer`);
+  if (policy.capabilities !== undefined) {
+    if (!Array.isArray(policy.capabilities) || policy.capabilities.some(value => typeof value !== "string" || !value.trim())) throw new ConfigError(`${prefix}.capabilities must be an array of non-empty strings`);
+    const duplicates = policy.capabilities.filter((value, index, values) => values.indexOf(value) !== index);
+    if (duplicates.length) throw new ConfigError(`${prefix}.capabilities contains duplicate capability: ${duplicates[0]}`);
+    for (const capability of policy.capabilities) {
+      if (!EXECUTION_CAPABILITIES.includes(capability) && !(general && GENERAL_CAPABILITIES.includes(capability))) throw new ConfigError(`${prefix}.capabilities contains unknown capability: ${capability}`);
+      if (isAlwaysBlockedCapability(capability)) throw new ConfigError(`${prefix}.capabilities cannot enable always-blocked capability: ${capability}`);
+    }
+  }
+}
+
+function redactGoalExecutionConfig(config = {}) {
+  const goal = config.goal || DEFAULTS.goal;
+  const unrestricted = goal.unrestricted || DEFAULTS.goal.unrestricted;
+  const hasGeneralPolicy = Object.prototype.hasOwnProperty.call(goal, "unrestricted_general");
+  const unrestrictedGeneral = goal.unrestricted_general || DEFAULTS.goal.unrestricted_general;
+  const result = {
+    default_mode: goal.default_mode || "safe",
+    unrestricted: {
+      enabled: unrestricted.enabled === true,
+      require_explicit_confirmation: unrestricted.require_explicit_confirmation !== false,
+      require_auto_accept: unrestricted.require_auto_accept !== false,
+      capabilities: Array.isArray(unrestricted.capabilities) ? [...unrestricted.capabilities] : [],
+    },
+    unrestricted_general: {
+      enabled: unrestrictedGeneral.enabled === true,
+      require_explicit_confirmation: unrestrictedGeneral.require_explicit_confirmation !== false,
+      require_auto_accept: unrestrictedGeneral.require_auto_accept !== false,
+      allow_goal_inference: unrestrictedGeneral.allow_goal_inference === true,
+      allow_provisional_criteria: unrestrictedGeneral.allow_provisional_criteria === true,
+      allow_replanning: unrestrictedGeneral.allow_replanning === true,
+      allow_tool_discovery: unrestrictedGeneral.allow_tool_discovery === true,
+      allow_external_adapters: unrestrictedGeneral.allow_external_adapters === true,
+      capabilities: Array.isArray(unrestrictedGeneral.capabilities) ? [...unrestrictedGeneral.capabilities] : [],
+      max_plan_depth: unrestrictedGeneral.max_plan_depth,
+      max_replan_count: unrestrictedGeneral.max_replan_count,
+      max_assumption_count: unrestrictedGeneral.max_assumption_count,
+    },
+  };
+  if (!hasGeneralPolicy) delete result.unrestricted_general;
+  return result;
 }
 
 function globalConfigPaths() {
@@ -319,4 +407,4 @@ function loadConfig(configPath, overrides) {
   return validateConfig(config);
 }
 
-module.exports = { loadConfig, deepMerge, coerceValue, resolveProviderName, validateConfig, normalizeProviderConfig, DEFAULTS };
+module.exports = { loadConfig, deepMerge, coerceValue, resolveProviderName, validateConfig, validateGoalExecutionConfig, redactGoalExecutionConfig, normalizeProviderConfig, DEFAULTS };

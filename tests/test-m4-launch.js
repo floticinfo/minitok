@@ -56,10 +56,11 @@ describe("M4.3 Entitlement Gate", () => {
   it("no secrets leaked", () => { const s = JSON.stringify(checkEntitlement()); assert.ok(!s.includes("sk_live")); assert.ok(!s.includes("sk_test")); });
 });
 describe("M4.4 MCP Protocol", () => {
-  it("15 tools defined, including the minitok_task facade", () => {
-    const tools = getToolDefinitions();
-    assert.equal(tools.length, 15);
-    assert.ok(tools.some(tool => tool.name === "minitok_task"));
+  it("current MCP tool surface is defined, including the minitok_task facade", () => {
+    const names = getToolDefinitions().map(tool => tool.name);
+    assert.equal(names.length, 22);
+    assert.ok(names.includes("minitok_task"));
+    for (const name of ["minitok_discover", "minitok_goal_start", "minitok_goal_status", "minitok_goal_continue", "minitok_goal_pause", "minitok_goal_resume", "minitok_goal_cancel"]) assert.ok(names.includes(name));
   });
   it("minitok_ prefix", () => { for (const t of getToolDefinitions()) assert.ok(t.name.startsWith("minitok_")); });
   it("valid schema", () => { for (const t of getToolDefinitions()) { assert.ok(t.inputSchema); assert.equal(t.inputSchema.type, "object"); } });

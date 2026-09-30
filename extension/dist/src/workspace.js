@@ -46,6 +46,7 @@ exports.appendBoundedOutput = appendBoundedOutput;
 exports.extensionCliEnvironment = extensionCliEnvironment;
 exports.spawnOptionsFor = spawnOptionsFor;
 exports.mcpCommand = mcpCommand;
+exports.capabilityFile = capabilityFile;
 exports.normalizeProviderName = normalizeProviderName;
 exports.configuredMcpScopes = configuredMcpScopes;
 exports.mcpEnvironment = mcpEnvironment;
@@ -250,7 +251,10 @@ function mcpCommand() {
     }
     return (0, mcp_1.packagedMcpCommand)(path.resolve(__dirname, "../.."), process.execPath);
 }
-exports.MCP_SCOPES = ["read", "write", "auto_accept", "verify_exec"];
+exports.MCP_SCOPES = ["read", "write", "auto_accept", "verify_exec", "unrestricted_autonomous", "unrestricted_general_autonomous"];
+function capabilityFile() {
+    return path.join(os.homedir(), ".minitok", "entitlement", "capability-token.json");
+}
 function normalizeProviderName(value) {
     const aliases = { claude: "anthropic", gpt: "openai", gemini: "google" };
     const key = String(value || "").trim().toLowerCase();
@@ -289,6 +293,7 @@ function mcpEnvironment() {
         ...inheritedMcpEnvironment(),
         minitok_server_url: configuredServerUrl(),
         MINITOK_MCP_AUTH_TOKEN_FILE: path.join(os.homedir(), ".minitok", "mcp", "runtime-token.json"),
+        MINITOK_CAPABILITY_FILE: capabilityFile(),
         MINITOK_MCP_SCOPES: scopes,
         ...(root ? { MINITOK_MCP_WORKSPACE_ROOT: root } : {}),
     };

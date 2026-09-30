@@ -63,6 +63,14 @@ describe("FailureAnalyzer: TYPE_ERROR classification", () => {
 });
 
 describe("EscalationEngine: model escalation on repeated failure", () => {
+  it("turns an approval-required blocker into human escalation", () => {
+    const engine = new EscalationEngine({ tokenHardLimit: 2_000_000, tokenStopRatio: 1 });
+    const rec = engine.recordBlockerOutcome("g", { blocker_id: "b1", category: "authentication_failure", requires_user_decision: true, requires_external_access: true, alternatives: [{ approval_required: true, applicable: true }] });
+    assert.equal(rec.stop, true);
+    assert.equal(rec.humanEscalation, true);
+    assert.equal(rec.reason, "blocker_requires_user_decision");
+  });
+
   it("escalates after N consecutive failures (default threshold 2)", () => {
     const engine = new EscalationEngine({ tokenHardLimit: 2_000_000, tokenStopRatio: 1 });
     // failure 1 -> no escalation yet

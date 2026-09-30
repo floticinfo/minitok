@@ -1,5 +1,87 @@
 # Changelog
 
+## Unreleased
+
+## 1.4.15 - 2026-09-24
+
+### Fixed
+
+- Preserved Git-generated patch line endings on Windows so isolated workspace changes apply correctly to CRLF working trees.
+- Aligned CLI, MCP metadata, runtime metadata, and Extension compatibility for the release candidate.
+
+## 1.4.14 - 2026-09-24
+
+### Fixed
+
+- Preserved Git-generated patch line endings on Windows so isolated workspace changes apply correctly to CRLF working trees.
+- Aligned the CLI, MCP metadata, and VS Code Extension compatibility metadata for the 1.4.14 release candidate.
+
+### Changed
+
+- Added explicit general-autonomy support boundaries for local repository, clarification-only, approval-required external, and unsupported intent domains. Ambiguous or low-confidence goals now preserve candidate interpretations and execution boundaries instead of silently granting authority.
+- Added an injected-provider offline/local evaluation harness with structured-output, intent, criteria, plan, tool/recovery, latency, token, intervention, redaction, and safety metrics. Evaluation artifacts are non-publishable and explicitly bounded to deterministic local evidence.
+- Added verified external-operation contracts for injected adapters: target/capability binding, idempotency and request fingerprints, duplicate prevention, operation ledgers, read-after-write verification, external-state fingerprints, drift detection, explicit retry policy, timeout/partial-success/unknown preservation, and redacted operation audit metadata. No live service or production adapter is contacted.
+- Added a Camelstream OpenAI-compatible preset and supervised live-smoke boundary. The preset fixes `https://stream.camelai.com/v1`, the registry-confirmed `auto` model, and the `CAMEL_API_KEY` credential handle, rejects raw credentials, uses the Responses API, requires explicit confirmation/network/endpoint opt-ins, and records separate non-publishable live evidence with a one-request canary budget. Implementation tests use fetch/DNS mocks only.
+
+### Documentation
+
+- Documented the verified `unrestricted_general` CLI/MCP routing and its fail-closed boundaries: explicit opt-in, general runtime permission, capability allowlists, plan/replan/assumption budgets, audit/integrity preflight, clarification for ambiguous goals, and required verifier evidence for completion.
+- Documented pause/resume, checkpoint verification, blocker classification, alternative selection, rollback, and replan behavior without implying that deterministic mock/local results validate live providers or production adapters.
+- Clarified the supported adapter descriptor categories and the current injected/mock/local verification scope. Browser, API, database mutation, deployment, publish, and SCM descriptors do not constitute a live production connection.
+
+## 1.4.11 - 2026-09-23
+
+## 1.4.10 - 2026-09-20
+
+### Fixed
+
+- Completed the portable CI and Windows isolation fixes needed for the MCP-only release workflow.
+- Stabilized Windows ACL and canonical-path verification across supported Node.js runners.
+
+## 1.4.9 - 2026-09-19
+
+### Changed
+
+- Prepared the approved 1.4.9 release candidate with the 0.3.15 extension artifact and refreshed release verification boundaries.
+- Preserved fail-closed publication and deployment checks until the authorized release workflow and approved environments execute successfully.
+
+## 1.4.8 - 2026-09-19
+
+### Added
+
+- Added persistent GoalController recovery lifecycle evidence, including failure classification, recovery task scheduling, patch signature comparison, same-patch rejection, model routing, session persistence, pause/resume lifecycle checks, and fail-closed terminal states.
+- Added disposable real-SWE fixture coverage for recovery, resume, multi-cycle criteria, local application observation, and Browser/Database/Deployment adapter contracts. These local and injected results are not live-provider measurements.
+- Added explicit release evidence boundaries for live provider, multi-cycle, and resume experiments: missing credentials or approval produce `live_status=skipped` and `production_ready=false` rather than a success claim.
+
+## 1.4.6 - 2026-09-15
+
+### Added
+
+- Added `minitok mcp setup cline` for first-time MCP onboarding. It checks entitlement, guides users to account creation and paid-plan setup when needed, activates an account-backed installation without printing the one-time activation key, refreshes the local runtime token, writes the Cline configuration, and reports the next restart step.
+- Added validated `GoalSpec` compilation and validation, including repository path, verifier, dangerous-field, execution-policy, and Repository ODD constraints. Model completion claims are metadata only; they do not establish goal completion.
+- Added `GoalEvaluator` evidence collection and completion gates, persistent Goal Sessions with atomic state, checkpoints, locks, pause/resume, migration, and corruption handling, plus `GoalController` cycle limits, recovery, escalation, and capability-based model routing.
+- Added the six persistent MCP Goal tools (`minitok_goal_start`, `minitok_goal_status`, `minitok_goal_continue`, `minitok_goal_pause`, `minitok_goal_resume`, and `minitok_goal_cancel`), with explicit scope checks and source/runtime parity for the bundled Extension runtime.
+- Added mock-first local application observation with allowlisted localhost HTTP, process, API, browser-driver, and read-only database adapters; external access and deployment remain disabled by default.
+- Added deterministic benchmark raw artifacts and validation for baseline/minitok records, including evidence and negative/security-case metrics. Mock benchmark output is not a live-provider measurement or a product-superiority claim.
+- The executed local verification set passed: Goal unit tests 114/114, Goal E2E tests 9/9, MCP Goal and transport tests 21/21, discovery/CLI/Phase 0/local fixture tests 14/14, Registry metadata tests 4/4, release artifact tests 10/10, and version metadata tests 2/2; lint, typecheck, documentation consistency, version metadata, MCP Registry metadata, package dry-run, and runtime parity checks also passed. Real provider/live E2E, external Registry publication, and production validation were not run.
+
+## 1.4.5 - 2026-09-15
+
+### Changed
+
+- Switched official MCP Registry ownership from the GitHub organization namespace to the verified `minitok.dev` domain namespace `dev.minitok/minitok`, so Registry publication does not require exposing a personal GitHub account as an organization member. The npm package remains `@flotic/minitok`; only `mcpName`, server metadata, and Registry ownership proof changed.
+
+## 1.4.4 - 2026-09-15
+
+### Added
+
+- Added official MCP Registry and downstream marketplace publication metadata. `server.json` follows the official npm/stdio Registry schema and uses `io.github.floticinfo/minitok` with npm ownership verification through `package.json.mcpName`. `mcp-marketplace.json` documents transports, tools, resources, prompts, authentication, active paid entitlement, scopes, approval behavior, privacy, telemetry, and provider-cost boundaries. Added offline metadata validation, npm-pack inclusion checks, and an OIDC-based tag publication workflow for operator-approved releases. No credentials or automatic publication are performed by local checks.
+
+## 1.4.3 - 2026-09-15
+
+### Added
+
+- Added MCP compatibility for current commercial hosts: protocol negotiation for `2025-11-25`, `2025-06-18`, `2025-03-26`, `2024-11-05`, and `2024-10-07`, standard `Content-Length` stdio framing with legacy newline compatibility, response framing preservation, bounded frame parsing, current Cline configuration paths, and an explicit empty `autoApprove` default. The release is based on the complete 1.4.2 codebase; non-MCP features from 1.4.2 are retained.
 ## 1.4.7-rc.5 - 2026-09-17
 
 ### Fixed
@@ -59,7 +141,6 @@
 - Added the enforced `minitok agent --mode on|off` host, which exposes only `minitok_*` tools through the Cline SDK and refuses execution before MCP/provider startup when disabled.
 - Added `minitok mcp setup <host>` for Cline, Cursor, Claude Desktop, and Windsurf with platform-aware paths, read-only scopes by default, and empty `autoApprove` settings. Broader `write` and `verify_exec` scopes require explicit configuration.
 - Bumped the npm CLI candidate to `1.4.7-rc.0` and the VS Code Extension candidate to `0.3.3`.
-
 ## 1.4.2 - 2026-09-15
 
 ### Changed

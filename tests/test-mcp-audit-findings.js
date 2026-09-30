@@ -32,7 +32,8 @@ test("approval paths are canonical and constrained", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-mcp-"));
   try {
     fs.mkdirSync(path.join(root, ".minitok"));
-    assert.equal(requireApprovalPath(path.join(root, ".minitok", "approval.json"), root), path.join(root, ".minitok", "approval.json"));
+    const canonicalRoot = fs.realpathSync.native(root);
+    assert.equal(requireApprovalPath(path.join(root, ".minitok", "approval.json"), root), path.join(canonicalRoot, ".minitok", "approval.json"));
     assert.throws(() => requireApprovalPath(path.join(root, "approval.json"), root), /under workspace/);
     assert.throws(() => requireApprovalPath(path.join(root, ".minitok", "..", "approval.json"), root), /under workspace/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
@@ -46,6 +47,28 @@ test("tool results expose stable structured success and error contracts", async 
   const failure = await getToolHandler("missing", {}, services, { safeResult: true });
   assert.equal(failure.isError, true);
   assert.equal(failure.structuredContent.error.code, "TOOL_NOT_FOUND");
+});
+
+test("run_get exposes goal evidence fields and redacts sensitive values", async () => {
+  const result = await getToolHandler("minitok_run_get", { run_id: "goal-run" }, {}, {
+    safeResult: true,
+    runs: new Map([["goal-run", { runId: "goal-run", state: "blocked", controller: new AbortController(), result: {
+      blocker: { category: "authentication_failure", cause: "token=hidden" },
+      alternatives: [{ alternative_id: "local-validation", description: "local" }],
+      evidence: [{ evidence_id: "e1", stderr: "api_key=hidden" }],
+      final_outcome: { state: "blocked" },
+      approval_requests: [{ description: "credential token=hidden" }],
+      resolution_attempts: [{ status: "approval_required", reason: "secret=hidden" }],
+    } }]]),
+  });
+  const payload = JSON.parse(result.content[0].text);
+  assert.equal(payload.state, "blocked");
+  assert.ok(payload.blocker);
+  assert.ok(Array.isArray(payload.evidence));
+  assert.ok(Array.isArray(payload.approval_requests));
+  assert.ok(Array.isArray(payload.resolution_attempts));
+  assert.deepEqual(payload.final_outcome, { state: "blocked" });
+  assert.doesNotMatch(JSON.stringify(payload), /hidden/);
 });
 
 test("MCP config writes remove stale locks and leave owner-only config", () => {
@@ -104,6 +127,7 @@ test("MCP host configs launch the authenticated stdio entrypoint without a raw t
     assert.equal(server.command, process.execPath);
     assert.deepEqual(server.args, [path.resolve(__dirname, "../src/runtime/stdio-entry.js")]);
     assert.equal(server.env.MINITOK_MCP_AUTH_TOKEN_FILE, path.join(os.homedir(), ".minitok", "mcp", "runtime-token.json"));
+    assert.deepEqual(server.autoApprove, [], "generated MCP entries must not auto-approve tools by default");
     assert.equal(Object.values(server.env).some(value => value.includes("compat-test-token")), false);
     assert.equal(JSON.stringify(server).includes("token"), true);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }

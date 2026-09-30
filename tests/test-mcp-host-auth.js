@@ -25,9 +25,16 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { RuntimeStdio } = require("../src/runtime/stdio");
 const { createRuntimeServices } = require("../src/runtime");
+const { parseLocalMcpScopes, LOCAL_MCP_SCOPES } = require("../src/runtime/stdio");
 
 const TOKEN = "env-only-host-token";
 const entry = path.resolve(__dirname, "../src/runtime/stdio-entry.js");
+
+test("unrestricted MCP scope is explicit and remains separate from autonomous auto_accept", () => {
+  assert.equal(LOCAL_MCP_SCOPES.has("unrestricted_autonomous"), true);
+  assert.deepEqual(parseLocalMcpScopes("read,write,unrestricted_autonomous"), ["read", "write", "unrestricted_autonomous"]);
+  assert.throws(() => parseLocalMcpScopes("read,unrestricted"), error => error.code === "INVALID_SCOPE");
+});
 
 /** Environment for a host that can only pass the credential through env. */
 function hostEnvironment(token) {
@@ -203,6 +210,9 @@ test("a pipeline outcome of success:false is recorded and reported as failed", a
 
     const persisted = JSON.parse(fs.readFileSync(path.join(box.root, "runtime-state", "mcp-runs.json"), "utf8"));
     assert.equal(persisted.records.find(record => record.run_id === runId).state, "failed", "the persisted record must not claim success either");
+  } finally { box.cleanup(); }
+});
+
 /** A runtime-token fixture: the record a host configuration launches against. */
 function runtimeTokenDir() {
   const root = fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), "minitok-mcp-token-")));
@@ -275,7 +285,4 @@ test("the token file's expiry, rotation and revocation govern a live session", a
   } finally {
     fs.rmSync(fixture.root, { recursive: true, force: true });
   }
-});
-
-  } finally { box.cleanup(); }
 });

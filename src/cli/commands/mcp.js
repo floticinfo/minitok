@@ -34,6 +34,7 @@ function hostRoots() {
 function hostCandidates() {
   const roots = hostRoots();
   return {
+    // Current Cline IDE and CLI locations, followed by the legacy VS Code path.
     cline: [
       path.join(roots.home, ".cline", "data", "settings", "cline_mcp_settings.json"),
       path.join(roots.home, ".cline", "mcp.json"),
@@ -444,8 +445,25 @@ async function runMcpOnboarding({ input = process.stdin, output = process.stderr
   return { status: "configured", hosts: hosts.map(host => host.name) };
 }
 
+function setupInstructions(serverUrl) {
+  return [
+    "MCP first-time setup needs an active minitok entitlement.",
+    `Create or sign in to your account: ${serverUrl === "https://api.minitok.dev" ? "https://minitok.dev/signup" : `${serverUrl}/signup`}`,
+    `Choose a plan and complete payment: ${serverUrl === "https://api.minitok.dev" ? "https://minitok.dev/pricing" : `${serverUrl}/pricing`}`,
+    "Then run `minitok mcp setup cline` again; the account session will retrieve and activate the installation automatically.",
+    "There is no free plan or free trial. LLM provider usage is billed separately.",
+  ];
+}
+
 function register(program) {
   const mcp = program.command("mcp").description("Manage MCP status, connections, tokens, and host setup");
+
+  mcp.command("serve")
+    .description("Run the authenticated MCP stdio server for package and marketplace clients")
+    .action(() => {
+      const { RuntimeStdio } = require("../../runtime/stdio");
+      new RuntimeStdio().start();
+    });
 
   mcp.command("status")
     .option("--server <url>", "minitok server URL")
@@ -610,4 +628,5 @@ function register(program) {
       console.log(JSON.stringify({ status: "ok", path: record.path, expires_at: new Date(record.expires_at).toISOString() }));
     });
 }
-module.exports = { register, detect, configuredScopes, configuredEntryContract, readConfig, writeConfig, configs, serverContainer, configuredServerUrl, planChange, readLock, processIsRunning, hostCandidates, resolveHost, configuredTokenFiles, runMcpOnboarding, unconfiguredHosts };
+module.exports = { register, detect, configuredScopes, configuredEntryContract, readConfig, writeConfig, configs, serverContainer, configuredServerUrl, planChange, readLock, processIsRunning, hostCandidates, resolveHost, configuredTokenFiles, runMcpOnboarding, unconfiguredHosts, setupInstructions };
+

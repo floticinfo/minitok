@@ -4,15 +4,19 @@ const { WorkspaceManager } = require("../../workspace/manager");
 const { runPipeline } = require("../../pipeline/loop");
 const { normalizeProvider } = require("../../auth/aliases");
 const { PREAUTHORIZED } = require("../../pipeline/authorization");
+const { resolveExecutionPolicy } = require("../../goal/execution_policy");
+const { loadConfig } = require("../../config/loader");
 const path = require("path");
 const crypto = require("crypto");
 const { resolveServerUrl } = require("./server-config");
+const { capabilityPermissions, FULL_TEST_PROFILE } = require("../../entitlement/capability");
 
 function ensureRunId(opts) {
   if (typeof opts.runId === "string" && opts.runId.trim()) return opts.runId.trim();
   opts.runId = crypto.randomUUID();
   return opts.runId;
 }
+
 
 function classifyProviderHealth(name, available, health) {
   if (!available.includes(name)) return "absent";
@@ -22,12 +26,17 @@ function classifyProviderHealth(name, available, health) {
   return "error";
 }
 
-async function cmdRun(task, opts) {
-  opts = opts || {};
+async function cmdRun(task, opts = {}) {
+  const capability = capabilityPermissions({ filePath: opts.capabilityFile });
+  const capabilityGranted = capability.record?.profile === FULL_TEST_PROFILE ? capability.record.capabilities : [];
+  const requestedCapabilities = typeof opts.capabilities === "string" ? opts.capabilities.split(",").map(item => item.trim()).filter(Boolean) : (opts.capabilities || (capabilityGranted.length ? capabilityGranted : undefined));
+  const autoAcceptGranted = opts.autoAccept === true || capabilityGranted.includes("auto_accept");
   // One identifier binds provider preflight, trial consumption, pipeline state,
   // evidence, and retries. Never let a real run reach the quota endpoint without
   // an idempotency key.
   ensureRunId(opts);
+  let config;
+  let policyDecision = null;
   if (!task) {
     console.error("Error: Task description required.\n\nUsage: minitok run \"Fix authentication bug\"");
     return 1;
@@ -45,6 +54,14 @@ async function cmdRun(task, opts) {
       console.log(`Workspace: ${ws.name} (${repoRoot})`);
     } catch (e) {
       console.error(`Error: ${e.message}`);
+      return 1;
+    }
+  }
+  if (opts.mode) {
+    config = loadConfig(path.join(repoRoot, "minitok.yml"), { repoRoot });
+    policyDecision = resolveExecutionPolicy({ mode: opts.mode, capabilities: requestedCapabilities, explicit_confirmation: opts.explicitConfirmation === true || capabilityGranted.length > 0, auto_accept: autoAcceptGranted, runtime_permission: capabilityGranted.includes("unrestricted_autonomous") || capabilityGranted.includes("unrestricted_general_autonomous"), source: "cli", actor: opts.actor, config });
+    if (!policyDecision.allowed && !policyDecision.approval_required) {
+      console.error(`Execution policy denied: ${policyDecision.reason}`);
       return 1;
     }
   }
@@ -191,7 +208,7 @@ async function cmdRun(task, opts) {
       evidencePath: typeof opts.evidencePath === "string" ? opts.evidencePath : undefined,
       runId: ensureRunId(opts),
       signal: opts.signal,
-      autoAccept: opts.autoAccept,
+      autoAccept: policyDecision ? policyDecision.allowed === true && opts.autoAccept === true : opts.autoAccept === true,
       providerOverride: opts.providerOverride,
       codingAdapter: opts.codingAdapter,
       researchAdapter: opts.researchAdapter,

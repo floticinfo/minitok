@@ -265,8 +265,11 @@ function activate(context) {
         output.show(true);
         try {
             const evidencePath = vscode.workspace.getConfiguration("minitok").get("evidencePath", ".minitok/evidence/runs/latest.json").trim() || ".minitok/evidence/runs/latest.json";
-            const runArgs = ["run", task, "--repo", cwd, "--evidence-path", evidencePath, ...(approved ? ["--auto-accept"] : [])];
-            await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title, cancellable: true }, async (_progress, token) => {
+            const runArgs = ["run", task, "--repo", cwd, "--evidence-path", evidencePath, "--capability-file", (0, workspace_2.capabilityFile)(), ...(approved ? ["--auto-accept"] : [])];
+            // Run inside a cancellable notification. The spawned CLI has no TTY of its
+            // own, so this is the only way to stop a long run short of reloading the
+            // window (the promise used to have no timeout and no cancel path).
+            await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "minitok task", cancellable: true }, async (_progress, token) => {
                 output.appendLine(redactExtensionOutput(await runCli((0, workspace_2.cliPath)(), runArgs, { timeoutMs: CLI_RUN_TIMEOUT_MS, token })));
             });
         }

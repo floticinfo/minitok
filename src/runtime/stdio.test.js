@@ -13,8 +13,7 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
-const { drainStdioLines, MAX_REQUEST_BYTES, MAX_TRACKED_RUNS, RuntimeStdio, runtimeBinding } = require("./stdio");
-
+const { drainStdioLines, drainStdioMessages, MAX_REQUEST_BYTES, MAX_TRACKED_RUNS, RuntimeStdio, runtimeBinding, SUPPORTED_PROTOCOLS } = require("./stdio");
 describe("runtime binding", () => {
   it("uses the installation binding across runtime token rotation", () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "mt-binding-"));
@@ -38,6 +37,30 @@ describe("runtime binding", () => {
 });
 
 describe("stdio framing", () => {
+  it("negotiates current MCP protocol revisions", () => {
+    assert.deepEqual(SUPPORTED_PROTOCOLS.slice(0, 4), ["2025-11-25", "2025-06-18", "2025-03-26", "2024-11-05"]);
+  });
+
+  it("parses Content-Length framing across chunks and preserves UTF-8", () => {
+    const payload = JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/list", params: { text: "안녕하세요 🚀" } });
+    const frame = Buffer.from(`Content-Length: ${Buffer.byteLength(payload)}\r\n\r\n${payload}`, "utf8");
+    const split = Math.floor(frame.length / 2);
+    const first = drainStdioMessages(Buffer.alloc(0), frame.subarray(0, split), "auto");
+    assert.equal(first.mode, "framed");
+    assert.deepEqual(first.messages, []);
+    const second = drainStdioMessages(first.rest, frame.subarray(split), first.mode);
+    assert.deepEqual(second.messages, [payload]);
+    assert.equal(second.rest.length, 0);
+  });
+
+  it("parses multiple framed messages and rejects an oversized frame", () => {
+    const make = value => { const body = JSON.stringify(value); return Buffer.from(`Content-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`); };
+    const parsed = drainStdioMessages(Buffer.alloc(0), Buffer.concat([make({ id: 1 }), make({ id: 2 })]), "auto");
+    assert.equal(parsed.messages.length, 2);
+    const oversized = drainStdioMessages(Buffer.alloc(0), Buffer.from(`Content-Length: ${MAX_REQUEST_BYTES + 1}\r\n\r\n`), "auto");
+    assert.equal(oversized.oversized, true);
+  });
+
   it("returns complete lines and keeps the incomplete remainder", () => {
     const first = drainStdioLines("", '{"id":1}\n{"id":2}\n{"id":3');
     assert.deepEqual(first.lines, ['{"id":1}', '{"id":2}']);
@@ -149,7 +172,7 @@ describe("stdio run registry and scopes", () => {
       assert.ok(tools.length > 0, "read scope must expose read-only tools");
       assert.equal(tools.some(tool => tool.name === "minitok_run"), false);
       assert.equal(tools.some(tool => tool.name === "minitok_task"), false);
-      assert.equal(tools.every(tool => ["minitok_run_list", "minitok_run_get", "minitok_knowledge_query", "minitok_analyze_failures", "minitok_recommend_policy", "minitok_compact_context", "minitok_collect_evidence", "minitok_status"].includes(tool.name)), true);
+      assert.equal(tools.every(tool => ["minitok_discover", "minitok_run_list", "minitok_run_get", "minitok_goal_status", "minitok_knowledge_query", "minitok_analyze_failures", "minitok_recommend_policy", "minitok_compact_context", "minitok_collect_evidence", "minitok_status"].includes(tool.name)), true);
     } finally { fs.rmSync(root, { recursive: true, force: true }); }
   });
 

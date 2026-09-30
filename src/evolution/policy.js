@@ -196,6 +196,11 @@ class EscalationEngine {
    * (catalog-based by default). Returns null when no model is available,
    * in which case the loop enables reasoning settings on the current provider.
    */
+  recordBlockerOutcome(goalKey, blockerReport = {}) {
+    if (blockerReport.requires_user_decision || blockerReport.requires_external_access || blockerReport.alternatives?.every(item => item.approval_required || item.applicable === false)) return { escalate: false, stop: true, humanEscalation: true, reason: "blocker_requires_user_decision", blocker_id: blockerReport.blocker_id || null };
+    return this.recordCycleOutcome(goalKey, { success: false, category: blockerReport.category || "unknown", tokens: 0 });
+  }
+
   resolveModel(role, targetTier) {
     if (this.escalationModels[role]) return this.escalationModels[role];
     return typeof this.modelResolver === "function" ? this.modelResolver(targetTier) : null;

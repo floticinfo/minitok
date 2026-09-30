@@ -238,6 +238,8 @@ test("cmdRun forwards the approval, run id, and cancellation options into the pi
     }
     fs.rmSync(repo, { recursive: true, force: true });
   }
+});
+
 /**
  * The approval path has to survive isolation.
  *
@@ -414,6 +416,4 @@ test("an isolated run that approves a cycle and then fails its follow-up is a fa
     try { fs.rmSync(knowledgePath, { force: true }); } catch {}
     fs.rmSync(repo, { recursive: true, force: true });
   }
-});
-
 });

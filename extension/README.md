@@ -1,7 +1,5 @@
 # minitok
 
-![minitok Harlekin brand mark](media/minitok.png)
-
 **Verified coding workflows for the terminal**
 
 A repository-aware workflow for changes you can review. minitok brings the workflow from [minitok.dev](https://minitok.dev) into VS Code: describe a task, inspect the repository and proposed plan, execute the change, verify it with configured checks, review the result, adapt through bounded repair when checks fail, and preserve local evidence of the outcome.
@@ -24,7 +22,7 @@ The Extension lint gate runs `tsc -p extension/tsconfig.json` over all Extension
 1. Install `@flotic/minitok` globally:
 
    ```bash
-   npm install -g @flotic/minitok@1.4.7-rc.5
+   npm install -g @flotic/minitok@1.4.15
    ```
 
 2. Open a trusted VS Code workspace.
