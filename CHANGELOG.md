@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+## 1.4.18 - 2026-10-01
+
+### Added
+
+- Added the "minitok trial" CLI command for requesting a free trial key.
+
 ## 1.4.17 - 2026-09-30
 
 ### Fixed
