@@ -19,7 +19,7 @@ function resolveModule(file, request) {
 }
 
 function collectFiles() {
-  const pending = [entry, path.join(sourceRoot, "runtime", "server.js"), path.join(sourceRoot, "runtime", "entitlement.js"), path.join(sourceRoot, "mcp", "tools.js")];
+  const pending = [entry, path.join(sourceRoot, "runtime", "server.js"), path.join(sourceRoot, "runtime", "entitlement.js"), path.join(sourceRoot, "mcp", "tools.js"), path.join(sourceRoot, "auth", "installation.js")];
   const files = new Set();
   while (pending.length) {
     const file = pending.pop();
