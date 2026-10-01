@@ -4,7 +4,8 @@ const path = require("path");
 const crypto = require("crypto");
 const { compileGoal, compileModelGoal, goalIdFor } = require("../../goal/compiler");
 const { createGoalSpec } = require("../../goal/spec");
-const { createGoalSession, loadGoalSession, resumeGoalSession, saveGoalSession, createCheckpoint } = require("../../goal/session");
+const fs = require("fs");
+const { createGoalSession, loadGoalSession, resumeGoalSession, saveGoalSession, createCheckpoint, GOAL_DIRECTORY, goalSessionPaths } = require("../../goal/session");
 const { runTask } = require("../../goal/task_executor");
 const { executeGoal } = require("../../goal/general_execution");
 const { redactValue } = require("../../goal/evidence");
@@ -40,7 +41,30 @@ function sessionResponse(session, extra = {}) {
   const policyFields = policy ? policyResponse(policy) : { execution_mode: "safe", requested_capabilities: [], granted_capabilities: [], denied_capabilities: [], policy_decision: "unknown", audit_id: "audit-unknown" };
   return { ...responseProjection(session, extra), state: state.status, current_state: state.status, goal_id: session.goalSpec.goal_id, objective: state.original_objective || session.goalSpec.objective, blocker, alternatives, recommended_action: blocker?.recommended_alternative || state.selected_alternative || null, execution_policy: policy, execution_audits: state.execution_audits || [], execution_audit_refs: state.execution_audit_refs || [], ...policyFields, goal_plan: state.goal_plan || extra.goal_plan || null, inferred_steps: state.inferred_steps || extra.inferred_steps || [], optional_steps: state.optional_steps || extra.optional_steps || [], missing_information: state.missing_information || extra.missing_information || [], out_of_scope_candidates: state.out_of_scope_candidates || extra.out_of_scope_candidates || [], expansion_confidence: state.expansion_confidence ?? extra.expansion_confidence ?? null, requires_user_confirmation: extra.requires_user_confirmation ?? state.requires_user_confirmation ?? false, questions: extra.questions || state.questions || [], approval_required: approvalRequired, verification_required: verificationRequired, resume_check: resumeCheck, resume_command: approvalRequired || verificationRequired ? "minitok goal resume" : null, evidence: state.verification_results || state.evaluator_results || [], evidence_complete: state.terminal_resolution?.blocker?.evidence_complete ?? false, terminal_resolution: state.terminal_resolution || null, attempted_alternatives: state.terminal_resolution?.attempted_alternatives || [], why_not_selected: state.terminal_resolution?.why_not_selected || [], required_external_action: state.terminal_resolution?.required_external_action || null, resume_conditions: state.terminal_resolution?.resume_conditions || null, next_user_action: state.terminal_resolution?.next_user_action || null, final_outcome: state.final_outcome || null, ...extra };
 }
-function printHuman(value) { console.log(`state: ${value.state}`); console.log(`goal_id: ${value.goal_id}`); if (value.blocker) console.log(`blocker: ${value.blocker.category || "unknown"}`); if (value.approval_required) console.log(`approval_required: true\nresume_action: ${value.resume_action}`); if (value.recommended_action) console.log(`recommended_action: ${value.recommended_action}`); }
+function printHuman(value) { console.log(`state: ${value.state}`); console.log(`goal_id: ${value.goal_id}`); console.log(`id: ${value.goal_id}`); console.log(`  status/continue/resume: minitok goal status --goal-id ${value.goal_id}`); if (value.blocker) console.log(`blocker: ${value.blocker.category || "unknown"}`); if (value.approval_required) console.log(`approval_required: true\nresume_action: ${value.resume_action}`); if (value.recommended_action) console.log(`recommended_action: ${value.recommended_action}`); }
+
+function listGoalSessions(workspaceRoot) {
+  const goalsDirectory = goalSessionPaths(workspaceRoot, "list").root.slice(0, -"list".length);
+  let entries;
+  try { entries = fs.readdirSync(goalsDirectory, { withFileTypes: true }); }
+  catch (error) { if (error.code === "ENOENT") return []; throw error; }
+  const summaries = [];
+  for (const entry of entries) {
+    if (!entry.isDirectory()) continue;
+    try {
+      const session = loadGoalSession(workspaceRoot, entry.name, { lock: false });
+      summaries.push({ goal_id: session.goalSpec.goal_id, state: session.state.status, objective: session.state.original_objective || session.goalSpec.objective, updated_at: session.state.updated_at || null });
+    } catch { /* Skip entries that are not valid goal sessions (stray files, half-removed directories). */ }
+  }
+  return summaries;
+}
+function cmdGoalList(options = {}) {
+  const goals = listGoalSessions(repoPath(options));
+  if (options.json) { output({ goals }, options); return 0; }
+  if (goals.length === 0) console.log(`No goal sessions found in ${path.join(repoPath(options), GOAL_DIRECTORY)}`);
+  for (const summary of goals) console.log(`${summary.goal_id}\t${summary.state}\t${summary.objective}`);
+  return 0;
+}
 
 async function cmdGoalStart(goal, options = {}) {
   if (!goal) { console.error("Goal objective is required"); return 1; }
@@ -166,7 +190,8 @@ function register(program) {
   const policyOptions = command => command.option("--mode <mode>").option("--capabilities <capabilities>", "comma-separated capabilities (legacy-compatible)").option("--capability <name>", "request one capability (repeatable)", (value, previous = []) => [...previous, value], []).option("--confirm-unrestricted", "explicitly confirm unrestricted autonomous execution").option("--confirm-unrestricted-general", "explicitly confirm unrestricted_general execution").option("--allow-unrestricted-general", "grant this request's unrestricted_general runtime permission").option("--explicit-confirmation", "legacy explicit confirmation alias").option("--auto-accept", "auto-accept only for explicitly enabled unrestricted mode").option("--json");
   policyOptions(goal.command("start").argument("<objective>").option("--repo <path>").option("--goal-id <id>")).action((objective, options) => cmdGoalStart(objective, options).then(code => { process.exitCode = code; }));
   goal.command("status").requiredOption("--goal-id <id>").option("--repo <path>").option("--json").action((options) => { process.exitCode = cmdGoalStatus(options.goalId, options); });
+  goal.command("list").description("List goal sessions for the repository").option("--repo <path>").option("--json").action((options) => { process.exitCode = cmdGoalList(options); });
   policyOptions(goal.command("continue").requiredOption("--goal-id <id>").option("--repo <path>")).action((options) => cmdGoalContinue(options.goalId, options).then(code => { process.exitCode = code; }));
   policyOptions(goal.command("resume").requiredOption("--goal-id <id>").option("--repo <path>")).action((options) => cmdGoalResume(options.goalId, options).then(code => { process.exitCode = code; }));
 }
-module.exports = { register, cmdGoalStart, cmdGoalStatus, cmdGoalContinue, cmdGoalResume, sessionResponse, capabilityOptions, policyResponse, auditId };
+module.exports = { register, cmdGoalStart, cmdGoalStatus, cmdGoalList, cmdGoalContinue, cmdGoalResume, sessionResponse, capabilityOptions, policyResponse, auditId };

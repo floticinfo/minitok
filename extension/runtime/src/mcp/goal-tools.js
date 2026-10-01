@@ -1,5 +1,6 @@
 "use strict";
 
+const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 const { compileGoal, compileModelGoal, goalIdFor } = require("../goal/compiler");
@@ -79,10 +80,21 @@ function unrestrictedError(args, runtimeOptions) {
   return Object.assign(new Error(policy.reason), { code, policy });
 }
 function policyError(policyDecision, config) { return Object.assign(new Error(policyDecision.reason), { code: policyDecision.always_blocked_capabilities.length ? "ALWAYS_BLOCKED" : "EXECUTION_POLICY_DENIED", policy: policyDecision, config: redactGoalExecutionConfig(config) }); }
+function canonical(value) { return fs.realpathSync.native(path.resolve(value)); }
+function sameOrUnder(candidate, root) {
+  const a = process.platform === "win32" ? candidate.toLowerCase() : candidate;
+  const b = process.platform === "win32" ? root.toLowerCase() : root;
+  return a === b || a.startsWith(`${b}${path.sep}`);
+}
 function requireGoalRepo(value, workspaceRoot) {
   if (typeof value !== "string" || !path.isAbsolute(value)) throw Object.assign(new Error("goal repo must be an absolute path"), { code: "INVALID_PATH" });
-  const resolved = path.resolve(value); const root = path.resolve(workspaceRoot || process.cwd()); const relative = path.relative(root, resolved);
-  if (relative === ".." || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) throw Object.assign(new Error("goal repo is outside the MCP workspace"), { code: "PATH_OUTSIDE_WORKSPACE" });
+  // Containment must be checked against the real filesystem location, not the
+  // lexical path: a symlink inside the workspace can point outside it, and the
+  // previous path.relative() check followed that symlink's textual name.
+  let resolved;
+  try { resolved = canonical(value); } catch { throw Object.assign(new Error("goal repo does not exist"), { code: "INVALID_PATH" }); }
+  const root = canonical(workspaceRoot || process.cwd());
+  if (!sameOrUnder(resolved, root)) throw Object.assign(new Error("goal repo is outside the MCP workspace"), { code: "PATH_OUTSIDE_WORKSPACE" });
   return resolved;
 }
 function resultForSession(session, extra = {}) {

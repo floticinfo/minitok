@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+## 1.4.20 - 2026-10-01
+
+### Fixed
+
+- MCP goal tools now enforce workspace containment against the real filesystem location (`realpath`) instead of the lexical path, so a symlink inside the workspace can no longer point the goal repo outside it.
+- MCP runtime bounds cline-compat notification buffers and caps pending tool requests so a misbehaving host cannot grow memory without limit.
+- MCP sessions self-recover from `AUTH_REQUIRED` by reloading the runtime token file instead of failing until restart.
+- CLI surfaces first-time setup instructions on entitlement failure instead of a dead end, and distinguishes verification errors from entitlement errors in MCP UX.
+- CLI argument parsing is hardened and device-flow polling is bounded (account command).
+- CLI migrate writes are atomic (rename-based) and goal ids remain visible across commands.
+- Synchronized the extension runtime mirror with the fixes above.
+
 ## 1.4.19 - 2026-10-01
 
 ### Fixed

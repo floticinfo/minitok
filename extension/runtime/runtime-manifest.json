@@ -1,7 +1,7 @@
 {
   "source": "canonical-root-src",
   "cliPackage": "@flotic/minitok",
-  "cliVersion": "1.4.19",
+  "cliVersion": "1.4.20",
   "entry": "src/runtime/stdio-entry.js",
   "files": [
     "auth/aliases.js",
@@ -136,8 +136,8 @@
       "embedded": "ae3b1ff8e30eddc1611ae4c392dfc97c17411f1f339631ec9f836526ef95d66b"
     },
     "cli/commands/goal.js": {
-      "source": "cccd2008c1d9153b2bdafc2788a84a3296ff8af1f5ee7f00116c6c19253943f3",
-      "embedded": "cccd2008c1d9153b2bdafc2788a84a3296ff8af1f5ee7f00116c6c19253943f3"
+      "source": "46ee2057221fe19d6228c51385a91fb977684773d483c06de229b5824350b6d4",
+      "embedded": "46ee2057221fe19d6228c51385a91fb977684773d483c06de229b5824350b6d4"
     },
     "cli/commands/server-config.js": {
       "source": "266cb457823a66187f52d4cbb025f01009e89e24f7014c0e5aa48eb8a4d5f0b7",
@@ -400,12 +400,12 @@
       "embedded": "6f70274df2475bce80c7d3fd70ad30be2707389ea7546813243227f50e851f9f"
     },
     "mcp/goal-tools.js": {
-      "source": "41dc0f4c1b375eecb3f9c6de3e32ef24f6a48d11be057bdf66697332dcbc2bbe",
-      "embedded": "41dc0f4c1b375eecb3f9c6de3e32ef24f6a48d11be057bdf66697332dcbc2bbe"
+      "source": "f4c395ae28e32f25ad857dec061e8cf1bd2dee61f16e9a8e7a14c1440636eb78",
+      "embedded": "f4c395ae28e32f25ad857dec061e8cf1bd2dee61f16e9a8e7a14c1440636eb78"
     },
     "mcp/runtime-token.js": {
-      "source": "8c29f37dba94cf2fc661066acbc62c4c30738e8efa9efb38d0367404c1e16d8b",
-      "embedded": "8c29f37dba94cf2fc661066acbc62c4c30738e8efa9efb38d0367404c1e16d8b"
+      "source": "d0615dfc63e0a954c5e6fed98e7b82fb2d4dba5905029f7ed667e0351c8d423a",
+      "embedded": "d0615dfc63e0a954c5e6fed98e7b82fb2d4dba5905029f7ed667e0351c8d423a"
     },
     "mcp/tools.js": {
       "source": "15087ac04c024df11aba6fbc08caaf306ba17ffe9b8a08287b8f92b48a418070",
@@ -500,8 +500,8 @@
       "embedded": "769a360fb658523c0dd3d4fda80559031039e7deaf96ff36f57a8a6d5b2d9cff"
     },
     "runtime/stdio.js": {
-      "source": "0ed3091a41cb8295c6bc1a0f2151bc5000c052dd749225cdaee4f3ce9278126a",
-      "embedded": "0ed3091a41cb8295c6bc1a0f2151bc5000c052dd749225cdaee4f3ce9278126a"
+      "source": "664de14e1cd313263d82b4a74cdb5b35a84ef2e1c02934e87fd2e5d8194921a8",
+      "embedded": "664de14e1cd313263d82b4a74cdb5b35a84ef2e1c02934e87fd2e5d8194921a8"
     },
     "runtime/workspace.js": {
       "source": "56269c719b4abbc4fde330a13a7282b2cab35d5a265274f6d47a2c8135b6ef31",
