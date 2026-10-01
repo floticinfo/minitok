@@ -275,16 +275,25 @@ class minitokSidebar {
             this.view?.webview.postMessage({ type: "summary", cycles: summary[1], tokens: summary[2], cost: summary[3] || "0" });
     }
     async handle(message) {
+        // Every auth-status path below must settle with an auth-state post. A rejection
+        // here was caught by the caller and reported as a task result, which the auth
+        // gate ignores, so the sidebar stayed on "Loading minitok..." with no way to
+        // sign in. refresh-failed still renders the signed-out CTA in the webview.
         if (message?.command === "auth-status") {
-            const session = await (0, device_auth_1.refreshExtensionSession)(this.context);
-            if (!session) {
+            try {
+                const session = await (0, device_auth_1.refreshExtensionSession)(this.context);
+                if (!session) {
+                    (0, entitlement_1.invalidateEntitlementCache)();
+                    this.view?.webview.postMessage({ type: "auth-state", state: "signed-out", ok: false, authenticated: false, entitled: false });
+                    return;
+                }
                 (0, entitlement_1.invalidateEntitlementCache)();
-                this.view?.webview.postMessage({ type: "auth-state", state: "signed-out", ok: false, authenticated: false, entitled: false });
-                return;
+                const result = await (0, entitlement_1.checkEntitlement)();
+                this.view?.webview.postMessage({ type: "auth-state", state: result.allowed ? "authenticated" : "not-entitled", ok: result.allowed, authenticated: true, entitled: result.allowed, text: redactOutputText(result.allowed ? `Signed in with ${result.plan} plan.` : `Entitlement error: ${result.message || "An active paid plan is required."}`) });
             }
-            (0, entitlement_1.invalidateEntitlementCache)();
-            const result = await (0, entitlement_1.checkEntitlement)();
-            this.view?.webview.postMessage({ type: "auth-state", state: result.allowed ? "authenticated" : "not-entitled", ok: result.allowed, authenticated: true, entitled: result.allowed, text: redactOutputText(result.allowed ? `Signed in with ${result.plan} plan.` : `Entitlement error: ${result.message || "An active paid plan is required."}`) });
+            catch (error) {
+                this.view?.webview.postMessage({ type: "auth-state", state: "refresh-failed", ok: false, authenticated: false, entitled: false, text: redactOutputText((0, device_auth_1.authErrorText)(error)) });
+            }
             return;
         }
         if (message?.command === "device-login") {

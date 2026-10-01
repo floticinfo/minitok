@@ -73,14 +73,22 @@ export class minitokPanel {
   }
 
   private async authStatus() {
-    const session = await refreshExtensionSession(this.context);
-    if (!session) {
-      this.postAuth("signed-out", false, false);
-      return;
+    // This runs on panel open and again for every auth-status request. Any throw
+    // used to reject the caller, leaving the webview on its initial "Checking your
+    // minitok session..." card with the sign-in button still hidden, so the user had
+    // no way in. Fall back to an explicit auth-state instead of going silent.
+    try {
+      const session = await refreshExtensionSession(this.context);
+      if (!session) {
+        this.postAuth("signed-out", false, false);
+        return;
+      }
+      invalidateEntitlementCache();
+      const result = await checkEntitlement();
+      this.postAuth(result.allowed ? "authenticated" : "not-entitled", true, result.allowed, result.allowed ? `Signed in with ${result.plan} plan.` : (result.message || "An active paid plan is required."));
+    } catch (error) {
+      this.postAuth("refresh-failed", false, false, authErrorText(error));
     }
-    invalidateEntitlementCache();
-    const result = await checkEntitlement();
-    this.postAuth(result.allowed ? "authenticated" : "not-entitled", true, result.allowed, result.allowed ? `Signed in with ${result.plan} plan.` : (result.message || "An active paid plan is required."));
   }
 
   private postAuth(state: "checking" | "signed-out" | "authenticated" | "not-entitled" | "refresh-failed", authenticated: boolean, entitled: boolean, text: string = "") {
@@ -163,7 +171,7 @@ export class minitokPanel {
     if (!child || child.killed) return;
     killProcessTree(child);
   }
-  private post(ok: boolean, text: string) { this.panel.webview.postMessage({ ok, text: redactPanelOutput(text) }); }
+  private post(ok: boolean, text: string) { this.panel.webview.postMessage({ type: "result", ok, text: redactPanelOutput(text) }); }
   private html() { const nonce = randomBytes(16).toString("base64"); const source = fs.readFileSync(path.join(this.extensionUri.fsPath, "src", "panel.html"), "utf8"); return source.replaceAll("{{nonce}}", nonce).replace("{{cspSource}}", this.panel.webview.cspSource); }
   private dispose() { this.stopProcess(); while (this.disposables.length) this.disposables.pop()?.dispose(); this.panel.dispose(); }
 }

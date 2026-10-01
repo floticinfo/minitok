@@ -116,14 +116,23 @@ class minitokPanel {
         });
     }
     async authStatus() {
-        const session = await (0, device_auth_1.refreshExtensionSession)(this.context);
-        if (!session) {
-            this.postAuth("signed-out", false, false);
-            return;
+        // This runs on panel open and again for every auth-status request. Any throw
+        // used to reject the caller, leaving the webview on its initial "Checking your
+        // minitok session..." card with the sign-in button still hidden, so the user had
+        // no way in. Fall back to an explicit auth-state instead of going silent.
+        try {
+            const session = await (0, device_auth_1.refreshExtensionSession)(this.context);
+            if (!session) {
+                this.postAuth("signed-out", false, false);
+                return;
+            }
+            (0, entitlement_1.invalidateEntitlementCache)();
+            const result = await (0, entitlement_1.checkEntitlement)();
+            this.postAuth(result.allowed ? "authenticated" : "not-entitled", true, result.allowed, result.allowed ? `Signed in with ${result.plan} plan.` : (result.message || "An active paid plan is required."));
         }
-        (0, entitlement_1.invalidateEntitlementCache)();
-        const result = await (0, entitlement_1.checkEntitlement)();
-        this.postAuth(result.allowed ? "authenticated" : "not-entitled", true, result.allowed, result.allowed ? `Signed in with ${result.plan} plan.` : (result.message || "An active paid plan is required."));
+        catch (error) {
+            this.postAuth("refresh-failed", false, false, (0, device_auth_1.authErrorText)(error));
+        }
     }
     postAuth(state, authenticated, entitled, text = "") {
         this.panel.webview.postMessage({ type: "auth-state", state, authenticated, entitled, text: redactPanelOutput(text) });
@@ -237,7 +246,7 @@ class minitokPanel {
             return;
         (0, run_process_1.killProcessTree)(child);
     }
-    post(ok, text) { this.panel.webview.postMessage({ ok, text: redactPanelOutput(text) }); }
+    post(ok, text) { this.panel.webview.postMessage({ type: "result", ok, text: redactPanelOutput(text) }); }
     html() { const nonce = (0, node_crypto_1.randomBytes)(16).toString("base64"); const source = fs.readFileSync(path.join(this.extensionUri.fsPath, "src", "panel.html"), "utf8"); return source.replaceAll("{{nonce}}", nonce).replace("{{cspSource}}", this.panel.webview.cspSource); }
     dispose() { this.stopProcess(); while (this.disposables.length)
         this.disposables.pop()?.dispose(); this.panel.dispose(); }

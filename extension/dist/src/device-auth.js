@@ -228,15 +228,24 @@ async function deviceLogin(context, onStatus) {
     catch (error) {
         throw Object.assign(error instanceof Error ? error : new Error(String(error)), { kind: "network" });
     }
-    const verificationUrl = start.verification_uri_complete || start.verification_uri;
-    onStatus(`Waiting for browser authorization at ${start.verification_uri}`);
+    // The server returns camelCase (deviceCode, verificationUri) while other
+    // fields arrive snake_case; accept both, exactly like the CLI account flow
+    // (src/cli/commands/account.js) does, so a missing field cannot silently
+    // serialize an empty device_code into the token poll body.
+    const deviceCode = start?.device_code || start?.deviceCode;
+    if (!deviceCode) {
+        throw Object.assign(new Error("Authorization response is missing a device code."), { kind: "login" });
+    }
+    const verificationUrl = start.verification_uri_complete || start.verificationUriComplete || start.verification_uri || start.verificationUri;
+    const verificationDisplay = start.verification_uri || start.verificationUri || verificationUrl;
+    onStatus(`Waiting for browser authorization at ${verificationDisplay}`);
     await vscode.env.openExternal(vscode.Uri.parse(verificationUrl));
-    const deadline = Date.now() + Math.min(Number(start.expires_in || 600) * 1000, 10 * 60 * 1000);
+    const deadline = Date.now() + Math.min(Number(start.expires_in || start.expiresIn || 600) * 1000, 10 * 60 * 1000);
     let interval = Math.max(2000, Number(start.interval || 5) * 1000);
     while (Date.now() < deadline) {
         await new Promise(resolve => setTimeout(resolve, interval));
         try {
-            const result = await request("/v1/auth/device/token", { device_code: start.device_code });
+            const result = await request("/v1/auth/device/token", { device_code: deviceCode });
             if (result.access_token || result.accessToken) {
                 await save(context, result);
                 return normalizeCustomerSession(result);
