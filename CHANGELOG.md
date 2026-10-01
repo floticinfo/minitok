@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 1.4.19 - 2026-10-01
+
+### Fixed
+
+- Extension: `runSelection` and `runProblems` now append an explicit `[truncated: ...]` marker when the selected text or the diagnostics list is clipped, instead of silently dropping input.
+- Extension: shared the CLI spawn/timeout/cancellation plumbing across the sidebar, panel, and command surfaces in one tested `run-process` module.
+- Extension: added a sidebar loading state, made the sidebar markup reviewable, and covered the webview theme palette with a contrast test.
+
 ## 1.4.18 - 2026-10-01
 
 ### Added
