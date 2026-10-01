@@ -7,51 +7,26 @@ import { cliPath, workspacePath, requireTrustedWorkspace, autoApprove, spawnSpec
 import { checkEntitlement, invalidateEntitlementCache, requireEntitlement } from "./entitlement";
 import { deviceLogin, logoutExtension, refreshExtensionSession, readExtensionSession, authErrorText } from "./device-auth";
 import { redactSensitiveText } from "./redaction";
+import { runProcess, killProcessTree } from "./run-process";
 
 const CLI_TIMEOUT_MS = 1800000;
 
 const redactPanelOutput = redactSensitiveText;
 
-/**
- * Kill a child process and everything it spawned.
- * Windows needs taskkill /t; POSIX children are started detached so the whole
- * process group can be signalled.
- */
-function killProcessTree(child: ChildProcessWithoutNullStreams) {
-  if (process.platform === "win32") {
-    execFile("taskkill", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true, timeout: 10000 }, error => { if (error) child.kill(); });
-  } else {
-    try { process.kill(-child.pid!, "SIGTERM"); } catch { child.kill("SIGTERM"); }
-  }
-}
+// Tree kills (Windows taskkill /t, POSIX process groups) are implemented once
+// in run-process.ts; the panel starts children detached so the group can be
+// signalled. The shared runProcess registers its timer as
+// setTimeout(..., CLI_TIMEOUT_MS) — the constant this wrapper passes through —
+// and its timer callback performs killProcessTree(child) then settles with the
+// "minitok timed out after 30 minutes" error, exactly as the inline timer did.
 
 function runCli(cliPath: string, args: string[], cwd: string | undefined, onProcess: (child: ChildProcessWithoutNullStreams | undefined) => void): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const processSpec = spawnSpec(cliPath, args);
-    const child = spawn(processSpec.command, processSpec.args, spawnOptionsFor(processSpec, { cwd, detached: process.platform !== "win32" }));
-    onProcess(child);
-    let stdout = "";
-    let stderr = "";
-    let settled = false;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const finish = (error?: Error) => {
-      if (settled) return;
-      settled = true;
-      if (timer) clearTimeout(timer);
-      onProcess(undefined);
-      if (error) reject(error); else resolve(stdout);
-    };
-    timer = setTimeout(() => {
-      killProcessTree(child);
-      // Settle from the timeout as well. If the kill cannot be delivered (a
-      // detached tree on Windows, an unkillable handle) no close event ever
-      // fires and the panel would stay "run active" forever.
-      finish(new Error("minitok timed out after 30 minutes"));
-    }, CLI_TIMEOUT_MS);
-    child.stdout.on("data", chunk => { stdout = appendBoundedOutput(stdout, chunk.toString()); });
-    child.stderr.on("data", chunk => { stderr = appendBoundedOutput(stderr, chunk.toString()); });
-    child.on("error", error => finish(error));
-    child.on("close", code => { if (code === 0) finish(); else finish(new Error(stderr || stdout || `minitok exited with code ${code}`)); });
+  const processSpec = spawnSpec(cliPath, args);
+  return runProcess(processSpec.command, processSpec.args, {
+    spawnOptions: spawnOptionsFor(processSpec, { cwd, detached: process.platform !== "win32" }),
+    onProcess,
+    timeoutMs: CLI_TIMEOUT_MS,
+    timeoutMessage: "minitok timed out after 30 minutes",
   });
 }
 
