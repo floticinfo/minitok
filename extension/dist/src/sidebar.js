@@ -38,6 +38,7 @@ const vscode = __importStar(require("vscode"));
 const fs = __importStar(require("node:fs"));
 const path = __importStar(require("node:path"));
 const node_child_process_1 = require("node:child_process");
+const run_process_1 = require("./run-process");
 const os = __importStar(require("node:os"));
 const node_crypto_1 = require("node:crypto");
 const workspace_1 = require("./workspace");
@@ -208,66 +209,37 @@ class minitokSidebar {
             this.approvalFile = path.join(cwd, ".minitok", "extension-approval.json");
             args.push("--approval-file", this.approvalFile, "--approval-timeout-ms", String(timeouts.approvalMs));
         }
-        return new Promise((resolve, reject) => {
-            const processSpec = (0, workspace_1.spawnSpec)(cli, args);
-            this.output.appendLine(`[spawn] cli command=${JSON.stringify(processSpec.command)} args=${JSON.stringify(redactTaskArgs(processSpec.args, args[1] === "run" ? args[2] : ""))} cwd=${JSON.stringify(cwd)}`);
-            let child;
-            try {
-                child = (0, node_child_process_1.spawn)(processSpec.command, processSpec.args, (0, workspace_1.spawnOptionsFor)(processSpec, { cwd, env, detached: process.platform !== "win32" }));
-            }
-            catch (error) {
-                reject(error);
-                return;
-            }
-            this.process = child;
-            let output = "";
-            let error = "";
-            const consume = (chunk) => {
+        const processSpec = (0, workspace_1.spawnSpec)(cli, args);
+        this.output.appendLine(`[spawn] cli command=${JSON.stringify(processSpec.command)} args=${JSON.stringify(redactTaskArgs(processSpec.args, args[1] === "run" ? args[2] : ""))} cwd=${JSON.stringify(cwd)}`);
+        return (0, run_process_1.runProcess)(processSpec.command, processSpec.args, {
+            spawnOptions: (0, workspace_1.spawnOptionsFor)(processSpec, { cwd, env, detached: process.platform !== "win32" }),
+            onProcess: child => { this.process = child; },
+            onStdout: chunk => {
                 const text = chunk.toString();
-                output = (0, workspace_1.appendBoundedOutput)(output, text);
+                // runProcess already folds every chunk into the bounded resolved value:
+                // output = appendBoundedOutput(output, text)
                 this.output.append(redactOutputText(text));
                 for (const line of text.split(/\r?\n/).filter(Boolean))
                     this.progress(redactOutputText(line));
-            };
-            child.stdout.on("data", consume);
-            child.stderr.on("data", (chunk) => {
+            },
+            onStderr: chunk => {
                 const text = chunk.toString();
-                error = (0, workspace_1.appendBoundedOutput)(error, text);
+                // The bounded stderr accumulator lives in run-process.ts:
+                // error = appendBoundedOutput(error, text)
                 this.output.append(redactOutputText(text));
                 for (const line of text.split(/\r?\n/).filter(Boolean))
                     this.view?.webview.postMessage({ type: "log", stream: "stderr", text: redactOutputText(line) });
-            });
-            child.on("error", errorValue => { this.process = undefined; reject(errorValue); });
-            const timeout = setTimeout(() => {
-                this.stopProcess();
-                this.process = undefined;
-                reject(new Error(`minitok run timed out after ${Math.round(timeouts.runMs / 60000)} minutes`));
-            }, timeouts.runMs);
-            child.on("close", code => {
-                clearTimeout(timeout);
-                this.process = undefined;
-                if (code === 0)
-                    resolve(output);
-                else
-                    reject(new Error(error || output || `minitok exited with code ${code}`));
-            });
+            },
+            timeoutMs: timeouts.runMs,
+            timeoutMessage: `minitok run timed out after ${Math.round(timeouts.runMs / 60000)} minutes`,
         });
     }
     stopChild(child) {
-        if (!child || child.killed)
+        if (!child)
             return;
-        if (process.platform === "win32") {
-            (0, node_child_process_1.execFile)("taskkill", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true, timeout: 10000 }, error => { if (error)
-                child.kill(); });
-        }
-        else {
-            try {
-                process.kill(-child.pid, "SIGTERM");
-            }
-            catch {
-                child.kill("SIGTERM");
-            }
-        }
+        // The Windows taskkill /t / POSIX process-group logic lives in
+        // run-process.ts so extension, panel, and sidebar share one copy.
+        (0, run_process_1.killProcessTree)(child);
     }
     /**
      * npm is a batch shim on Windows, so it needs the same launch spec as the CLI:

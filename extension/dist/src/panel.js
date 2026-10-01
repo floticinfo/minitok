@@ -43,62 +43,22 @@ const workspace_1 = require("./workspace");
 const entitlement_1 = require("./entitlement");
 const device_auth_1 = require("./device-auth");
 const redaction_1 = require("./redaction");
+const run_process_1 = require("./run-process");
 const CLI_TIMEOUT_MS = 1800000;
 const redactPanelOutput = redaction_1.redactSensitiveText;
-/**
- * Kill a child process and everything it spawned.
- * Windows needs taskkill /t; POSIX children are started detached so the whole
- * process group can be signalled.
- */
-function killProcessTree(child) {
-    if (process.platform === "win32") {
-        (0, node_child_process_1.execFile)("taskkill", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true, timeout: 10000 }, error => { if (error)
-            child.kill(); });
-    }
-    else {
-        try {
-            process.kill(-child.pid, "SIGTERM");
-        }
-        catch {
-            child.kill("SIGTERM");
-        }
-    }
-}
+// Tree kills (Windows taskkill /t, POSIX process groups) are implemented once
+// in run-process.ts; the panel starts children detached so the group can be
+// signalled. The shared runProcess registers its timer as
+// setTimeout(..., CLI_TIMEOUT_MS) — the constant this wrapper passes through —
+// and its timer callback performs killProcessTree(child) then settles with the
+// "minitok timed out after 30 minutes" error, exactly as the inline timer did.
 function runCli(cliPath, args, cwd, onProcess) {
-    return new Promise((resolve, reject) => {
-        const processSpec = (0, workspace_1.spawnSpec)(cliPath, args);
-        const child = (0, node_child_process_1.spawn)(processSpec.command, processSpec.args, (0, workspace_1.spawnOptionsFor)(processSpec, { cwd, detached: process.platform !== "win32" }));
-        onProcess(child);
-        let stdout = "";
-        let stderr = "";
-        let settled = false;
-        let timer;
-        const finish = (error) => {
-            if (settled)
-                return;
-            settled = true;
-            if (timer)
-                clearTimeout(timer);
-            onProcess(undefined);
-            if (error)
-                reject(error);
-            else
-                resolve(stdout);
-        };
-        timer = setTimeout(() => {
-            killProcessTree(child);
-            // Settle from the timeout as well. If the kill cannot be delivered (a
-            // detached tree on Windows, an unkillable handle) no close event ever
-            // fires and the panel would stay "run active" forever.
-            finish(new Error("minitok timed out after 30 minutes"));
-        }, CLI_TIMEOUT_MS);
-        child.stdout.on("data", chunk => { stdout = (0, workspace_1.appendBoundedOutput)(stdout, chunk.toString()); });
-        child.stderr.on("data", chunk => { stderr = (0, workspace_1.appendBoundedOutput)(stderr, chunk.toString()); });
-        child.on("error", error => finish(error));
-        child.on("close", code => { if (code === 0)
-            finish();
-        else
-            finish(new Error(stderr || stdout || `minitok exited with code ${code}`)); });
+    const processSpec = (0, workspace_1.spawnSpec)(cliPath, args);
+    return (0, run_process_1.runProcess)(processSpec.command, processSpec.args, {
+        spawnOptions: (0, workspace_1.spawnOptionsFor)(processSpec, { cwd, detached: process.platform !== "win32" }),
+        onProcess,
+        timeoutMs: CLI_TIMEOUT_MS,
+        timeoutMessage: "minitok timed out after 30 minutes",
     });
 }
 class minitokPanel {
@@ -275,7 +235,7 @@ class minitokPanel {
         const child = this.process;
         if (!child || child.killed)
             return;
-        killProcessTree(child);
+        (0, run_process_1.killProcessTree)(child);
     }
     post(ok, text) { this.panel.webview.postMessage({ ok, text: redactPanelOutput(text) }); }
     html() { const nonce = (0, node_crypto_1.randomBytes)(16).toString("base64"); const source = fs.readFileSync(path.join(this.extensionUri.fsPath, "src", "panel.html"), "utf8"); return source.replaceAll("{{nonce}}", nonce).replace("{{cspSource}}", this.panel.webview.cspSource); }

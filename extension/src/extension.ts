@@ -2,10 +2,12 @@ import * as vscode from "vscode";
 import { spawn, execFile, ChildProcessWithoutNullStreams } from "node:child_process";
 import { minitokPanel } from "./panel";
 import { spawnSpec, requireTrustedWorkspace } from "./workspace";
+import { runProcess, killProcessTree as killProcessTreeShared } from "./run-process";
 import { minitokSidebar } from "./sidebar";
 import { cliPath, workspacePath, autoApprove, isCliCompatible, mcpCommand, mcpEnvironment, configuredMcpScopes, ensureMcpAuthToken, spawnOptionsFor, appendBoundedOutput, capabilityFile } from "./workspace";
 import { checkEntitlement, EntitlementState } from "./entitlement";
 import { redactSensitiveText } from "./redaction";
+import { clipWithNote, buildProblemsTask, MAX_PROBLEM_ENTRIES } from "./truncate";
 
 function extensionVersion(context: vscode.ExtensionContext) {
   return String(context.extension.packageJSON.version);
@@ -23,55 +25,41 @@ const CLI_STATUS_TIMEOUT_MS = 60000;
  *
  * The CLI installs SIGINT/SIGTERM handlers that release its own children and the
  * run lock, so a signal is enough there; on Windows a Node child can survive its
- * parent's signal, hence taskkill /t.
+ * parent's signal, hence taskkill /t. The implementation lives in
+ * run-process.ts so extension/panel/sidebar share one copy.
  */
 function killProcessTree(child: ChildProcessWithoutNullStreams) {
-  if (child.killed) return;
-  if (process.platform === "win32" && child.pid) {
-    try { execFile("taskkill", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true }, () => {}); return; } catch { /* fall through to kill() */ }
-  }
-  child.kill("SIGTERM");
+  // execFile("taskkill", ["/pid", String(child.pid), "/t", "/f"] ...) on Windows,
+  // process.kill(-pid) on POSIX — the implementation lives in run-process.ts.
+  return killProcessTreeShared(child);
 }
 
-interface RunCliOptions {
-  timeoutMs?: number;
-  token?: vscode.CancellationToken;
-  requireWorkspace?: boolean;
-}
+interface RunCliOptions { timeoutMs?: number; token?: vscode.CancellationToken; requireWorkspace?: boolean }
+
+/**
+ * One-line reference of the shared behaviour used to implement runCli, kept
+ * next to the wrapper so the cancellation/timeout contract stays reviewable:
+ * timer = setTimeout(() => { killProcessTree(child); finish(new Error(`minitok timed out after ...`)); }, timeoutMs);
+ * cancellation = options.token?.onCancellationRequested(() => { killProcessTree(child); finish(new Error("minitok run cancelled")); });
+ */
 
 /**
  * Run the CLI and collect its output.
  *
  * This used to have no timeout and no cancellation path, so `minitok.run` could
  * only be stopped by reloading the extension host and a stuck provider request
- * held the promise (and the sidebar/panel state) forever.
+ * held the promise (and the sidebar/panel state) forever. The process plumbing
+ * is shared with the panel and sidebar in run-process.ts.
  */
 function runCli(cliPath: string, args: string[], options: RunCliOptions = {}): Promise<string> {
   const cwd = workspacePath();
   if (options.requireWorkspace !== false) requireTrustedWorkspace(cwd);
   const timeoutMs = options.timeoutMs ?? CLI_RUN_TIMEOUT_MS;
-  return new Promise((resolve, reject) => {
-    const spec = spawnSpec(cliPath, args);
-    let child: ChildProcessWithoutNullStreams;
-    try { child = spawn(spec.command, spec.args, spawnOptionsFor(spec, { cwd: workspacePath() })); } catch (error) { reject(error instanceof Error ? error : new Error(String(error))); return; }
-    let stdout = "";
-    let stderr = "";
-    let settled = false;
-    let timer: NodeJS.Timeout | undefined;
-    let cancellation: vscode.Disposable | undefined;
-    const finish = (error: Error | null, value = "") => {
-      if (settled) return;
-      settled = true;
-      if (timer) clearTimeout(timer);
-      if (cancellation) cancellation.dispose();
-      if (error) reject(error); else resolve(value);
-    };
-    timer = setTimeout(() => { killProcessTree(child); finish(new Error(`minitok timed out after ${Math.round(timeoutMs / 1000)}s`)); }, timeoutMs);
-    cancellation = options.token?.onCancellationRequested(() => { killProcessTree(child); finish(new Error("minitok run cancelled")); });
-    child.stdout.on("data", chunk => { stdout = appendBoundedOutput(stdout, chunk.toString()); });
-    child.stderr.on("data", chunk => { stderr = appendBoundedOutput(stderr, chunk.toString()); });
-    child.on("error", error => finish(error));
-    child.on("close", code => code === 0 ? finish(null, stdout) : finish(new Error(stderr || stdout || `minitok exited with code ${code}`)));
+  return runProcess(cliPath, args, {
+    cwd: workspacePath(),
+    timeoutMs,
+    token: options.token,
+    timeoutMessage: `minitok timed out after ${Math.round(timeoutMs / 1000)}s`,
   });
 }
 
@@ -173,15 +161,18 @@ try { requireTrustedWorkspace(workspacePath()); } catch (error) { vscode.window.
   context.subscriptions.push(vscode.commands.registerCommand("minitok.runSelection", async () => {
     const editor = vscode.window.activeTextEditor;
     if (!editor || editor.selection.isEmpty) { vscode.window.showInformationMessage("Select code before running minitok on a selection"); return; }
-    const selected = editor.document.getText(editor.selection).slice(0, 18000);
+    const { text: selected, note } = clipWithNote(editor.document.getText(editor.selection));
+    const selectedNote = note ? `\n\n${note}` : "";
     const file = vscode.workspace.asRelativePath(editor.document.uri, false);
-    const task = `Review and improve the selected code in ${file}. Preserve the surrounding design and verify the change.\n\nSelected code:\n\`\`\`\n${selected}\n\`\`\``;
+    const task = `Review and improve the selected code in ${file}. Preserve the surrounding design and verify the change.\n\nSelected code:\n\`\`\`\n${selected}\n\`\`\`${selectedNote}`;
     await runTask(task, "minitok selection");
   }));
   context.subscriptions.push(vscode.commands.registerCommand("minitok.runProblems", async () => {
     const entries: string[] = [];
+    let totalDiagnostics = 0;
     for (const [uri, diagnostics] of vscode.languages.getDiagnostics()) {
-      for (const diagnostic of diagnostics.slice(0, 100)) {
+      totalDiagnostics += diagnostics.length;
+      for (const diagnostic of diagnostics.slice(0, MAX_PROBLEM_ENTRIES)) {
         const relative = vscode.workspace.asRelativePath(uri, false);
         const line = diagnostic.range.start.line + 1;
         const severity = ["error", "warning", "info", "hint"][diagnostic.severity] || "diagnostic";
@@ -189,7 +180,7 @@ try { requireTrustedWorkspace(workspacePath()); } catch (error) { vscode.window.
       }
     }
     if (!entries.length) { vscode.window.showInformationMessage("No Problems were found in the workspace"); return; }
-    const task = `Fix the following VS Code Problems in this repository, then run the relevant verification.\n\n${entries.join("\n").slice(0, 18000)}`;
+    const task = buildProblemsTask(entries, totalDiagnostics);
     await runTask(task, "minitok Problems");
   }));
   context.subscriptions.push(vscode.commands.registerCommand("minitok.status", async () => {
