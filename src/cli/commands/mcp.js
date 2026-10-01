@@ -435,7 +435,7 @@ async function runMcpOnboarding({ input = process.stdin, output = process.stderr
   }
   const { authorizeEntitlement } = require("../../entitlement/policy");
   const entitlement = await authorizeEntitlement({ serverUrl: resolveServerUrl() });
-  if (!entitlement.allowed) throw new Error(entitlement.message || "An active paid entitlement is required before MCP setup");
+  if (!entitlement.allowed) throwEntitlementRequired(entitlement, resolveServerUrl(), "An active paid entitlement is required before MCP setup");
   const tokenFile = ensureRuntimeToken({});
   for (const host of hosts) {
     const plan = planChange(host.file, "connect", { host: host.name, tokenFile: tokenFile.path, scopes: "read" });
@@ -453,6 +453,17 @@ function setupInstructions(serverUrl) {
     "Then run `minitok mcp setup cline` again; the account session will retrieve and activate the installation automatically.",
     "There is no free plan or free trial. LLM provider usage is billed separately.",
   ];
+}
+
+/**
+ * Throw the entitlement-failure error for an MCP command. The CLI entrypoint
+ * prints only the thrown error's message, so the actionable first-time setup
+ * guidance from setupInstructions() is appended here; without it the failure
+ * was a dead end that named no next step.
+ */
+function throwEntitlementRequired(entitlement, serverUrl, contextMessage) {
+  const base = entitlement.message || contextMessage;
+  throw new Error(`${base}\n\n${setupInstructions(serverUrl).join("\n")}`);
 }
 
 function register(program) {
@@ -538,7 +549,7 @@ function register(program) {
         if (action === "connect" && !(opts.dryRun || opts.preview)) {
           const { authorizeEntitlement } = require("../../entitlement/policy");
           const entitlement = await authorizeEntitlement({ serverUrl: effectiveServerUrl });
-          if (!entitlement.allowed) throw new Error(entitlement.message || "An active paid entitlement is required");
+          if (!entitlement.allowed) throwEntitlementRequired(entitlement, effectiveServerUrl, "An active paid entitlement is required");
           tokenFile = ensureRuntimeToken({});
         }
 
@@ -597,7 +608,7 @@ function register(program) {
       if (!(opts.dryRun || opts.preview)) {
         const { authorizeEntitlement } = require("../../entitlement/policy");
         const entitlement = await authorizeEntitlement({ serverUrl: resolveServerUrl({ cliServer: opts.server }) });
-        if (!entitlement.allowed) throw new Error(entitlement.message || "An active paid entitlement is required");
+        if (!entitlement.allowed) throwEntitlementRequired(entitlement, resolveServerUrl({ cliServer: opts.server }), "An active paid entitlement is required");
         tokenFile = ensureRuntimeToken({});
       }
       for (const targetHost of targets) {
@@ -620,7 +631,7 @@ function register(program) {
     .action(async opts => {
       const { authorizeEntitlement } = require("../../entitlement/policy");
       const entitlement = await authorizeEntitlement({ serverUrl: resolveServerUrl({ cliServer: opts.server }) });
-      if (!entitlement.allowed) throw new Error(entitlement.message || "An active paid entitlement is required");
+      if (!entitlement.allowed) throwEntitlementRequired(entitlement, resolveServerUrl({ cliServer: opts.server }), "An active paid entitlement is required");
       const { ensureRuntimeToken } = require("../../mcp/runtime-token");
       const record = ensureRuntimeToken({});
       // Never print the token itself: it is a bearer credential. Report the
@@ -628,5 +639,5 @@ function register(program) {
       console.log(JSON.stringify({ status: "ok", path: record.path, expires_at: new Date(record.expires_at).toISOString() }));
     });
 }
-module.exports = { register, detect, configuredScopes, configuredEntryContract, readConfig, writeConfig, configs, serverContainer, configuredServerUrl, planChange, readLock, processIsRunning, hostCandidates, resolveHost, configuredTokenFiles, runMcpOnboarding, unconfiguredHosts, setupInstructions };
+module.exports = { register, detect, configuredScopes, configuredEntryContract, readConfig, writeConfig, configs, serverContainer, configuredServerUrl, planChange, readLock, processIsRunning, hostCandidates, resolveHost, configuredTokenFiles, runMcpOnboarding, unconfiguredHosts, setupInstructions, throwEntitlementRequired };
 

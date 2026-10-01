@@ -194,3 +194,31 @@ test("invalid setup scopes fail before a configuration write", () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test("entitlement failure surfaces the first-time setup instructions instead of a dead end", () => {
+  // The CLI entrypoint prints only the thrown error's message, so the guidance
+  // must travel inside the error the entitlement gate raises.
+  assert.throws(
+    () => mcp.throwEntitlementRequired({ allowed: false, message: "Entitlement denied" }, "https://api.minitok.dev", "An active paid entitlement is required"),
+    error => {
+      assert.match(error.message, /Entitlement denied/);
+      assert.match(error.message, /MCP first-time setup needs an active minitok entitlement\./);
+      assert.match(error.message, /https:\/\/minitok\.dev\/signup/);
+      assert.match(error.message, /https:\/\/minitok\.dev\/pricing/);
+      assert.match(error.message, /minitok mcp setup cline/);
+      return true;
+    }
+  );
+});
+
+test("entitlement failure without a server message uses the context message and a non-default server URL", () => {
+  assert.throws(
+    () => mcp.throwEntitlementRequired({ allowed: false }, "https://staging.example.com", "An active paid entitlement is required"),
+    error => {
+      assert.match(error.message, /^An active paid entitlement is required/);
+      assert.match(error.message, /https:\/\/staging\.example\.com\/signup/);
+      assert.match(error.message, /https:\/\/staging\.example\.com\/pricing/);
+      return true;
+    }
+  );
+});
