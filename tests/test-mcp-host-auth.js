@@ -286,3 +286,95 @@ test("the token file's expiry, rotation and revocation govern a live session", a
     fs.rmSync(fixture.root, { recursive: true, force: true });
   }
 });
+
+/** A runtime wired to the rotating token file, the way a host launches it. */
+function tokenRuntime(fixture) {
+  const services = createRuntimeServices({ runtimeDir: path.join(fixture.root, "runtime-state") });
+  services.entitlement = { status: async () => ({ allowed: true, state: "ALLOWED", plan: "pro" }) };
+  const runtime = new RuntimeStdio({
+    authTokenFile: fixture.filePath,
+    authTokenFileRefreshMs: 0,
+    workspaceRoot: fixture.root,
+    runStatePath: fixture.runStatePath,
+    permissions: ["read"],
+    services,
+  });
+  const replies = [];
+  runtime._respond = message => replies.push(message);
+  const send = async message => {
+    replies.length = 0;
+    await runtime._handleMessage(message, value => replies.push(value));
+    return replies.find(reply => reply && reply.id === message.id);
+  };
+  return { runtime, send };
+}
+
+test("an AUTH_REQUIRED failure self-recovers when the token file is renewed", async () => {
+  // The 15-minute record expired while the host kept the session open. Renewing
+  // it (`minitok mcp token`) must let the very next call succeed without a host
+  // restart — before this, the session token was dead and the transport never
+  // re-anchored it, so every call kept failing with AUTH_REQUIRED.
+  const fixture = runtimeTokenDir();
+  writeTokenRecord(fixture.filePath, {});
+  const { send } = tokenRuntime(fixture);
+  try {
+    const init = await send({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", clientInfo: { name: "recover-probe" } } });
+    assert.equal(init.result.protocolVersion, "2024-11-05", `the launch credential must authenticate: ${JSON.stringify(init.error)}`);
+
+    writeTokenRecord(fixture.filePath, { expires_at: Date.now() - 1000 });
+    const expired = await send({ jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
+    assert.equal(expired.error.data.type, "AUTH_REQUIRED", "an expired record must fail the call");
+    assert.match(expired.error.data.recovery.action, /minitok mcp token/, "the failure must name the rotation command");
+
+    writeTokenRecord(fixture.filePath, { token: "token-renewed" });
+    const recovered = await send({ jsonrpc: "2.0", id: 3, method: "tools/list", params: {} });
+    assert.equal(recovered.error, undefined, `the renewed record must be adopted without a restart: ${JSON.stringify(recovered.error)}`);
+    assert.ok(Array.isArray(recovered.result.tools), "the recovered session must answer tools/list");
+  } finally {
+    fs.rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("an unrecoverable AUTH_REQUIRED names the reconnect command", async () => {
+  // The record is gone and nothing can be re-read: the error must tell the user
+  // how to recover instead of the bare "Authentication required".
+  const fixture = runtimeTokenDir();
+  fs.rmSync(fixture.filePath, { force: true });
+  const { send } = tokenRuntime(fixture);
+  try {
+    const denied = await send({ jsonrpc: "2.0", id: 1, method: "tools/list", params: {} });
+    assert.equal(denied.error.data.type, "AUTH_REQUIRED");
+    assert.match(denied.error.message, /Run: minitok mcp connect <host>/, "a missing setup must name the reconnect command");
+    assert.equal(denied.error.data.recovery.action, "Run: minitok mcp connect <host>");
+    assert.match(denied.error.data.recovery.reason, /not readable|not found/, "the failure must explain what is wrong");
+  } finally {
+    fs.rmSync(fixture.root, { recursive: true, force: true });
+  }
+});
+
+test("an explicit session token is not re-anchored by a file rotation", async () => {
+  // A host that echoes the launch credential on every request opted out of the
+  // transport-following behaviour: when the record rotates, only a session that
+  // never supplied its own token is re-anchored on the new record.
+  const fixture = runtimeTokenDir();
+  writeTokenRecord(fixture.filePath, {});
+  const { send } = tokenRuntime(fixture);
+  try {
+    const init = await send({ jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", clientInfo: { name: "explicit-probe" }, authToken: "token-one" } });
+    assert.equal(init.error, undefined, `the launch credential echoed by the client must authenticate initialize: ${JSON.stringify(init.error)}`);
+    writeTokenRecord(fixture.filePath, { token: "token-two" });
+    const listed = await send({ jsonrpc: "2.0", id: 2, method: "tools/list", params: { authToken: "token-one" } });
+    assert.equal(listed.error?.data?.type, "AUTH_REQUIRED", "a session that echoes its own token must not be re-anchored on the rotated record");
+    assert.match(listed.error.message, /Run: minitok mcp connect <host>/, "a dead explicit session token cannot be recovered by rotating the file, so the error names the reconnect command");
+    // The session token is sticky: a later request without an explicit token is
+    // still the explicit-token session, not a transport one.
+    const transport = await send({ jsonrpc: "2.0", id: 3, method: "tools/list", params: {} });
+    assert.equal(transport.error?.data?.type, "AUTH_REQUIRED", "a session that began with an explicit token stays explicit");
+    const reinit = await send({ jsonrpc: "2.0", id: 4, method: "initialize", params: { protocolVersion: "2024-11-05", clientInfo: { name: "explicit-probe" } } });
+    assert.equal(reinit.error, undefined, `re-initializing without a token must adopt the rotated record: ${JSON.stringify(reinit.error)}`);
+    const healed = await send({ jsonrpc: "2.0", id: 5, method: "tools/list", params: {} });
+    assert.equal(healed.error, undefined, `the transport session must adopt the rotated record: ${JSON.stringify(healed.error)}`);
+  } finally {
+    fs.rmSync(fixture.root, { recursive: true, force: true });
+  }
+});

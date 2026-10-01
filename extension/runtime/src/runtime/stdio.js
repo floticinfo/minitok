@@ -8,7 +8,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const crypto = require("crypto");
-const { readRuntimeToken } = require("../mcp/runtime-token");
+const { readRuntimeToken, runtimeTokenDiagnostics, authRecoveryAction } = require("../mcp/runtime-token");
 const { setOwnerOnlyPermissions } = require("../utils/file-permissions");
 const { capabilityPermissions, FULL_TEST_PROFILE } = require("../entitlement/capability");
 const LOCAL_MCP_SCOPES = new Set(["read", "write", "auto_accept", "unrestricted_autonomous", "unrestricted_general_autonomous", "verify_exec"]);
@@ -219,6 +219,9 @@ class RuntimeStdio {
     const explicitAuthToken = options.authToken || process.env.MINITOK_MCP_AUTH_TOKEN || null;
     this._runtimeAuthFile = !explicitAuthToken && typeof authTokenFile === "string" && authTokenFile.endsWith("runtime-token.json") ? authTokenFile : null;
     this._runtimeAuthCheckedAt = 0;
+    // Diagnostics consulted when AUTH_REQUIRED is answered, so the error names
+    // an actionable recovery command instead of leaving the host to guess.
+    this._runtimeAuthDiagnostics = null;
     // 0 is a valid, explicit setting: check the file on every authentication.
     const refreshMs = options.authTokenFileRefreshMs ?? (process.env.MINITOK_MCP_AUTH_TOKEN_FILE_REFRESH_MS ? Number(process.env.MINITOK_MCP_AUTH_TOKEN_FILE_REFRESH_MS) : undefined);
     this._runtimeAuthRefreshMs = Number.isFinite(refreshMs) && refreshMs >= 0 ? refreshMs : 5000;
@@ -345,6 +348,7 @@ class RuntimeStdio {
     this._runtimeAuthCheckedAt = now;
     const record = readRuntimeToken(this._runtimeAuthFile, now);
     if (record) {
+      this._runtimeAuthDiagnostics = null;
       // Adopt the current record: the file is owner-only and written by this
       // installation, so it is the same trust anchor the process started with.
       this._authToken = record.token;
@@ -354,7 +358,16 @@ class RuntimeStdio {
       // record: without this the token it echoes back no longer matches and the
       // host is locked out until it restarts, which is the failure rotation was
       // meant to fix. A client that supplied its own token is never upgraded.
-      if (this._sessionFromTransport && this._sessionToken !== record.token) this._sessionToken = record.token;
+      // A transport session whose credential died (expired, then recovered, or
+      // cleared while the file was mid-rewrite) also re-anchors on the new
+      // record; it never had a credential of its own, so following the file is
+      // the self-recovery AUTH_REQUIRED recovery depends on. A still-valid next
+      // credential keeps its anchor. (_authValid would recurse back into this
+      // refresh, so the still-valid check compares directly.)
+      if (this._sessionFromTransport && this._sessionToken !== record.token) {
+        if (this._sessionToken !== null && this._sessionToken === this._nextAuthToken && !(this._nextAuthExpiresAt > 0 && Date.now() >= this._nextAuthExpiresAt)) return;
+        this._sessionToken = record.token;
+      }
       return;
     }
     let raw = null;
@@ -363,6 +376,7 @@ class RuntimeStdio {
       // Unreadable, mid-rewrite or not a record at all: stop honouring the startup
       // credential, but do not blacklist it — a later successful read restores the
       // session, which is what a transient lock or a rewrite needs.
+      this._runtimeAuthDiagnostics = { reason: `MCP auth token file is not readable: ${this._runtimeAuthFile}`, action: authRecoveryAction(this._runtimeAuthFile) };
       this._authToken = null;
       this._authExpiresAt = 0;
       this._authTtlMs = 0;
@@ -371,10 +385,35 @@ class RuntimeStdio {
     // A parseable record the reader refused is expired, revoked, or no longer
     // bound to this installation: all three mean the credential itself is done, so
     // the value is blacklisted as well.
+    this._runtimeAuthDiagnostics = runtimeTokenDiagnostics(this._runtimeAuthFile, now);
     if (this._authToken) this._revokedTokens.add(this._authToken);
     this._authToken = null;
     this._authExpiresAt = 0;
     this._authTtlMs = 0;
+  }
+  /**
+   * Recover from an AUTH_REQUIRED decision, or explain why recovery failed.
+   *
+   * The rotating token file is re-read past the throttle — a `minitok mcp token`
+   * run can land between the throttled checks, and without the retry the session
+   * kept failing until the host was restarted even though a valid record was
+   * already on disk. When no record can be adopted the answer is the actionable
+   * recovery command: expired or revoked records rotate with `minitok mcp token`,
+   * a missing setup reconnects with `minitok mcp connect <host>`.
+   */
+  _authRecovery() {
+    if (this._runtimeAuthFile) {
+      this._runtimeAuthCheckedAt = 0;
+      this._refreshRuntimeAuth();
+      // The file can only heal this session when the session authenticates with
+      // the process credential: a host that echoed its own token is not
+      // re-anchored, so "recovered" here means a credential exists, not that the
+      // session is whole.
+      if (this._authToken) return { recovered: true, session: this._sessionFromTransport !== false };
+      const diagnostics = this._runtimeAuthDiagnostics;
+      return { recovered: false, reason: diagnostics?.reason || null, action: diagnostics?.action || authRecoveryAction(this._runtimeAuthFile) };
+    }
+    return { recovered: false, reason: "This MCP server was launched with a fixed credential, not the rotating runtime token file, so it cannot re-read a renewed token.", action: authRecoveryAction("runtime-token.json") };
   }
   _authValue(params) {
     const value = params.authToken || params.auth_token || params.authorization || params.headers?.Authorization || params.headers?.authorization;
@@ -460,9 +499,28 @@ class RuntimeStdio {
     // be picked up without restarting the host: both are decided here, before the
     // "no credential configured at all" shortcut below.
     if (this._authRequired) this._refreshRuntimeAuth();
-    if (this._authRequired && !this._authToken && !this._nextAuthToken && method !== "initialize") return this._error(id, MCP_ERROR_CODES.AUTH_REQUIRED, "Authentication required", "AUTH_REQUIRED", correlationId, {}, reply);
+    if (this._authRequired && !this._authToken && !this._nextAuthToken && method !== "initialize") {
+      // No credential at all: retry the token file (it may have been renewed since
+      // the throttled read) and, failing that, name the recovery command.
+      const recovery = this._authRecovery();
+      if (recovery.recovered && (this._authToken || this._nextAuthToken)) return this._handleMessage(msg, respond);
+      return this._error(id, MCP_ERROR_CODES.AUTH_REQUIRED, `Authentication required. ${recovery.action}`, "AUTH_REQUIRED", correlationId, { recovery: { reason: recovery.reason || null, action: recovery.action || null } }, reply);
+    }
     const suppliedToken = this._authValue(params) || this._transportToken();
-    if (this._authRequired && method !== "initialize" && (!this._initialized || !this._authValid(suppliedToken) || suppliedToken !== this._sessionToken)) return this._error(id, MCP_ERROR_CODES.AUTH_REQUIRED, "Authentication required", "AUTH_REQUIRED", correlationId, {}, reply);
+    if (this._authRequired && method !== "initialize" && (!this._initialized || !this._authValid(suppliedToken) || suppliedToken !== this._sessionToken)) {
+      // The session credential no longer satisfies the check: retry the token file
+      // (a rotation may have landed since the throttled read) before failing.
+      const recovery = this._authRecovery();
+      if (recovery.recovered) {
+        const retried = this._authValue(params) || this._transportToken();
+        if (this._initialized && this._authValid(retried) && retried === this._sessionToken) return this._handleMessage(msg, respond);
+        // The file healed but this session could not follow it: it echoed its own
+        // credential, which the rotating record no longer matches.
+        recovery.action = "Run: minitok mcp connect <host>";
+        recovery.reason = "The session supplied its own credential, which no longer matches the runtime token file.";
+      }
+      return this._error(id, MCP_ERROR_CODES.AUTH_REQUIRED, `Authentication required. ${recovery.action}`, "AUTH_REQUIRED", correlationId, { recovery: { reason: recovery.reason || null, action: recovery.action || null } }, reply);
+    }
     if (method === "initialize") {
       const requested = Array.isArray(params.protocolVersions) ? params.protocolVersions : [params.protocolVersion];
       const protocolVersion = requested.find(version => SUPPORTED_PROTOCOLS.includes(version));
@@ -472,7 +530,8 @@ class RuntimeStdio {
       // AUTH_REQUIRED on every subsequent call.
       const suppliedToken = this._authValue(params);
       if (this._authRequired && suppliedToken && !this._authValid(suppliedToken)) {
-        return this._error(id, MCP_ERROR_CODES.AUTH_REQUIRED, "Authentication required", "AUTH_REQUIRED", correlationId, {}, reply);
+        const recovery = this._authRecovery();
+        return this._error(id, MCP_ERROR_CODES.AUTH_REQUIRED, `Authentication required. ${recovery.action}`, "AUTH_REQUIRED", correlationId, { recovery: { reason: recovery.reason || null, action: recovery.action || null } }, reply);
       }
        this._clientInfo = params.clientInfo && typeof params.clientInfo === "object" ? { name: String(params.clientInfo.name || "unknown").slice(0, 128), version: String(params.clientInfo.version || "").slice(0, 64) } : null;
        const requestToken = this._authValue(params);

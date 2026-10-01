@@ -128,4 +128,25 @@ function runtimeTokenDiagnostics(filePath = DEFAULT_RUNTIME_TOKEN_FILE, now = Da
   };
 }
 
-module.exports = { DEFAULT_RUNTIME_TOKEN_FILE, DEFAULT_TTL_MS, installationRecord, readRuntimeToken, writeRuntimeToken, rotateRuntimeToken, ensureRuntimeToken, revokeRuntimeToken, runtimeTokenPath, runtimeTokenDiagnostics };
+/**
+ * The recovery command an AUTH_REQUIRED error should name.
+ *
+ * `minitok mcp token` rewrites the record (rotating a fresh token) for a file
+ * that exists but is expired, revoked, or otherwise unusable, and it only works
+ * while an installation token is present. A missing file — or no installation
+ * at all — needs `minitok mcp connect <host>` to set the configuration up, and
+ * a non-rotating credential (an explicit token or a legacy token file) cannot
+ * be re-read, so the user has to reconnect that host.
+ */
+function authRecoveryAction(filePath) {
+  if (typeof filePath !== "string" || !filePath) return "Run: minitok mcp connect <host>";
+  const installation = installationRecord(path.join(path.dirname(filePath), "..", "entitlement"));
+  if (filePath.endsWith("runtime-token.json") && installation) {
+    return fs.existsSync(filePath)
+      ? "Run: minitok mcp token"
+      : "Run: minitok mcp connect <host>";
+  }
+  return "Run: minitok mcp connect <host>";
+}
+
+module.exports = { DEFAULT_RUNTIME_TOKEN_FILE, DEFAULT_TTL_MS, installationRecord, readRuntimeToken, writeRuntimeToken, rotateRuntimeToken, ensureRuntimeToken, revokeRuntimeToken, runtimeTokenPath, runtimeTokenDiagnostics, authRecoveryAction };
