@@ -40,7 +40,7 @@ function signFor(installationId, overrides) {
   const now = new Date(); const expires = new Date(now.getTime() + 30 * 86400000);
   return signEntitlement({ privateKeyPem: kp.privateKeyPem, keyId: "prod-key", payload: Object.assign({
     entitlement_id: "11111111-1111-4111-8111-111111111111", installation_id: installationId,
-    plan_id: "open", features: ["autonomous_run"], max_devices: 3,
+    plan_id: "level1", features: ["autonomous_run"], max_devices: 3,
     issued_at: now.toISOString(), expires_at: expires.toISOString(), key_id: "prod-key"
   }, overrides || {}) });
 }
@@ -98,7 +98,7 @@ describe("CLIENT/SERVER CONTRACT — Installation Binding", () => {
 
   it("C6: Legacy entitlement (no installation_id) remains parseable for migration diagnostics but is not runtime-authorized", () => {
     const now = new Date(); const expires = new Date(now.getTime() + 86400000);
-    const payload = { entitlement_id: "66666666-6666-4666-8666-666666666666", plan_id: "open",
+    const payload = { entitlement_id: "66666666-6666-4666-8666-666666666666", plan_id: "level1",
       features: ["autonomous_run"], max_devices: 1, issued_at: now.toISOString(),
       expires_at: expires.toISOString(), key_id: "prod-key" };
     const canonical = model.canonicalize(payload);

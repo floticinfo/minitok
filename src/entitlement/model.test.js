@@ -28,7 +28,7 @@ test("rejects unusable timestamps", () => {
 test("a payload signed without milliseconds remains valid and verifiable", () => {
   const payload = {
     entitlement_id: "3f1b0c9e-6f1a-4a1f-8f0e-2b3c4d5e6f70",
-    plan_id: "select",
+    plan_id: "level1",
     features: ["evolution_upload"],
     max_devices: 1,
     issued_at: "2026-01-01T00:00:00Z",

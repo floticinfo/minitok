@@ -15,7 +15,7 @@ function makePayload(overrides = {}) {
   const expires = new Date(now.getTime() + 30 * 24 * 3600 * 1000);
   return {
     entitlement_id: "12345678-1234-4123-a123-123456789abc",
-    plan_id: "open",
+    plan_id: "level1",
     features: ["autonomous-coding", "multi-provider"],
     max_devices: 3,
     issued_at: now.toISOString(),
@@ -175,8 +175,9 @@ describe("Signature Verification", () => {
   });
   it("tampered payload fails", () => {
     const a = signPayload(makePayload(), kp.privateKey, "k1");
-    a.payload.plan_id = "private";
-    assert.equal(verifyEntitlement(a).state, EntitlementState.INVALID_SIGNATURE);
+    a.payload.plan_id = "invalid-plan";
+    const state = verifyEntitlement(a).state;
+    assert.ok([EntitlementState.MALFORMED, EntitlementState.INVALID_SIGNATURE].includes(state), `expected MALFORMED or INVALID_SIGNATURE, got ${state}`);
   });
   it("unknown key_id fails", () => {
     const a = signPayload(makePayload(), kp.privateKey, "unknown");

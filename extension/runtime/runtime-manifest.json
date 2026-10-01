@@ -180,8 +180,8 @@
       "embedded": "41134846a2a29534cd20d1f5145a12072d22b5934cb674dfd30b0dd87dedcec9"
     },
     "entitlement/model.js": {
-      "source": "00626328a674f3db2a13a9f8703c0f0052990987e03e27c70048dd3f0629424a",
-      "embedded": "00626328a674f3db2a13a9f8703c0f0052990987e03e27c70048dd3f0629424a"
+      "source": "933c86e990ba1f33d1aaf9c9aa890dbd5e7c14bcfa5a1cdf53b51a25b91528d5",
+      "embedded": "933c86e990ba1f33d1aaf9c9aa890dbd5e7c14bcfa5a1cdf53b51a25b91528d5"
     },
     "entitlement/online.js": {
       "source": "bebb86373c5a040f85ecfb7f9914c2a9116e769e43cd2e3a1a0646549cfe1473",
@@ -232,8 +232,8 @@
       "embedded": "deb7ed58f25550cce0b39e9b8e090c627ab284d67ab85b218128f4c658c695c6"
     },
     "evolution/telemetry-policy.js": {
-      "source": "0591f501ebdeb43e7cc130c9fed69afd7055caf20799e9e23c36e558c03635a4",
-      "embedded": "0591f501ebdeb43e7cc130c9fed69afd7055caf20799e9e23c36e558c03635a4"
+      "source": "5bc1815503b0c6a252273426941cacc4ca9d782144dc390812a01f2006b245c9",
+      "embedded": "5bc1815503b0c6a252273426941cacc4ca9d782144dc390812a01f2006b245c9"
     },
     "evolution/upload.js": {
       "source": "5d7f37e87f49bea5062aee5c4f818a2b534fe778dc42f7adb69cc99f50e7aa41",

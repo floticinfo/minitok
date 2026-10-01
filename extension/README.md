@@ -32,15 +32,13 @@ The Extension lint gate runs `tsc -p extension/tsconfig.json` over all Extension
 
 You can also use **minitok: Run Selection through minitok** from the editor context menu, or **minitok: Run Problems through minitok** from the Command Palette. Both commands preserve workspace trust, entitlement, consent, cancellation, and verification safeguards.
 
-The Extension is free to install, but a paid plan and valid installation entitlement are required before a real run. When enabled by the licensing server, a constrained trial can provide one installation, up to 14 days, up to 5 real runs, and telemetry OFF; trial quota is consumed online and cannot be extended offline. Provider credentials and provider API charges remain separate from minitok and are configured through the CLI.
+The Extension is free to install, but a paid plan and valid installation entitlement are required before a real run. When enabled by the licensing server, a free trial can provide one installation, up to 14 days, up to 5 real runs, and telemetry OFF; trial quota is consumed online and cannot be extended offline. Provider credentials and provider API charges remain separate from minitok and are configured through the CLI.
 
 ## Plans
 
-- **Open ($3.99/month)**: consented per-run telemetry under the 30-day client policy.
-- **Select ($4.99/month)**: consented aggregate-only telemetry under the 14-day client policy.
-- **Private ($6.99/month)**: no telemetry upload or storage.
-- **Trial (server-issued only)**: up to 14 days, up to 5 real runs, one installation, telemetry OFF; not a free plan.
+- **Level 1 ($8.99/month)**: the standard paid plan. Each plan provides one installation.
+- **Free trial (server-issued only)**: up to 14 days, up to 5 real runs, one installation, telemetry OFF.
 
-Each plan provides one installation per plan. LLM provider usage is separate from the minitok plan.
+LLM provider usage is separate from the minitok plan.
 
 Learn more at [minitok.dev](https://minitok.dev) and [Documentation](https://minitok.dev/docs).

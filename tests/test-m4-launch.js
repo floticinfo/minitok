@@ -108,9 +108,9 @@ describe("M4.7 CLI Graceful Failure", () => {
   it("portal no token", async () => assert.equal(await cmdPortal({}), 1));
 });
 describe("M4.9 Dodo Production Checkout/Portal Paths", () => {
-  it("checkout accepts only Open", async () => {
+  it("checkout accepts only Level 1", async () => {
     assert.equal(await cmdCheckout({ plan: "select", token: "jwt" }), 1);
-    assert.equal(await cmdCheckout({ plan: "private", token: "jwt" }), 1);
+    assert.equal(await cmdCheckout({ plan: "open", token: "jwt" }), 1);
   });
   it("checkout defaults to /v1/checkout/dodo", () => {
     const c = fs.readFileSync(path.join(__dirname, "../src/cli/commands/checkout.js"), "utf-8");

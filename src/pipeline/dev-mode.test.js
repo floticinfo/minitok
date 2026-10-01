@@ -55,7 +55,7 @@ describe("development mode gate bypass", () => {
 describe("entitlement gate fail-closed states", () => {
   it("fails closed for unknown key ids with a non-allow state", () => {
     const r = checkEntitlement({
-      _loadArtifact: () => ({ key_id: "cv82-self", payload: { entitlement_id: "e1", installation_id: "i1", plan_id: "open", features: [], max_devices: 1, issued_at: new Date().toISOString(), expires_at: new Date(Date.now() + 86400000).toISOString(), key_id: "cv82-self" }, signature: "AA" }),
+      _loadArtifact: () => ({ key_id: "cv82-self", payload: { entitlement_id: "e1", installation_id: "i1", plan_id: "level1", features: [], max_devices: 1, issued_at: new Date().toISOString(), expires_at: new Date(Date.now() + 86400000).toISOString(), key_id: "cv82-self" }, signature: "AA" }),
       _loadGateState: () => ({ latest_observed_at: 0, last_validated_at: null }),
     });
     assert.equal(r.allowed, false);

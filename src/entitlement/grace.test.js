@@ -48,7 +48,7 @@ function makeEntitlement(installationId) {
     payload: {
       entitlement_id: "11111111-1111-4111-8111-111111111111",
       installation_id: installationId,
-      plan_id: "open",
+      plan_id: "level1",
       features: ["autonomous_run"],
       max_devices: 1,
       issued_at: now.toISOString(),

@@ -7,7 +7,7 @@ const VO = { status: "success", cycles: 3, duration_ms: 1000, files_changed: 2 }
 
 function makeOpts(overrides = {}) {
   return {
-    _entitlementCheck: { allowed: true, entitlement: { plan_id: "open", features: ["evolution_upload"] } },
+    _entitlementCheck: { allowed: true, entitlement: { plan_id: "level1", features: ["evolution_upload"] } },
     _optIn: { isEnabled: () => true },
     serverUrl: "https://srv.ex", token: "jwt",
     ...overrides,
@@ -15,28 +15,29 @@ function makeOpts(overrides = {}) {
 }
 
 describe("Upload - gate chain (A-N)", () => {
-  it("A: Private no upload feature → no upload", async () => {
+  it("A: Level 1 without upload feature → no upload", async () => {
     const r = await uploadEvolutionOutcome(VO, makeOpts({
-      _entitlementCheck: { allowed: true, entitlement: { features: ["basic_features"] } },
+      _entitlementCheck: { allowed: true, entitlement: { plan_id: "level1", features: ["basic_features"] } },
     }));
     assert.equal(r.sent, false);
     assert.match(r.reason, /evolution_upload/);
   });
 
-  it("B: Open opt-in=false → no upload", async () => {
+  it("B: Level 1 opt-in=false → no upload", async () => {
     const r = await uploadEvolutionOutcome(VO, makeOpts({
       _optIn: { isEnabled: () => false },
     }));
     assert.equal(r.sent, false);
-    assert.match(r.reason, /consent|opted-in/);
+    assert.match(r.reason, /Telemetry is disabled|consent|opted-in|not authorized/);
   });
 
-  it("C: Open opt-in=true → sends", async () => {
-    let url = null;
-    const mock = (u, b) => { url = u; return Promise.resolve({ ok: true, status: 201 }); };
+  it("C: Level 1 opt-in=true → policy blocks (no telemetry for Level 1)", async () => {
+    let called = false;
+    const mock = (u, b) => { called = true; return Promise.resolve({ ok: true, status: 201 }); };
     const r = await uploadEvolutionOutcome(VO, makeOpts({ _httpPost: mock }));
-    assert.equal(r.sent, true);
-    assert.equal(url, "https://srv.ex/v1/evolution/telemetry");
+    assert.equal(r.sent, false);
+    assert.match(r.reason, /Telemetry is disabled/);
+    assert.equal(called, false, "no network request must be issued when the plan policy blocks telemetry");
   });
 
   it("D: Invalid signature → no upload", async () => {
@@ -92,11 +93,13 @@ describe("Upload - gate chain (A-N)", () => {
     assert.equal(r.sent, false);
   });
 
-  it("M: Server unavailable → local still works", async () => {
-    const mock = () => Promise.reject(new Error("ECONNREFUSED"));
+  it("M: Server unreachable → policy blocks before any network attempt", async () => {
+    let called = false;
+    const mock = () => { called = true; return Promise.reject(new Error("ECONNREFUSED")); };
     const r = await uploadEvolutionOutcome(VO, makeOpts({ _httpPost: mock }));
     assert.equal(r.sent, false);
-    assert.match(r.reason, /Network error/);
+    assert.match(r.reason, /Telemetry is disabled/);
+    assert.equal(called, false);
   });
 
   it("N: Malicious LLM output → sanitizer blocks", async () => {
@@ -115,22 +118,20 @@ describe("Upload - gate chain (A-N)", () => {
     assert.equal(r.sent, false);
   });
 
-  it("Server 403 → not sent", async () => {
-    const mock = () => Promise.resolve({ ok: false, status: 403 });
+  it("Server 403 → not sent (policy blocks before network)", async () => {
+    let called = false;
+    const mock = () => { called = true; return Promise.resolve({ ok: false, status: 403 }); };
     const r = await uploadEvolutionOutcome(VO, makeOpts({ _httpPost: mock }));
     assert.equal(r.sent, false);
+    assert.equal(called, false);
   });
 
-  it("Canary: no project data in HTTP body", async () => {
-    let body = null;
-    const mock = (u, b) => { body = b; return Promise.resolve({ ok: true, status: 201 }); };
-    await uploadEvolutionOutcome(VO, makeOpts({ _httpPost: mock }));
-    const json = JSON.stringify(body);
-    assert.ok(!json.includes("goal"), "goal leaked");
-    assert.ok(!json.includes("summary"), "summary leaked");
-    assert.ok(!json.includes("source_code"), "source_code leaked");
-    assert.ok(!json.includes("file_path"), "file_path leaked");
-    assert.ok(!json.includes("prompt"), "prompt leaked");
-    assert.ok(!json.includes("CANARY"), "canary leaked");
+  it("Canary: Level 1 policy blocks upload before any HTTP body is constructed", async () => {
+    let called = false;
+    const mock = (u, b) => { called = true; return Promise.resolve({ ok: true, status: 201 }); };
+    const r = await uploadEvolutionOutcome(VO, makeOpts({ _httpPost: mock }));
+    assert.equal(r.sent, false);
+    assert.match(r.reason, /Telemetry is disabled/);
+    assert.equal(called, false, "no HTTP request must be issued for a no-telemetry plan");
   });
 });

@@ -9,7 +9,7 @@ const { clearKeys, registerKey } = require("./public-key");
 const installationId = "12345678-1234-4123-a123-123456789abd";
 function artifactFor(expiresAt = new Date(Date.now() + 86400000).toISOString()) {
   const keys = crypto.generateKeyPairSync("ed25519");
-  const payload = { entitlement_id: "12345678-1234-4123-a123-123456789abc", installation_id: installationId, plan_id: "open", features: ["autonomous-coding"], max_devices: 2, issued_at: new Date(Date.now() - 1000).toISOString(), expires_at: expiresAt, key_id: "online-test" };
+  const payload = { entitlement_id: "12345678-1234-4123-a123-123456789abc", installation_id: installationId, plan_id: "level1", features: ["autonomous-coding"], max_devices: 2, issued_at: new Date(Date.now() - 1000).toISOString(), expires_at: expiresAt, key_id: "online-test" };
   registerKey("online-test", keys.publicKey.export({ type: "spki", format: "pem" }));
   return { payload, signature: crypto.sign(null, Buffer.from(canonicalize(payload)), keys.privateKey).toString("base64url"), key_id: "online-test" };
 }

@@ -1,6 +1,6 @@
 "use strict";
 /**
- * M11 — Client-side Evolution Upload: Adversarial Tests
+ * M11 ??Client-side Evolution Upload: Adversarial Tests
  * Tests sanitizer, upload client, opt-in, and raw payload spy.
  */
 const { describe, it, beforeEach } = require("node:test");
@@ -11,7 +11,7 @@ const { uploadEvolutionOutcome } = require("../src/evolution/upload");
 // ============================================================
 // SANITIZER TESTS
 // ============================================================
-describe("M11 — Sanitizer: Allowlist", () => {
+describe("M11 ??Sanitizer: Allowlist", () => {
   const VALID = { status: "success", cycles: 3, duration_ms: 1000, files_changed: 2 };
   it("accepts minimal valid payload", () => {
     const r = sanitizeEvolutionOutcome(VALID);
@@ -72,7 +72,7 @@ describe("M11 — Sanitizer: Allowlist", () => {
 // ============================================================
 // SANITIZER: VALIDATION TESTS
 // ============================================================
-describe("M11 — Sanitizer: Validation", () => {
+describe("M11 ??Sanitizer: Validation", () => {
   const BASE = { status: "success", cycles: 3, duration_ms: 1000, files_changed: 2 };
   it("rejects null input", () => {
     assert.equal(sanitizeEvolutionOutcome(null).ok, false);
@@ -134,16 +134,16 @@ describe("M11 — Sanitizer: Validation", () => {
 // ============================================================
 // UPLOAD CLIENT: FAIL-CLOSED GATE TESTS
 // ============================================================
-describe("M11 — Upload Client: Entitlement Gate", () => {
+describe("M11 ??Upload Client: Entitlement Gate", () => {
   const VALID = { status: "success", cycles: 3, duration_ms: 1000, files_changed: 2 };
-  const OK_ENTITLEMENT = { allowed: true, entitlement: { plan_id: "open", features: ["evolution_upload"] } };
+  const OK_ENTITLEMENT = { allowed: true, entitlement: { plan_id: "level1", features: ["evolution_upload"] } };
   const NO_FEATURE_ENTITLEMENT = { allowed: true, entitlement: { features: ["basic_features"] } };
   const DENIED_ENTITLEMENT = { allowed: false, state: "MISSING" };
   const OPTIN_ON = { isEnabled: () => true };
   const OPTIN_OFF = { isEnabled: () => false };
   const noopHttp = async () => ({ ok: true, status: 201 });
 
-  it("no entitlement → no network request", async () => {
+  it("no entitlement ??no network request", async () => {
     let called = false;
     const r = await uploadEvolutionOutcome(VALID, {
       _entitlementCheck: DENIED_ENTITLEMENT, _optIn: OPTIN_ON,
@@ -153,7 +153,7 @@ describe("M11 — Upload Client: Entitlement Gate", () => {
     assert.equal(r.sent, false);
     assert.equal(called, false);
   });
-  it("no evolution_upload feature → no network request", async () => {
+  it("no evolution_upload feature ??no network request", async () => {
     let called = false;
     const r = await uploadEvolutionOutcome(VALID, {
       _entitlementCheck: NO_FEATURE_ENTITLEMENT, _optIn: OPTIN_ON,
@@ -163,7 +163,7 @@ describe("M11 — Upload Client: Entitlement Gate", () => {
     assert.equal(r.sent, false);
     assert.equal(called, false);
   });
-  it("opt-in disabled → no network request", async () => {
+  it("opt-in disabled ??no network request", async () => {
     let called = false;
     const r = await uploadEvolutionOutcome(VALID, {
       _entitlementCheck: OK_ENTITLEMENT, _optIn: OPTIN_OFF,
@@ -173,7 +173,7 @@ describe("M11 — Upload Client: Entitlement Gate", () => {
     assert.equal(r.sent, false);
     assert.equal(called, false);
   });
-  it("sanitization failure → no network request", async () => {
+  it("sanitization failure ??no network request", async () => {
     let called = false;
     const r = await uploadEvolutionOutcome({ status: "success", goal: "secret" }, {
       _entitlementCheck: OK_ENTITLEMENT, _optIn: OPTIN_ON,
@@ -183,7 +183,7 @@ describe("M11 — Upload Client: Entitlement Gate", () => {
     assert.equal(r.sent, false);
     assert.equal(called, false);
   });
-  it("missing serverUrl → no network request", async () => {
+  it("missing serverUrl ??no network request", async () => {
     let called = false;
     const r = await uploadEvolutionOutcome(VALID, {
       _entitlementCheck: OK_ENTITLEMENT, _optIn: OPTIN_ON,
@@ -193,7 +193,7 @@ describe("M11 — Upload Client: Entitlement Gate", () => {
     assert.equal(r.sent, false);
     assert.equal(called, false);
   });
-  it("missing token → no network request", async () => {
+  it("missing token ??no network request", async () => {
     let called = false;
     const r = await uploadEvolutionOutcome(VALID, {
       _entitlementCheck: OK_ENTITLEMENT, _optIn: OPTIN_ON,
@@ -203,14 +203,18 @@ describe("M11 — Upload Client: Entitlement Gate", () => {
     assert.equal(r.sent, false);
     assert.equal(called, false);
   });
-  it("all checks pass → upload succeeds", async () => {
+  it("all checks pass but Level 1 plan policy blocks upload", async () => {
+    let called = false;
     const r = await uploadEvolutionOutcome(VALID, {
       _entitlementCheck: OK_ENTITLEMENT, _optIn: OPTIN_ON,
-      _httpPost: noopHttp, serverUrl: "https://server", token: "jwt",
+      _httpPost: async () => { called = true; return { ok: true, status: 201 }; },
+      serverUrl: "https://server", token: "jwt",
     });
-    assert.equal(r.sent, true);
+    assert.equal(r.sent, false);
+    assert.match(r.reason, /Telemetry is disabled/);
+    assert.equal(called, false, "no network request must be issued when the plan policy blocks telemetry");
   });
-  it("server error → not sent", async () => {
+  it("server error ??not sent", async () => {
     const r = await uploadEvolutionOutcome(VALID, {
       _entitlementCheck: OK_ENTITLEMENT, _optIn: OPTIN_ON,
       _httpPost: async () => ({ ok: false, status: 500 }),
@@ -218,7 +222,7 @@ describe("M11 — Upload Client: Entitlement Gate", () => {
     });
     assert.equal(r.sent, false);
   });
-  it("network error → not sent", async () => {
+  it("network error ??not sent", async () => {
     const r = await uploadEvolutionOutcome(VALID, {
       _entitlementCheck: OK_ENTITLEMENT, _optIn: OPTIN_ON,
       _httpPost: async () => { throw new Error("ECONNREFUSED"); },
@@ -229,9 +233,9 @@ describe("M11 — Upload Client: Entitlement Gate", () => {
 });
 
 // ============================================================
-// RAW PAYLOAD SPY — CRITICAL TEST
+// RAW PAYLOAD SPY ??CRITICAL TEST
 // ============================================================
-describe("M11 — Raw Payload Spy: No Project Data Leakage", () => {
+describe("M11 ??Raw Payload Spy: No Project Data Leakage", () => {
   const FORBIDDEN_STRINGS = [
     "goal", "summary", "prompt", "source_code", "file_path",
     "file_name", "repository", "project", "command_output",
@@ -243,40 +247,37 @@ describe("M11 — Raw Payload Spy: No Project Data Leakage", () => {
     "PROMPT_CANARY_ABCDE",
   ];
 
-  it("actual HTTP payload contains only allowed fields", async () => {
-    let capturedPayload = null;
+  it("Level 1 plan policy blocks before any HTTP request", async () => {
+    let called = false;
     const outcome = {
       status: "success", cycles: 3, duration_ms: 12345,
       files_changed: 4, total_tokens: 12000, failure_category: "test",
     };
-    await uploadEvolutionOutcome(outcome, {
-      _entitlementCheck: { allowed: true, entitlement: { plan_id: "open", features: ["evolution_upload"] } },
+    const r = await uploadEvolutionOutcome(outcome, {
+      _entitlementCheck: { allowed: true, entitlement: { plan_id: "level1", features: ["evolution_upload"] } },
       _optIn: { isEnabled: () => true },
-      _httpPost: async (url, body) => { capturedPayload = body; return { ok: true, status: 201 }; },
+      _httpPost: async (url, body) => { called = true; return { ok: true, status: 201 }; },
       serverUrl: "https://server", token: "jwt",
     });
-    assert.ok(capturedPayload, "HTTP should have been called");
-    const keys = Object.keys(capturedPayload);
-    assert.deepEqual(keys.sort(), ["status", "cycles", "duration_ms", "files_changed", "total_tokens", "failure_category"].sort());
+    assert.equal(r.sent, false);
+    assert.match(r.reason, /Telemetry is disabled/);
+    assert.equal(called, false, "HTTP must not be called for a no-telemetry plan");
   });
 
-  it("no forbidden strings in captured payload", async () => {
+  it("no HTTP request is issued for Level 1, so no payload can leak", async () => {
     let capturedPayload = null;
     const outcome = {
       status: "success", cycles: 3, duration_ms: 1000, files_changed: 2,
       total_tokens: 5000, failure_category: "lint",
     };
-    await uploadEvolutionOutcome(outcome, {
-      _entitlementCheck: { allowed: true, entitlement: { plan_id: "open", features: ["evolution_upload"] } },
+    const r = await uploadEvolutionOutcome(outcome, {
+      _entitlementCheck: { allowed: true, entitlement: { plan_id: "level1", features: ["evolution_upload"] } },
       _optIn: { isEnabled: () => true },
       _httpPost: async (url, body) => { capturedPayload = body; return { ok: true, status: 201 }; },
       serverUrl: "https://server", token: "jwt",
     });
-    const payloadStr = JSON.stringify(capturedPayload);
-    for (const forbidden of FORBIDDEN_STRINGS) {
-      // Check the key names are not present as field names
-      assert.ok(!capturedPayload.hasOwnProperty(forbidden), `Payload must not contain field: ${forbidden}`);
-    }
+    assert.equal(r.sent, false);
+    assert.equal(capturedPayload, null, "No HTTP payload must exist when the plan policy blocks telemetry");
   });
 
   it("canary values never reach the network", async () => {
@@ -289,13 +290,13 @@ describe("M11 — Raw Payload Spy: No Project Data Leakage", () => {
       source_code: "PROMPT_CANARY_ABCDE",
     };
     await uploadEvolutionOutcome(outcome, {
-      _entitlementCheck: { allowed: true, entitlement: { plan_id: "open", features: ["evolution_upload"] } },
+      _entitlementCheck: { allowed: true, entitlement: { plan_id: "level1", features: ["evolution_upload"] } },
       _optIn: { isEnabled: () => true },
       _httpPost: async (url, body) => { capturedPayload = body; return { ok: true, status: 201 }; },
       serverUrl: "https://server", token: "jwt",
     });
-    // Sanitizer should have rejected this — no network request
-    assert.equal(capturedPayload, null, "Sanitizer must reject canary-laced outcome — no network request");
+    // Sanitizer should have rejected this ??no network request
+    assert.equal(capturedPayload, null, "Sanitizer must reject canary-laced outcome ??no network request");
   });
 
   it("LLM output with file paths never reaches network", async () => {
@@ -306,11 +307,11 @@ describe("M11 — Raw Payload Spy: No Project Data Leakage", () => {
       goal: "Fix authentication in /repo/project/src/auth.js",
     };
     await uploadEvolutionOutcome(outcome, {
-      _entitlementCheck: { allowed: true, entitlement: { plan_id: "open", features: ["evolution_upload"] } },
+      _entitlementCheck: { allowed: true, entitlement: { plan_id: "level1", features: ["evolution_upload"] } },
       _optIn: { isEnabled: () => true },
       _httpPost: async (url, body) => { capturedPayload = body; return { ok: true, status: 201 }; },
       serverUrl: "https://server", token: "jwt",
     });
-    assert.equal(capturedPayload, null, "Sanitizer must reject file paths — no network request");
+    assert.equal(capturedPayload, null, "Sanitizer must reject file paths ??no network request");
   });
 });

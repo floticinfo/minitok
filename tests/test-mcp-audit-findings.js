@@ -137,7 +137,7 @@ test("stdio authenticates a session from the installation token file", async () 
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-mcp-auth-"));
   const tokenFile = path.join(root, "installation-token.json");
   fs.writeFileSync(tokenFile, JSON.stringify({ token: "fixture-auth-token" }));
-  const runtime = new RuntimeStdio({ authTokenFile: tokenFile, runStatePath: path.join(root, "runs.json"), services: { entitlement: { status: async () => ({ allowed: true, state: "ALLOWED", entitlement: { plan_id: "open" } }) } } });
+  const runtime = new RuntimeStdio({ authTokenFile: tokenFile, runStatePath: path.join(root, "runs.json"), services: { entitlement: { status: async () => ({ allowed: true, state: "ALLOWED", entitlement: { plan_id: "level1" } }) } } });
   try {
     const request = async message => {
       const response = new Promise(resolve => { runtime._respond = resolve; });

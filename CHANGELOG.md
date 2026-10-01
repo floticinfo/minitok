@@ -445,8 +445,8 @@
 
 ### Commercial contract
 
-- Current paid plans are Open, Select, and Private; there is no free plan.
-- Open supports consented per-run telemetry, Select supports consented aggregate-only telemetry, and Private disables telemetry upload.
+- The current paid plan is Level 1 ($8.99/month); there is no free plan.
+- Level 1 does not upload or store telemetry. A server-issued free trial (up to 14 days, up to 5 real runs, telemetry OFF) is available.
 
 ### Packaging
 

@@ -6,7 +6,7 @@ const pkg = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"))
 const files = ["README.md", "POLICY.md", "DATA_CLASSIFICATION.md"];
 const errors = [];
 const commercialDocs = ["README.md", "POLICY.md", "CHANGELOG.md"];
-const paidPlans = ["open", "select", "private"];
+const paidPlans = ["level1"];
 const trialContract = ["free to install", "14 days", "5 real runs", "telemetry off"];
 const commercialContract = "There is no free plan";
 const readme = fs.readFileSync(path.join(root, "README.md"), "utf8");
@@ -24,7 +24,8 @@ for (const file of commercialDocs) {
   const text = fs.readFileSync(path.join(root, file), "utf8");
   if (!text.toLowerCase().includes(commercialContract.toLowerCase())) errors.push(`${file}: missing no-free-plan contract`);
   for (const plan of paidPlans) {
-    if (!text.toLowerCase().includes(plan)) errors.push(`${file}: missing paid plan ${plan}`);
+    const planName = plan.replace(/1$/, " 1");
+    if (!text.toLowerCase().includes(plan) && !text.toLowerCase().includes(planName)) errors.push(`${file}: missing paid plan ${plan}`);
   }
   for (const term of trialContract) {
     if (!text.toLowerCase().includes(term.toLowerCase())) errors.push(`${file}: missing trial/install contract '${term}'`);

@@ -1,0 +1,98 @@
+name: Publish CLI to npm and sync website
+
+# Publishes @flotic/minitok to npm, then triggers the server repository's
+# website version sync so the public install command follows the new release
+# immediately instead of waiting for the daily cron.
+#
+# Triggers:
+#   - push of a release tag (v*): CI publish path
+#   - workflow_dispatch: manual publish of a specific tag
+#
+# Required secrets:
+#   - NPM_TOKEN: npm automation/access token for the flotic account (publish)
+#   - WEBSITE_SYNC_TOKEN: token (PAT or GitHub App) with actions:write on the
+#     server repository, used to dispatch sync-website-npm-version.yml
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to publish to npm"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-cli
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - name: Resolve release tag
+        id: release
+        shell: bash
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          PUSH_TAG: ${{ github.ref_name }}
+        run: |
+          tag="${INPUT_TAG:-$PUSH_TAG}"
+          test -n "$tag"
+          case "$tag" in v*) ;; *) echo "tag must start with v" >&2; exit 1 ;; esac
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ steps.release.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: https://registry.npmjs.org
+
+      - name: Verify release metadata
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          test "${RELEASE_TAG#v}" = "$(node -p "require('./package.json').version")"
+          npm ci
+          npm run check:version-metadata
+          npm run check:mcp-registry
+          npm run lint
+          npm run typecheck
+          npm run docs:check
+          node scripts/secret-scan.mjs
+          npm run stage2:parity
+
+      - name: Run test suite
+        run: npm test -- --test-concurrency=1
+
+      - name: Run packed install smoke test
+        run: npm run test:packed-install
+
+      - name: Publish to npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: npm publish --access public
+
+      - name: Trigger website version sync
+        env:
+          GH_TOKEN: ${{ secrets.WEBSITE_SYNC_TOKEN }}
+          SERVER_REPO: floticinfo/minitok-server
+        run: |
+          if [ -z "$GH_TOKEN" ]; then
+            echo "WEBSITE_SYNC_TOKEN not set; skipping website sync (daily cron will catch up)."
+            exit 0
+          fi
+          gh workflow run sync-website-npm-version.yml --repo "$SERVER_REPO"

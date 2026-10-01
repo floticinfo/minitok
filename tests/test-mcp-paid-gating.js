@@ -43,13 +43,13 @@ function request(port, headers, body) {
 }
 
 test("stdio accepts every supported plan and blocks invalid entitlement states", async () => {
-  for (const plan of ["open", "select", "private"]) {
+  for (const plan of ["level1"]) {
     const runtime = new RuntimeStdio({ authRequired: false, services: { entitlement: { status: async () => policy(plan) } } });
     const result = await stdioRequest(runtime, { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} });
     assert.equal(result.result.tools.length, READ_ONLY_TOOL_COUNT);
   }
   for (const state of ["MISSING", "SERVER_REJECTED", "EXPIRED", "MALFORMED"]) {
-    const runtime = new RuntimeStdio({ authRequired: false, services: { entitlement: { status: async () => policy("open", state) } } });
+    const runtime = new RuntimeStdio({ authRequired: false, services: { entitlement: { status: async () => policy("level1", state) } } });
     const result = await stdioRequest(runtime, { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} });
     assert.equal(result.error.data.type, "ENTITLEMENT_REQUIRED");
     assert.equal(result.error.data.state, state);
@@ -57,12 +57,11 @@ test("stdio accepts every supported plan and blocks invalid entitlement states",
 });
 
 test("stdio initialize negotiates without exposing paid functionality", async () => {
-  const runtime = new RuntimeStdio({ authToken: "secret", services: { entitlement: { status: async () => policy("open") } } });
+  const runtime = new RuntimeStdio({ authToken: "secret", services: { entitlement: { status: async () => policy("level1") } } });
   const init = await stdioRequest(runtime, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05" } });
   assert.equal(init.result.protocolVersion, "2024-11-05");
   // The credential the process was launched with authenticates the session. A
-  // host such as VS Code, Claude Desktop, or Cursor can only pass env and args —
-  // it has no way to echo a token in `params` — and the transport used to demand
+  // host such as VS Code, Claude Desktop, or Cursor can only pass env and args ??  // it has no way to echo a token in `params` ??and the transport used to demand
   // one, so initialize succeeded and every later call failed with AUTH_REQUIRED.
   const list = await stdioRequest(runtime, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });
   assert.equal(list.result.tools.length, READ_ONLY_TOOL_COUNT);
@@ -81,13 +80,13 @@ test("stdio initialize negotiates without exposing paid functionality", async ()
 test("stdio refuses to negotiate with a token it would reject later", async () => {
   // initialize used to accept any token, so a bogus value produced a successful
   // handshake followed by AUTH_REQUIRED on every subsequent call.
-  const runtime = new RuntimeStdio({ authToken: "secret", services: { entitlement: { status: async () => policy("open") } } });
+  const runtime = new RuntimeStdio({ authToken: "secret", services: { entitlement: { status: async () => policy("level1") } } });
   const bogus = await stdioRequest(runtime, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", authToken: "wrong" } });
   assert.equal(bogus.error.data.type, "AUTH_REQUIRED");
 });
 
 test("stdio refuses every call when auth is required but no credential exists", async () => {
-  const runtime = new RuntimeStdio({ authRequired: true, services: { entitlement: { status: async () => policy("open") } } });
+  const runtime = new RuntimeStdio({ authRequired: true, services: { entitlement: { status: async () => policy("level1") } } });
   const init = await stdioRequest(runtime, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05" } });
   assert.equal(init.result.protocolVersion, "2024-11-05");
   // Nothing was configured to compare against, so no request can be valid.
@@ -95,14 +94,14 @@ test("stdio refuses every call when auth is required but no credential exists", 
   assert.equal(list.error.data.type, "AUTH_REQUIRED");
 
   // Explicitly disabled auth is the only way an unauthenticated session works.
-  const open = new RuntimeStdio({ authRequired: false, services: { entitlement: { status: async () => policy("open") } } });
+  const open = new RuntimeStdio({ authRequired: false, services: { entitlement: { status: async () => policy("level1") } } });
   assert.equal((await stdioRequest(open, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05" } })).result.protocolVersion, "2024-11-05");
   const call = await stdioRequest(open, { jsonrpc: "2.0", id: 2, method: "tools/call", params: { name: "minitok_run_list", arguments: {} } });
   assert.equal(call.error, undefined, `tools/call must work when auth is disabled: ${JSON.stringify(call.error)}`);
 });
 
 test("stdio permits explicitly disabled auth and entitlement", async () => {
-  const runtime = new RuntimeStdio({ authRequired: false, entitlementRequired: false, services: { entitlement: { status: async () => policy("open", "MISSING") } } });
+  const runtime = new RuntimeStdio({ authRequired: false, entitlementRequired: false, services: { entitlement: { status: async () => policy("level1", "MISSING") } } });
   const result = await stdioRequest(runtime, { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} });
   assert.equal(result.result.tools.length, READ_ONLY_TOOL_COUNT);
 });
@@ -110,7 +109,7 @@ test("stdio permits explicitly disabled auth and entitlement", async () => {
 test("HTTP MCP honors explicit auth and entitlement disablement", async () => {
   const fixture = files();
   const server = new RuntimeServer({ ...fixture, port: 0, authRequired: false, entitlementRequired: false });
-  server.services.entitlement.status = async () => policy("open", "MISSING");
+  server.services.entitlement.status = async () => policy("level1", "MISSING");
   await server.start();
   try {
     const result = await request(server.port, {}, { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} });
@@ -123,7 +122,7 @@ test("HTTP MCP honors explicit auth and entitlement disablement", async () => {
 });
 
 test("HTTP MCP requires bearer auth and paid entitlement", async t => {
-  for (const plan of ["open", "select", "private"]) {
+  for (const plan of ["level1"]) {
     const fixture = files();
     const server = new RuntimeServer({ ...fixture, port: 0, runtimeToken: "http-secret" });
     server.services.entitlement.status = async () => policy(plan);
@@ -139,7 +138,7 @@ test("HTTP MCP requires bearer auth and paid entitlement", async t => {
   for (const state of ["MISSING", "EXPIRED", "SERVER_REJECTED"]) {
     const fixture = files();
     const server = new RuntimeServer({ ...fixture, port: 0, runtimeToken: "http-secret" });
-    server.services.entitlement.status = async () => policy("open", state);
+    server.services.entitlement.status = async () => policy("level1", state);
     await server.start();
     const headers = { Authorization: "Bearer http-secret" };
     const init = await request(server.port, headers, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05" } });
@@ -154,7 +153,7 @@ test("HTTP MCP requires bearer auth and paid entitlement", async t => {
   }
   const fixture = files();
   const server = new RuntimeServer({ ...fixture, port: 0, runtimeToken: "http-secret" });
-  server.services.entitlement.status = async () => policy("open");
+  server.services.entitlement.status = async () => policy("level1");
   await server.start();
   const unauthorized = await request(server.port, {}, { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} });
   assert.equal(unauthorized.status, 401);

@@ -32,10 +32,8 @@ test("AUTH_CONTRACT_V1 fixture classifies customer and installation tokens", () 
 });
 
 test("AUTH_CONTRACT_V1 fixture preserves plan IDs and permissions", () => {
-  assert.deepEqual(Object.keys(fixture.plans), ["open", "select", "private"]);
-assert.deepEqual(fixture.plans.open, { max_devices: 1, telemetry: "per_run_consent", checkout: true });
-   assert.deepEqual(fixture.plans.select, { max_devices: 1, telemetry: "aggregate_consent", checkout: true });
-   assert.deepEqual(fixture.plans.private, { max_devices: 1, telemetry: "none", checkout: true });
+  assert.deepEqual(Object.keys(fixture.plans), ["level1"]);
+  assert.deepEqual(fixture.plans.level1, { max_devices: 1, telemetry: "none", checkout: true });
   assert.deepEqual(fixture.remote_mcp.tools, ["minitok_status", "minitok_compact"]);
   assert.deepEqual(fixture.remote_mcp.scopes, ["read"]);
   assert.equal(fixture.remote_mcp.filesystem, false);

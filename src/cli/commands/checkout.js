@@ -10,13 +10,13 @@ async function cmdCheckout(opts) {
   const token = opts?.token || envToken || account?.access_token || loadCustomerToken();
   if (!token) {
     console.error("Error: Authentication token required.");
-    console.error("Usage: minitok checkout --token <JWT> [--plan open]");
+    console.error("Usage: minitok checkout --token <JWT> [--plan level1]");
     return 1;
   }
 
-  const planId = opts?.plan || "open";
-  if (planId !== "open") {
-    console.error("Error: Only the Open plan is available for purchase.");
+  const planId = opts?.plan || "level1";
+  if (planId !== "level1") {
+    console.error("Error: Only the Level 1 plan is available for purchase.");
     return 1;
   }
   const endpoint = "/v1/checkout/dodo";

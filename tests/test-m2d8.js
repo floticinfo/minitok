@@ -1,7 +1,7 @@
 "use strict";
 
 /**
- * M2.D8 Tests — Server URL configuration, activate command, status command.
+ * M2.D8 Tests ??Server URL configuration, activate command, status command.
  */
 
 const { describe, it } = require("node:test");
@@ -14,7 +14,7 @@ const { EntitlementStore } = require("../src/entitlement/store");
 // --- Server URL Configuration ---
 const { resolveServerUrl, saveServerUrl, DEFAULT_SERVER_URL } = require("../src/cli/commands/server-config");
 
-describe("M2.D8 — Server URL Configuration", () => {
+describe("M2.D8 ??Server URL Configuration", () => {
   const origEnv = process.env.minitok_server_url;
 
   it("returns default when nothing configured", () => {
@@ -59,7 +59,7 @@ describe("M2.D8 — Server URL Configuration", () => {
   });
 });
 
-describe("M2.D8 — Activate Command (unit)", () => {
+describe("M2.D8 ??Activate Command (unit)", () => {
   it("cmdActivate rejects missing key", async () => {
     const { cmdActivate } = require("../src/cli/commands/activate");
     const exitCode = await cmdActivate(null, {});
@@ -81,7 +81,7 @@ describe("M2.D8 — Activate Command (unit)", () => {
   });
 });
 
-describe("M2.D8 — Entitlement Store (round-trip)", () => {
+describe("M2.D8 ??Entitlement Store (round-trip)", () => {
   let tmpDir;
 
   it("save and load entitlement artifact", () => {
@@ -89,7 +89,7 @@ describe("M2.D8 — Entitlement Store (round-trip)", () => {
     const store = new EntitlementStore(tmpDir);
 
     const artifact = {
-      payload: { entitlement_id: "test", plan_id: "open", features: [], max_devices: 3, issued_at: new Date().toISOString(), expires_at: "2030-01-01T00:00:00Z", key_id: "test-key" },
+      payload: { entitlement_id: "test", plan_id: "level1", features: [], max_devices: 3, issued_at: new Date().toISOString(), expires_at: "2030-01-01T00:00:00Z", key_id: "test-key" },
       signature: "test-sig",
       key_id: "test-key",
     };

@@ -18,9 +18,7 @@
     "exp": 1896048000
   },
   "plans": {
-    "open": { "max_devices": 1, "telemetry": "per_run_consent", "checkout": true },
-    "select": { "max_devices": 1, "telemetry": "aggregate_consent", "checkout": true },
-    "private": { "max_devices": 1, "telemetry": "none", "checkout": true }
+    "level1": { "max_devices": 1, "telemetry": "none", "checkout": true }
   },
   "remote_mcp": {
     "tools": ["minitok_status", "minitok_compact"],

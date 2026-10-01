@@ -1,9 +1,7 @@
 "use strict";
 
 const PLAN_POLICIES = {
-  open: { mode: "per_run", retention_days: 30, requires_consent: true },
-  select: { mode: "aggregate_only", retention_days: 14, requires_consent: true },
-  private: { mode: "none", retention_days: 0, requires_consent: false },
+  level1: { mode: "none", retention_days: 0, requires_consent: false },
 };
 
 function getTelemetryPolicy(planId) {

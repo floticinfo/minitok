@@ -84,7 +84,7 @@ test("trial consume fails closed without online credentials or with a paid artif
     assert.equal(missingToken.state, "SERVER_REJECTED");
 
     withInstallationToken(dir);
-    const paid = await consume({ artifact: trialArtifact({ plan_id: "open" }) });
+    const paid = await consume({ artifact: trialArtifact({ plan_id: "level1" }) });
     assert.equal(paid.consumed, false);
     assert.equal(paid.state, "SERVER_REJECTED");
     assert.equal(calls, 0);

@@ -65,7 +65,7 @@ Unknown classification, unknown consent, unknown entitlement, sanitizer failure,
 
 The legal positions for the categories above are recorded in [POLICY.md](./POLICY.md) section 10: controller and processor roles, privacy officer, legal bases, international-transfer disclosure, rights handling, and retention periods.
 
-- Account and authentication records are kept while the account exists and for the period required by legal and security obligations. Open telemetry records are kept for 30 days, Select aggregate telemetry for 14 days, and Private telemetry is not collected. Billing records are kept as needed to meet tax and accounting obligations, and support and security records as needed to handle the request, prevent abuse, and resolve disputes.
+- Account and authentication records are kept while the account exists and for the period required by legal and security obligations. Level 1 telemetry is not collected, and trial telemetry is not collected (telemetry permanently OFF). Billing records are kept as needed to meet tax and accounting obligations, and support and security records as needed to handle the request, prevent abuse, and resolve disputes.
 - Support messages are processed under the support address published in POLICY.md section 10.
 
 ### 9.1 Inventory Answers Recorded 2026-09-13
@@ -84,3 +84,4 @@ The operator's open question was whether hostnames, IP addresses, support messag
 
 - **Infrastructure log retention** is not configured in the application source, so the position for the host and reverse-proxy logs is recorded by the operator rather than by this repository.
 - **Telemetry retention was implemented longer than published** and is now aligned: the server deletes Open per-run telemetry after 30 days and Select aggregate telemetry after 14 days (`src/services/evolution-telemetry.js`), which is the position published in POLICY.md section 10, section 3 of this document, and the live privacy notice, and the privacy policy the server itself serves. The previous single 90-day schedule, which also left the aggregate table outside the cleanup, was recorded here on 2026-09-13 and removed the same day.
+- **Plan consolidation (2026-10-01):** the Open, Select, and Private plans are retired. The current paid plan is Level 1 ($8.99/month), which does not upload or store telemetry. Trial telemetry remains permanently OFF.
