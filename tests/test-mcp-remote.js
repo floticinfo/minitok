@@ -73,6 +73,58 @@ test("remote MCP classifies fallback and terminal errors", () => {
   assert.equal(canFallbackToLocal({ status: 422 }), false);
 });
 
+test("remote MCP distinguishes email-verification from entitlement errors on the same 403", async () => {
+  // L6: both denials arrive as HTTP 403. The structured error.data.type — not
+  // the status — must drive classification so the recovery guidance differs.
+  const originalFetch = global.fetch;
+  try {
+    const run = async (type, message) => {
+      global.fetch = async () => response(403, { jsonrpc: "2.0", id: 1, error: { code: -32003, message, data: { type } } });
+      const client = new RemoteMcpClient({ url: "https://service.example/mcp", token: "jwt" });
+      let caught = null;
+      await assert.rejects(() => client.request("tools/list"), error => { caught = error; return true; });
+      return caught;
+    };
+    const verification = await run("EMAIL_VERIFICATION_REQUIRED", "Email verification required");
+    assert.equal(verification.errorType, "EMAIL_VERIFICATION_REQUIRED");
+    assert.equal(verification.classification, "email_verification");
+    assert.equal(verification.serverMessage, "Email verification required");
+    const entitlement = await run("ENTITLEMENT_REQUIRED", "An active paid subscription is required");
+    assert.equal(entitlement.errorType, "ENTITLEMENT_REQUIRED");
+    assert.equal(entitlement.classification, "entitlement");
+    assert.notEqual(verification.classification, entitlement.classification, "the two 403 causes must not be flattened into one");
+  } finally { global.fetch = originalFetch; }
+});
+
+test("recoveryHintForError maps each 403 cause to its own guidance", () => {
+  const { recoveryHintForError } = require("../src/mcp/remote");
+  const verification = recoveryHintForError({ errorType: "EMAIL_VERIFICATION_REQUIRED" });
+  const entitlement = recoveryHintForError({ errorType: "ENTITLEMENT_REQUIRED" });
+  assert.match(verification, /email address is not verified/i);
+  assert.match(verification, /verify-email/);
+  assert.doesNotMatch(verification, /pricing/);
+  assert.match(entitlement, /paid subscription/i);
+  assert.match(entitlement, /pricing/);
+  assert.doesNotMatch(entitlement, /verify-email/);
+  // A bare 403 with no structured type still falls back to generic auth guidance.
+  assert.match(recoveryHintForError({ status: 403 }), /authentication failed/i);
+});
+
+test("remote MCP surfaces verification guidance through the JSON-RPC error result path", async () => {
+  // Servers that keep HTTP 200 but embed the denial as a JSON-RPC error object.
+  const originalFetch = global.fetch;
+  try {
+    global.fetch = async () => response(200, { jsonrpc: "2.0", id: 1, error: { code: -32003, message: "Email verification required", data: { type: "EMAIL_VERIFICATION_REQUIRED" } } });
+    const client = new RemoteMcpClient({ url: "https://service.example/mcp", token: "jwt" });
+    await assert.rejects(() => client.request("tools/list"), error => {
+      assert.equal(error.errorType, "EMAIL_VERIFICATION_REQUIRED");
+      assert.equal(error.classification, "email_verification");
+      assert.equal(classifyRemoteError(error), "email_verification");
+      return true;
+    });
+  } finally { global.fetch = originalFetch; }
+});
+
 test("local MCP defaults to read permission and rejects unknown scopes", () => {
   const { RuntimeStdio } = require("../src/runtime/stdio");
   const runtime = new RuntimeStdio({ authToken: "token", workspaceRoot: process.cwd() });

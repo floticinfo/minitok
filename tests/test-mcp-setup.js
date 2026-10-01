@@ -222,3 +222,45 @@ test("entitlement failure without a server message uses the context message and 
     }
   );
 });
+
+// L6: the entitlement gate must not flatten the server's structured error
+// type. An EMAIL_VERIFICATION_REQUIRED denial and an ENTITLEMENT_REQUIRED
+// denial both reach the gate as failures, but they need opposite recovery —
+// verify the email vs pay for a plan — so the guidance must differ.
+test("email-verification failure surfaces verification guidance, not payment setup", () => {
+  assert.throws(
+    () => mcp.throwEntitlementRequired({ allowed: false, errorType: "EMAIL_VERIFICATION_REQUIRED", message: "Email verification required" }, "https://api.minitok.dev", "An active paid entitlement is required"),
+    error => {
+      assert.equal(error.errorType, "EMAIL_VERIFICATION_REQUIRED");
+      assert.match(error.message, /Email verification required/);
+      assert.match(error.message, /verified minitok account email address/);
+      assert.match(error.message, /https:\/\/minitok\.dev\/verify-email/);
+      assert.doesNotMatch(error.message, /pricing/, "verification recovery must not point at payment");
+      assert.doesNotMatch(error.message, /Choose a plan/, "verification recovery must not point at plan purchase");
+      return true;
+    }
+  );
+});
+
+test("entitlement failure surfaces payment guidance, not verification guidance", () => {
+  assert.throws(
+    () => mcp.throwEntitlementRequired({ allowed: false, errorType: "ENTITLEMENT_REQUIRED", message: "An active paid subscription is required" }, "https://api.minitok.dev", "An active paid entitlement is required"),
+    error => {
+      assert.equal(error.errorType, "ENTITLEMENT_REQUIRED");
+      assert.match(error.message, /https:\/\/minitok\.dev\/pricing/);
+      assert.match(error.message, /Choose a plan and complete payment/);
+      assert.doesNotMatch(error.message, /verify-email/, "payment recovery must not point at email verification");
+      return true;
+    }
+  );
+});
+
+test("a structured type nested under rpcError/body is still distinguished", () => {
+  assert.equal(mcp.entitlementFailureType({ rpcError: { data: { type: "EMAIL_VERIFICATION_REQUIRED" } } }), "EMAIL_VERIFICATION_REQUIRED");
+  assert.equal(mcp.entitlementFailureType({ body: { error: { data: { type: "ENTITLEMENT_REQUIRED" } } } }), "ENTITLEMENT_REQUIRED");
+  assert.equal(mcp.entitlementFailureType({ allowed: false }), null);
+  assert.throws(
+    () => mcp.throwEntitlementRequired({ allowed: false, rpcError: { data: { type: "EMAIL_VERIFICATION_REQUIRED" } } }, "https://api.minitok.dev", "Denied"),
+    error => /verify-email/.test(error.message)
+  );
+});

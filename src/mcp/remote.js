@@ -50,19 +50,67 @@ function validateRemoteUrl(value) {
   return url.toString();
 }
 
+/**
+ * Classify a remote MCP failure for recovery routing. The server's structured
+ * JSON-RPC error type (`error.data.type`, surfaced here as `errorType`) wins
+ * over the bare HTTP status: an email-verification denial and a payment
+ * entitlement denial both arrive as HTTP 403, so status-only classification
+ * flattened them into a single "auth" bucket and could not produce the right
+ * recovery guidance (verify the email address vs buy a subscription).
+ */
 function classifyRemoteError(error) {
   if (error?.classification) return error.classification;
+  const errorType = error?.errorType || error?.rpcError?.data?.type || error?.body?.error?.data?.type || null;
+  if (errorType === "EMAIL_VERIFICATION_REQUIRED") return "email_verification";
+  if (errorType === "ENTITLEMENT_REQUIRED") return "entitlement";
+  if (["SESSION_REQUIRED", "SESSION_BINDING_MISMATCH"].includes(errorType)) return errorType;
+  if (["RATE_LIMITED", "RATE_LIMIT_DEGRADED"].includes(errorType) || error?.status === 429) return "rate_limit";
   if (error?.code === "INVALID_REMOTE_URL") return "configuration";
   if (error?.status >= 500) return "server";
   if (error?.status >= 400) {
-    if (error.status === 429) return "rate_limit";
     return error.status === 401 || error.status === 403 ? "auth" : "protocol";
   }
   return "network";
 }
 
+/** Actionable recovery guidance keyed by the classified failure. */
+function recoveryHintForError(error) {
+  switch (classifyRemoteError(error)) {
+    case "email_verification":
+      return "Your minitok account email address is not verified yet. Open the verification link in your inbox (see https://minitok.dev/verify-email to request a new one), then retry.";
+    case "entitlement":
+      return "No active paid subscription is attached to this account. Start or restore one at https://minitok.dev/pricing, then retry.";
+    case "SESSION_REQUIRED":
+    case "SESSION_BINDING_MISMATCH":
+      return "The remote MCP session is no longer valid. Reconnect to start a new session.";
+    case "rate_limit":
+      return "The remote MCP service rate-limited the request. Wait a moment, then retry.";
+    case "auth":
+      return "Remote MCP authentication failed. Re-run `minitok mcp connect` to refresh the credential.";
+    case "network":
+      return "The remote MCP service could not be reached. Check connectivity, then retry.";
+    case "server":
+      return "The remote MCP service failed. Retry later.";
+    default:
+      return null;
+  }
+}
+
 function remoteError(message, classification, details = {}) {
-  return Object.assign(new Error(message), { code: "REMOTE_MCP_ERROR", classification, ...details });
+  // Carry the server's structured JSON-RPC error type and message forward so
+  // UX layers can distinguish EMAIL_VERIFICATION_REQUIRED from
+  // ENTITLEMENT_REQUIRED (both HTTP 403) instead of collapsing them into one
+  // generic auth failure. Build all properties in a single Object.assign so
+  // the returned error's type surface stays consistent for the typechecker.
+  const structuredType = details.errorType || details.rpcError?.data?.type || details.body?.error?.data?.type || null;
+  const serverMessage = details.rpcError?.message || details.body?.error?.message || null;
+  return Object.assign(new Error(message), {
+    code: "REMOTE_MCP_ERROR",
+    classification,
+    ...(structuredType ? { errorType: structuredType } : {}),
+    ...(typeof serverMessage === "string" && serverMessage ? { serverMessage } : {}),
+    ...details,
+  });
 }
 
 
@@ -189,7 +237,7 @@ class RemoteMcpClient {
       const errorType = body?.error?.data?.type;
       const challenge = response.headers.get("www-authenticate") || "";
       const metadataUrl = extractResourceMetadata(challenge);
-      if (response.status === 401 && this.allowOAuth && !retried && metadataUrl && errorType !== "ENTITLEMENT_REQUIRED") {
+      if (response.status === 401 && this.allowOAuth && !retried && metadataUrl && errorType !== "ENTITLEMENT_REQUIRED" && errorType !== "EMAIL_VERIFICATION_REQUIRED") {
         // Discard the unusable credential first: `retried` bounds the loop, and
         // without this the client kept presenting the same expired token.
         try { this.tokenStore.remove(this.resourceKey); } catch {}
@@ -197,11 +245,11 @@ class RemoteMcpClient {
         await this.authorizeFromMetadata(metadataUrl);
         return this.request(method, params, true);
       }
-      const classification = ["SESSION_REQUIRED", "SESSION_BINDING_MISMATCH"].includes(errorType) ? errorType : ["RATE_LIMITED", "RATE_LIMIT_DEGRADED"].includes(errorType) || response.status === 429 ? "rate_limit" : response.status === 401 || response.status === 403 ? "auth" : "protocol";
+      const classification = errorType === "EMAIL_VERIFICATION_REQUIRED" ? "email_verification" : errorType === "ENTITLEMENT_REQUIRED" ? "entitlement" : ["SESSION_REQUIRED", "SESSION_BINDING_MISMATCH"].includes(errorType) ? errorType : ["RATE_LIMITED", "RATE_LIMIT_DEGRADED"].includes(errorType) || response.status === 429 ? "rate_limit" : response.status === 401 || response.status === 403 ? "auth" : "protocol";
       throw remoteError(response.status === 401 || response.status === 403 ? "Remote MCP authentication or entitlement failed" : response.status === 429 ? "Remote MCP rate limit exceeded" : "Remote MCP HTTP protocol failure", classification, { status: response.status, body, errorType: errorType || null });
     }
     const result = Array.isArray(body) ? body.find(item => item?.id === id) : body;
-    if (result?.error) throw remoteError(result.error.message || "Remote MCP protocol error", ["SESSION_REQUIRED", "SESSION_BINDING_MISMATCH"].includes(result.error.data?.type) ? result.error.data.type : ["RATE_LIMITED", "RATE_LIMIT_DEGRADED"].includes(result.error.data?.type) ? "rate_limit" : result.error.data?.type === "ENTITLEMENT_REQUIRED" ? "auth" : "protocol", { status: response.status, rpcError: result.error });
+    if (result?.error) throw remoteError(result.error.message || "Remote MCP protocol error", result.error.data?.type === "EMAIL_VERIFICATION_REQUIRED" ? "email_verification" : result.error.data?.type === "ENTITLEMENT_REQUIRED" ? "entitlement" : ["SESSION_REQUIRED", "SESSION_BINDING_MISMATCH"].includes(result.error.data?.type) ? result.error.data.type : ["RATE_LIMITED", "RATE_LIMIT_DEGRADED"].includes(result.error.data?.type) ? "rate_limit" : "protocol", { status: response.status, rpcError: result.error });
     if (!result || result.id !== id) throw remoteError("Remote MCP response did not match request", "protocol", { status: response.status });
     return result.result;
   }
@@ -279,5 +327,5 @@ async function executeRemoteWithLocalFallback({ remote, local, allowFallback = f
   }
 }
 
-module.exports = { RemoteMcpClient, remoteHealth, validateRemoteUrl, validateMetadataUrl, classifyRemoteError, canFallbackToLocal, executeRemoteWithLocalFallback, extractResourceMetadata, remoteCapabilityPreflight, validateRemoteCapability, REMOTE_READ_ONLY_TOOLS, LOCAL_ONLY_TOOLS, REMOTE_PATH };
+module.exports = { RemoteMcpClient, remoteHealth, validateRemoteUrl, validateMetadataUrl, classifyRemoteError, recoveryHintForError, canFallbackToLocal, executeRemoteWithLocalFallback, extractResourceMetadata, remoteCapabilityPreflight, validateRemoteCapability, REMOTE_READ_ONLY_TOOLS, LOCAL_ONLY_TOOLS, REMOTE_PATH };
 

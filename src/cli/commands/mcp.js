@@ -456,14 +456,37 @@ function setupInstructions(serverUrl) {
 }
 
 /**
+ * Recovery guidance when the server rejected the call because the account
+ * email is not verified. This is a different failure from a missing payment
+ * (ENTITLEMENT_REQUIRED): the user must verify the address, not buy a plan,
+ * so the payment-oriented setupInstructions() would be the wrong recovery.
+ */
+function emailVerificationInstructions(serverUrl) {
+  return [
+    "MCP access needs a verified minitok account email address.",
+    `Open the verification link sent to your inbox, or request a new one: ${serverUrl === "https://api.minitok.dev" ? "https://minitok.dev/verify-email" : `${serverUrl}/verify-email`}`,
+    "Then run `minitok mcp setup cline` again once the address is verified.",
+  ];
+}
+
+/** Read the structured server error type off an entitlement-gate result. */
+function entitlementFailureType(entitlement) {
+  return entitlement?.errorType || entitlement?.type || entitlement?.rpcError?.data?.type || entitlement?.body?.error?.data?.type || null;
+}
+
+/**
  * Throw the entitlement-failure error for an MCP command. The CLI entrypoint
- * prints only the thrown error's message, so the actionable first-time setup
- * guidance from setupInstructions() is appended here; without it the failure
- * was a dead end that named no next step.
+ * prints only the thrown error's message, so the actionable recovery guidance
+ * travels inside the error. The server's structured error type is kept intact
+ * so an email-verification denial (EMAIL_VERIFICATION_REQUIRED) is not
+ * flattened into the payment denial (ENTITLEMENT_REQUIRED) recovery path —
+ * each names its own next step.
  */
 function throwEntitlementRequired(entitlement, serverUrl, contextMessage) {
-  const base = entitlement.message || contextMessage;
-  throw new Error(`${base}\n\n${setupInstructions(serverUrl).join("\n")}`);
+  const base = entitlement.message || entitlement.serverMessage || contextMessage;
+  const failureType = entitlementFailureType(entitlement);
+  const guidance = failureType === "EMAIL_VERIFICATION_REQUIRED" ? emailVerificationInstructions(serverUrl) : setupInstructions(serverUrl);
+  throw Object.assign(new Error(`${base}\n\n${guidance.join("\n")}`), failureType ? { errorType: failureType } : {});
 }
 
 function register(program) {
@@ -639,5 +662,5 @@ function register(program) {
       console.log(JSON.stringify({ status: "ok", path: record.path, expires_at: new Date(record.expires_at).toISOString() }));
     });
 }
-module.exports = { register, detect, configuredScopes, configuredEntryContract, readConfig, writeConfig, configs, serverContainer, configuredServerUrl, planChange, readLock, processIsRunning, hostCandidates, resolveHost, configuredTokenFiles, runMcpOnboarding, unconfiguredHosts, setupInstructions, throwEntitlementRequired };
+module.exports = { register, detect, configuredScopes, configuredEntryContract, readConfig, writeConfig, configs, serverContainer, configuredServerUrl, planChange, readLock, processIsRunning, hostCandidates, resolveHost, configuredTokenFiles, runMcpOnboarding, unconfiguredHosts, setupInstructions, emailVerificationInstructions, entitlementFailureType, throwEntitlementRequired };
 
