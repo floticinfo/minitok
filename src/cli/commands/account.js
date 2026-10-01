@@ -51,10 +51,26 @@ function openBrowser(url) {
   else if (process.platform === "darwin") spawn("open", [url], { detached: true, stdio: "ignore" }).unref();
   else spawn("xdg-open", [url], { detached: true, stdio: "ignore" }).unref();
 }
-function sleep(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+function abortError() {
+  const error = new Error("The operation was aborted");
+  error.name = "AbortError";
+  return error;
+}
+
+function sleep(ms, signal) {
+  return new Promise((resolve, reject) => {
+    if (signal?.aborted) { reject(abortError()); return; }
+    const timer = setTimeout(() => { cleanup(); resolve(); }, ms);
+    const onAbort = () => { cleanup(); reject(abortError()); };
+    function cleanup() { clearTimeout(timer); signal?.removeEventListener("abort", onAbort); }
+    signal?.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 async function accountLogin(options = {}) {
   const server = resolveServerUrl({ cliServer: options.server });
+  const signal = options.signal;
+  if (signal?.aborted) { console.error("[error] Account login cancelled."); return 1; }
   let start;
   try { start = await postJson(`${server}/v1/auth/device/authorize`, { client_id: "minitok-cli" }, options.timeoutMs || 30000); } catch (error) { console.error(`[error] Account login failed: ${error.message}`); return 1; }
    const deviceCode = start.body?.device_code || start.body?.deviceCode;
@@ -62,10 +78,16 @@ async function accountLogin(options = {}) {
    const url = start.body.verification_uri_complete || start.body.verificationUriComplete || start.body.verification_uri || start.body.verificationUri;
    console.error(`Open this URL to authorize minitok:\n${url}`);
    if (options.openBrowser !== false) { try { openBrowser(url); } catch {} }
-   const deadline = Date.now() + (options.timeoutMs || 10 * 60 * 1000);
+   // Without an interactive terminal there is no user to complete the browser
+   // flow, so a caller that does not pass an explicit timeout gets a short
+   // window instead of the full 10 minute device-code lifetime.
+   const nonInteractive = !process.stdin.isTTY || !process.stdout.isTTY;
+   const timeoutMs = options.timeoutMs || (nonInteractive ? 60 * 1000 : 10 * 60 * 1000);
+   const deadline = Date.now() + timeoutMs;
    const interval = Math.max(1000, Number(start.body.interval || 5) * 1000);
 
   while (Date.now() < deadline) {
+    if (signal?.aborted) { console.error("[error] Account login cancelled."); return 1; }
     if (process.stdin.isTTY && process.stdin.readableEnded) { console.error("[error] Login cancelled."); return 1; }
     let result;
       try { result = await postJson(`${server}/v1/auth/device/token`, { device_code: deviceCode }, Math.min(30000, deadline - Date.now())); } catch (error) { console.error(`[error] Account login failed: ${error.message}`); return 1; }
@@ -74,7 +96,10 @@ async function accountLogin(options = {}) {
       console.error("[ok] Account login successful. Credentials stored securely.");
       return 0;
     }
-    if (result.body?.error === "authorization_pending") { await sleep(interval); continue; }
+    if (result.body?.error === "authorization_pending") {
+      try { await sleep(interval, signal); } catch (error) { if (error?.name === "AbortError") { console.error("[error] Account login cancelled."); return 1; } throw error; }
+      continue;
+    }
     console.error(`[error] Account login failed: ${result.body?.error || "authorization expired"}`);
     return 1;
   }
@@ -101,11 +126,23 @@ async function accountLogout(options = {}) {
 }
 async function accountSwitch(options = {}) { return accountLogin(options); }
 
+/** Run a device-flow command with Ctrl-C aborting the polling loop. */
+async function withAbortSignal(fn) {
+  const controller = new AbortController();
+  const onSignal = () => controller.abort();
+  process.on("SIGINT", onSignal);
+  process.on("SIGTERM", onSignal);
+  try { return await fn(controller.signal); } finally {
+    process.off("SIGINT", onSignal);
+    process.off("SIGTERM", onSignal);
+  }
+}
+
 function registerAccount(program) {
   const account = program.command("account").description("Manage the minitok customer account");
-  account.command("login").description("Alias for auth customer-login; browser device authorization").option("--server <url>").option("--no-open-browser").option("--timeout <ms>", "Polling timeout", value => Number(value), 600000).action(async options => process.exit(await accountLogin({ ...options, timeoutMs: options.timeout, openBrowser: options.openBrowser })));
+  account.command("login").description("Alias for auth customer-login; browser device authorization").option("--server <url>").option("--no-open-browser").option("--timeout <ms>", "Polling timeout in milliseconds (default: 10 minutes interactive, 60 seconds non-interactive)", value => Number(value)).action(async options => process.exit(await withAbortSignal(signal => accountLogin({ ...options, timeoutMs: options.timeout, openBrowser: options.openBrowser, signal }))));
   account.command("logout").description("Revoke and remove account credentials").option("--server <url>").action(async options => process.exit(await accountLogout(options)));
-  account.command("switch").description("Authorize a different minitok account").option("--server <url>").option("--no-open-browser").option("--timeout <ms>", "Polling timeout", value => Number(value), 600000).action(async options => process.exit(await accountSwitch({ ...options, timeoutMs: options.timeout, openBrowser: options.openBrowser })));
+  account.command("switch").description("Authorize a different minitok account").option("--server <url>").option("--no-open-browser").option("--timeout <ms>", "Polling timeout in milliseconds (default: 10 minutes interactive, 60 seconds non-interactive)", value => Number(value)).action(async options => process.exit(await withAbortSignal(signal => accountSwitch({ ...options, timeoutMs: options.timeout, openBrowser: options.openBrowser, signal }))));
 }
 
 module.exports = { ACCOUNT_FILE, saveAccountSession, loadAccountSession, removeAccountSession, refreshAccountSession, ensureAccountSession, accountLogin, accountLogout, accountSwitch, registerAccount };

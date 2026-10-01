@@ -9,12 +9,30 @@ if (!helpOrVersionInvocation && (!bareInvocation || process.stdin.isTTY && proce
 if (process.env.MINITOK_NO_COLOR === "1" || !process.stdout.isTTY) { process.env.FORCE_COLOR = "0"; }
 const program = new Command();
 program.name("minitok").description("Verified repository-aware coding workflows for the terminal").version(`minitok ${pkg.version}`).option("--no-mcp-setup", "skip first-run MCP onboarding");
+// Top-level options that take no value; every other `--opt` consumes the next
+// token as its value, so that value must not be mistaken for a command name.
+const BOOLEAN_TOP_LEVEL_OPTIONS = new Set(["--no-mcp-setup"]);
+function firstPositionalArg(args) {
+  for (let i = 0; i < args.length; i += 1) {
+    const arg = args[i];
+    if (arg === "--") return args[i + 1];
+    if (arg.startsWith("--")) {
+      if (arg.includes("=") || BOOLEAN_TOP_LEVEL_OPTIONS.has(arg)) continue;
+      i += 1; // `--opt value`: skip the option value
+      continue;
+    }
+    if (arg.startsWith("-") && arg.length > 1) continue; // short flag cluster
+    return arg;
+  }
+  return undefined;
+}
 program.action(async () => {
   // commander hands an unrecognized command to this default action instead of
   // reporting it, so reject unknown operands first. Without this a typo such as
   // `minitok statsu` silently opened the fullscreen interface on a TTY, and
-  // printed the bare-invocation hint on a pipe.
-  const unknownCommand = cliArgs.find(arg => !arg.startsWith("-"));
+  // printed the bare-invocation hint on a pipe. The scan skips option values so
+  // `minitok --opt value` never reports `value` as the unknown command.
+  const unknownCommand = firstPositionalArg(cliArgs);
   if (unknownCommand) {
     console.error(`error: unknown command '${unknownCommand}'`);
     console.error("Run 'minitok --help' to list the available commands.");
@@ -69,5 +87,20 @@ program.command("activation-key").description("Legacy command: retrieve a purcha
 program.command("trial").description("Request a free trial activation key (email only, no card)").option("--email <email>","Email address (required)").option("--activate","Activate the returned trial key immediately").option("--server <url>","minitok server URL").action(async(o)=>{const {cmdTrial}=require("../src/cli/commands/trial");process.exit(await cmdTrial(o));});
 program.command("checkout").description("Legacy command: open the billing checkout flow").option("--token <jwt>","Customer JWT (required)").option("--token-env <name>","Read the customer JWT from an environment variable").option("--plan <planId>","Plan to purchase (open)","open").option("--server <url>","minitok server URL").option("--json","output the checkout URL as JSON").action(async(o)=>{const {cmdCheckout}=require("../src/cli/commands/checkout");process.exit(await cmdCheckout(o));});
 program.command("portal").description("Legacy command: open the billing portal").option("--token <jwt>","Customer JWT (required)").option("--token-env <name>","Read the customer JWT from an environment variable").option("--server <url>","minitok server URL").option("--json","output the portal URL as JSON").action(async(o)=>{const {cmdPortal}=require("../src/cli/commands/portal");process.exit(await cmdPortal(o));});
-const runtime=program.command("runtime").description("Manage the local runtime service"); runtime.command("start").option("--port <port>","4578").option("--server <url>","minitok server URL").option("--scopes <scopes>","local MCP scopes (read,write,auto_accept,verify_exec)").option("--idle-timeout <minutes>","stop after this many idle minutes; 0 disables the idle shutdown","30").option("--detach","run the runtime in the background").action(async o=>{const {cmdRuntimeStart}=require("../src/cli/commands/runtime");const idle=Number(o.idleTimeout);process.exit(await cmdRuntimeStart({...o,port:parseInt(o.port,10)||4578,idleTimeoutMs:Number.isFinite(idle)&&idle>=0?Math.round(idle)*60000:undefined,detach:o.detach===true}));}); runtime.command("stop").action(async()=>{const {cmdRuntimeStop}=require("../src/cli/commands/runtime");process.exit(await cmdRuntimeStop());}); runtime.command("status").action(async()=>{const {cmdRuntimeStatus}=require("../src/cli/commands/runtime");process.exit(await cmdRuntimeStatus());});
+function parsePortOption(value) {
+  if (value === undefined || value === null) return 4578;
+  const text = String(value).trim();
+  if (!/^\d+$/.test(text)) { console.error(`error: invalid --port '${value}' (expected an integer between 1 and 65535)`); process.exitCode = 1; return null; }
+  const port = Number(text);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) { console.error(`error: invalid --port '${value}' (expected an integer between 1 and 65535)`); process.exitCode = 1; return null; }
+  return port;
+}
+function parseIdleTimeoutOption(value) {
+  const text = String(value ?? "").trim();
+  if (!/^\d+(\.\d+)?$/.test(text)) { console.error(`error: invalid --idle-timeout '${value}' (expected a non-negative number of minutes)`); process.exitCode = 1; return null; }
+  const minutes = Number(text);
+  if (!Number.isFinite(minutes) || minutes < 0) { console.error(`error: invalid --idle-timeout '${value}' (expected a non-negative number of minutes)`); process.exitCode = 1; return null; }
+  return Math.round(minutes * 60000);
+}
+const runtime=program.command("runtime").description("Manage the local runtime service"); runtime.command("start").option("--port <port>","4578").option("--server <url>","minitok server URL").option("--scopes <scopes>","local MCP scopes (read,write,auto_accept,verify_exec)").option("--idle-timeout <minutes>","stop after this many idle minutes; 0 disables the idle shutdown","30").option("--detach","run the runtime in the background").action(async o=>{const port=parsePortOption(o.port);if(port===null)return;const idleTimeoutMs=parseIdleTimeoutOption(o.idleTimeout);if(idleTimeoutMs===null)return;const {cmdRuntimeStart}=require("../src/cli/commands/runtime");process.exit(await cmdRuntimeStart({...o,port,idleTimeoutMs,detach:o.detach===true}));}); runtime.command("stop").action(async()=>{const {cmdRuntimeStop}=require("../src/cli/commands/runtime");process.exit(await cmdRuntimeStop());}); runtime.command("status").action(async()=>{const {cmdRuntimeStatus}=require("../src/cli/commands/runtime");process.exit(await cmdRuntimeStatus());});
 program.parseAsync(process.argv).then(()=>{if(activationExitCode)process.exitCode=activationExitCode;}).catch(e=>{console.error(`Error: ${e.message}`);process.exitCode=1;});
