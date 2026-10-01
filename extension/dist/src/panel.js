@@ -118,14 +118,14 @@ class minitokPanel {
     async authStatus() {
         const session = await (0, device_auth_1.refreshExtensionSession)(this.context);
         if (!session) {
-            this.postAuth("signed-out", false, false, "Sign in to continue.");
+            this.postAuth("signed-out", false, false);
             return;
         }
         (0, entitlement_1.invalidateEntitlementCache)();
         const result = await (0, entitlement_1.checkEntitlement)();
         this.postAuth(result.allowed ? "authenticated" : "not-entitled", true, result.allowed, result.allowed ? `Signed in with ${result.plan} plan.` : (result.message || "An active paid plan is required."));
     }
-    postAuth(state, authenticated, entitled, text) {
+    postAuth(state, authenticated, entitled, text = "") {
         this.panel.webview.postMessage({ type: "auth-state", state, authenticated, entitled, text: redactPanelOutput(text) });
     }
     async handle(message) {

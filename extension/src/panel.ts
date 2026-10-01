@@ -75,7 +75,7 @@ export class minitokPanel {
   private async authStatus() {
     const session = await refreshExtensionSession(this.context);
     if (!session) {
-      this.postAuth("signed-out", false, false, "Sign in to continue.");
+      this.postAuth("signed-out", false, false);
       return;
     }
     invalidateEntitlementCache();
@@ -83,7 +83,7 @@ export class minitokPanel {
     this.postAuth(result.allowed ? "authenticated" : "not-entitled", true, result.allowed, result.allowed ? `Signed in with ${result.plan} plan.` : (result.message || "An active paid plan is required."));
   }
 
-  private postAuth(state: "checking" | "signed-out" | "authenticated" | "not-entitled" | "refresh-failed", authenticated: boolean, entitled: boolean, text: string) {
+  private postAuth(state: "checking" | "signed-out" | "authenticated" | "not-entitled" | "refresh-failed", authenticated: boolean, entitled: boolean, text: string = "") {
     this.panel.webview.postMessage({ type: "auth-state", state, authenticated, entitled, text: redactPanelOutput(text) });
   }
 

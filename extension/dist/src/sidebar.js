@@ -279,7 +279,7 @@ class minitokSidebar {
             const session = await (0, device_auth_1.refreshExtensionSession)(this.context);
             if (!session) {
                 (0, entitlement_1.invalidateEntitlementCache)();
-                this.view?.webview.postMessage({ type: "auth-state", state: "signed-out", ok: false, authenticated: false, entitled: false, text: "Sign in to continue." });
+                this.view?.webview.postMessage({ type: "auth-state", state: "signed-out", ok: false, authenticated: false, entitled: false });
                 return;
             }
             (0, entitlement_1.invalidateEntitlementCache)();
