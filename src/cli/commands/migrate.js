@@ -6,6 +6,19 @@ const crypto = require("crypto");
 const git = require("../../git/operations");
 const { WorkspaceManager } = require("../../workspace/manager");
 
+// Writes `content` to `filePath` atomically using the codebase-wide pattern:
+// a unique temp file in the same directory is created exclusively, then renamed
+// over the target, so a crash mid-write can never leave a truncated file.
+// Only used for files that do not exist yet, so no pre-rename unlink is needed
+// and a cleanup attempt runs if the rename fails.
+function atomicWriteNewFile(filePath, content) {
+  const temporary = `${filePath}.tmp.${process.pid}.${crypto.randomBytes(6).toString("hex")}`;
+  fs.writeFileSync(temporary, content, { encoding: "utf-8", flag: "wx" });
+  try {
+    fs.renameSync(temporary, filePath);
+  } catch (error) { try { fs.unlinkSync(temporary); } catch {} throw error; }
+}
+
 const VERIFY_CMD = `import { execFileSync } from "node:child_process";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -105,14 +118,14 @@ async function cmdMigrate(repoPath, name) {
   // Create minitok.yml if not exists
   if (!fs.existsSync(configPath)) {
     const content = minitok_YML.replace("{{PROJECT_NAME}}", projectName);
-    fs.writeFileSync(configPath, content, "utf-8");
+    atomicWriteNewFile(configPath, content);
     console.log(`Created minitok.yml`);
   } else {
     console.log(`minitok.yml already exists, skipping`);
   }
 
   if (!fs.existsSync(verifyPath)) {
-    fs.writeFileSync(verifyPath, VERIFY_CMD, "utf-8");
+    atomicWriteNewFile(verifyPath, VERIFY_CMD);
     console.log(`Created VERIFY_CMD.mjs`);
   } else {
     console.log(`VERIFY_CMD.mjs already exists, skipping`);
@@ -165,4 +178,4 @@ async function cmdMigrate(repoPath, name) {
   return 0;
 }
 
-module.exports = { cmdMigrate };
+module.exports = { cmdMigrate, atomicWriteNewFile };

@@ -106,11 +106,11 @@ test("CLI continue/resume do not inherit unrestricted mode without a new request
   } finally { fs.rmSync(repo, { recursive: true, force: true }); }
 });
 
-test("CLI goal registration includes start/status/continue/resume", () => {
+test("CLI goal registration includes start/status/continue/resume/list", () => {
   const { Command } = require("commander");
   const program = new Command();
   require("../src/cli/commands/goal").register(program);
   const goal = program.commands.find(command => command.name() === "goal");
   assert.ok(goal);
-  assert.deepEqual(goal.commands.map(command => command.name()).sort(), ["continue", "resume", "start", "status"]);
+  assert.deepEqual(goal.commands.map(command => command.name()).sort(), ["continue", "list", "resume", "start", "status"]);
 });
