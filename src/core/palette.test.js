@@ -68,15 +68,18 @@ test("the palette is used where it is legible", () => {
 test("the webviews mirror the palette instead of hardcoding it", () => {
   const alias = WEBVIEW_ACCENT_ALIAS;
   for (const { name, html } of webviews) {
+    // Whitespace-normalized comparison: the webview CSS may be pretty-printed
+    // across lines, so declarations are matched with all whitespace removed.
+    const flat = html.replace(/\s+/g, "");
     for (const [property, hex] of Object.entries(WEBVIEW_CUSTOM_PROPERTIES)) {
-      assert.equal(html.includes(`${property}:${hex}`), true, `${name} must declare ${property}:${hex}`);
+      assert.equal(flat.includes(`${property}:${hex}`), true, `${name} must declare ${property}:${hex}`);
     }
     // The accent has to sit on the host surface, so it resolves per theme
     // rather than to one hue; the three declarations are asserted verbatim so a
     // refactor cannot quietly drop the dark and high-contrast cases.
-    assert.equal(html.includes(`${alias.property}:var(${alias.light})`), true, `${name} must declare ${alias.property} for light surfaces`);
-    assert.equal(html.includes(`body.vscode-dark{${alias.property}:var(${alias.dark})}`), true, `${name} must switch ${alias.property} for dark surfaces`);
-    assert.equal(html.includes(`body.vscode-high-contrast{${alias.property}:var(${alias.highContrast})}`), true, `${name} must switch ${alias.property} for high contrast`);
+    assert.equal(flat.includes(`${alias.property}:var(${alias.light})`), true, `${name} must declare ${alias.property} for light surfaces`);
+    assert.equal(flat.includes(`body.vscode-dark{${alias.property}:var(${alias.dark})}`), true, `${name} must switch ${alias.property} for dark surfaces`);
+    assert.equal(flat.includes(`body.vscode-high-contrast{${alias.property}:var(${alias.highContrast})}`), true, `${name} must switch ${alias.property} for high contrast`);
     for (const target of [alias.light, alias.dark, alias.highContrast]) {
       assert.equal(target in WEBVIEW_CUSTOM_PROPERTIES, true, `${alias.property} resolves to undeclared ${target}`);
     }

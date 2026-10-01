@@ -40,10 +40,10 @@ test("auth UI hides logout again after sign-out or session failure", () => {
 });
 
 test("initial auth UI is loading-only and signed-out copy is not entitlement copy", () => {
-  const html = sidebar();
-  assert.match(html, /id="authPrompt"[^>]*>Checking your minitok session/);
-  assert.match(html, /id="loginForm" hidden/);
-  assert.match(html, /'Sign in to continue'/);
+  const html = sidebar().replace(/\s+/g, "");
+  assert.match(html, /id="authPrompt"[^>]*>Checkingyourminitoksession/);
+  assert.match(html, /id="loginForm"hidden/);
+  assert.match(html, /'Signintocontinue'/);
   assert.match(html, /state==='checking'/);
   const sidebarSource = fs.readFileSync(path.join(__dirname, "..", "src", "sidebar.ts"), "utf8");
   assert.match(sidebarSource, /state: "refresh-failed"/);
@@ -87,6 +87,22 @@ test("billing actions use the authenticated customer session", () => {
     assert.match(source, /MINITOK_UPDATE_CHECK: \"0\"/);
     assert.match(source, /openExternal\(vscode\.Uri\.parse\(target\)\)/);
   }
+});
+
+test("loading state is the initial visible surface before auth resolves", () => {
+  const html = sidebar().replace(/\s+/g, "");
+  assert.match(html, /<divid="loading"role="status"aria-live="polite">/);
+  assert.match(html, /<sectionid="authGate"hidden/);
+  assert.match(html, /<mainid="app"hidden>/);
+  assert.match(html, /constloading=document\.getElementById\('loading'\)/);
+  assert.match(html, /loading\.hidden=true;authGate\.hidden=authenticated;app\.hidden=!authenticated/);
+});
+
+test("loading spinner respects reduced motion and uses only vscode theme vars", () => {
+  const html = sidebar().replace(/\s+/g, "");
+  assert.match(html, /@media\(prefers-reduced-motion:reduce\)\{\.spinner\{animation:none\}\}/);
+  const loadingCss = html.match(/#loading\{[^}]*\}[^]*?\.spinner\{[^}]*\}/)?.[0] || "";
+  assert.doesNotMatch(loadingCss, /#[0-9a-fA-F]{3,8}\b/, "loading styles must not use hard-coded hex colors");
 });
 
 console.log("auth-ui tests: sidebar and panel authentication visibility contracts loaded");
