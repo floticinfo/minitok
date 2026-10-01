@@ -36,6 +36,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.run = run;
 const assert = __importStar(require("node:assert/strict"));
 const vscode = __importStar(require("vscode"));
+const panel_1 = require("../src/panel");
+const sidebar_1 = require("../src/sidebar");
 async function run() {
     const extension = vscode.extensions.getExtension("flotic.minitok-extension");
     assert.ok(extension, "minitok extension must be installed in the host");
@@ -56,9 +58,17 @@ async function run() {
     assert.equal(config.get("autoApprove"), false);
     assert.equal(config.get("cliPath"), "");
     assert.equal(config.get("mcpCommand"), "");
+    // The sidebar view must be registered under the id package.json contributes.
+    assert.equal(sidebar_1.minitokSidebar.viewType, "minitok.sidebar");
+    assert.ok(packageJson.contributes?.views?.minitok?.some((view) => view.id === sidebar_1.minitokSidebar.viewType), "sidebar view id must match the contributed view");
+    // Opening the panel must create and retain the singleton webview panel.
+    assert.equal(panel_1.minitokPanel.current, undefined, "no panel before openPanel");
     await vscode.commands.executeCommand("minitok.openPanel");
-    assert.ok(vscode.window.visibleTextEditors.length >= 0);
-    console.log("extension_host=pass commands=3 panel_command=executed");
+    assert.ok(panel_1.minitokPanel.current, "minitok.openPanel must create the panel");
+    // createOrShow reveals instead of duplicating.
+    await vscode.commands.executeCommand("minitok.openPanel");
+    assert.ok(panel_1.minitokPanel.current, "panel singleton must survive a second openPanel");
+    console.log("extension_host=pass panel_created=1 sidebar_view=" + sidebar_1.minitokSidebar.viewType);
 }
 if (require.main === module)
     run().catch(error => { console.error(error); process.exit(1); });

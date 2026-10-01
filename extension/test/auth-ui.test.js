@@ -4,11 +4,14 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
+const vm = require("node:vm");
 
 const SIDEBAR_PATH = path.join(__dirname, "..", "src", "sidebar.html");
 const PANEL_PATH = path.join(__dirname, "..", "src", "panel.html");
 const sidebar = () => fs.readFileSync(SIDEBAR_PATH, "utf8");
 const panel = () => fs.readFileSync(PANEL_PATH, "utf8");
+const sidebarSource = () => fs.readFileSync(path.join(__dirname, "..", "src", "sidebar.ts"), "utf8");
+const panelSource = () => fs.readFileSync(path.join(__dirname, "..", "src", "panel.ts"), "utf8");
 
 test("logout is hidden before authentication is confirmed", () => {
   const html = sidebar();
@@ -43,7 +46,7 @@ test("initial auth UI is loading-only and signed-out copy is not entitlement cop
   const html = sidebar().replace(/\s+/g, "");
   assert.match(html, /id="authPrompt"[^>]*>Checkingyourminitoksession/);
   assert.match(html, /id="loginForm"hidden/);
-  assert.match(html, /'Signintocontinue'/);
+  assert.match(html, /signed-outauthpromptisempty:/);
   assert.match(html, /state==='checking'/);
   const sidebarSource = fs.readFileSync(path.join(__dirname, "..", "src", "sidebar.ts"), "utf8");
   assert.match(sidebarSource, /state: "refresh-failed"/);
@@ -74,8 +77,8 @@ test("entitlement gates execution controls and explains access state", () => {
   assert.match(html, /const notEntitled=state==='not-entitled'/);
   assert.match(html, /id="activateButton"[^>]*hidden/);
   assert.match(html, /id="manageButton"[^>]*hidden/);
-  assert.match(html, /command:\"activate\"/);
-  assert.match(html, /command:\"manage-plan\"/);
+  assert.match(html, /command:"activate"/);
+  assert.match(html, /command:"manage-plan"/);
 });
 
 test("billing actions use the authenticated customer session", () => {
@@ -84,7 +87,7 @@ test("billing actions use the authenticated customer session", () => {
   for (const source of [sidebarSource, panelSource]) {
     assert.match(source, /--token-env/);
     assert.match(source, /--json/);
-    assert.match(source, /MINITOK_UPDATE_CHECK: \"0\"/);
+    assert.match(source, /MINITOK_UPDATE_CHECK: "0"/);
     assert.match(source, /openExternal\(vscode\.Uri\.parse\(target\)\)/);
   }
 });
@@ -103,6 +106,203 @@ test("loading spinner respects reduced motion and uses only vscode theme vars", 
   assert.match(html, /@media\(prefers-reduced-motion:reduce\)\{\.spinner\{animation:none\}\}/);
   const loadingCss = html.match(/#loading\{[^}]*\}[^]*?\.spinner\{[^}]*\}/)?.[0] || "";
   assert.doesNotMatch(loadingCss, /#[0-9a-fA-F]{3,8}\b/, "loading styles must not use hard-coded hex colors");
+});
+
+test("both webviews reveal the sign-in CTA when the auth check never answers", () => {
+  // The auth gate is the only way in, so a reply that never arrives must not leave
+  // the view on its initial surface ("Checking your minitok session..." / "Loading
+  // minitok...") with the sign-in button still hidden.
+  for (const html of [panel(), sidebar()]) {
+    assert.match(html, /let authResolved=false/);
+    assert.match(html, /const AUTH_WATCHDOG_MS=\d+/);
+    assert.match(html, /if\(m\.type==='auth-state'\)\{authResolved=true;/);
+    assert.match(html, /setTimeout\(\(\)=>\{if\(authResolved\)return;/);
+    // The watchdog must show the CTA, never the authenticated app surface.
+    assert.match(html, /showToast\('Could not confirm your minitok session\.','error'\)/);
+  }
+  assert.match(panel(), /setTimeout\([\s\S]*loginForm\.hidden=false;[\s\S]*authPrompt\.textContent=''[\s\S]*\},AUTH_WATCHDOG_MS\)/);
+  assert.match(sidebar(), /setTimeout\([\s\S]*loading\.hidden=true;[\s\S]*authGate\.hidden=false;[\s\S]*app\.hidden=true;[\s\S]*\},AUTH_WATCHDOG_MS\)/);
+});
+
+test("the panel task listener ignores auth-state traffic", () => {
+  // auth-state carries no result text; without this guard the auth gate's own reply
+  // blanks the status line with undefined and steals focus from the sign-in button.
+  const html = panel();
+  assert.match(html, /window\.addEventListener\('message',e=>\{const m=e\.data;if\(m\.type!=='result'\)return;/);
+});
+
+test("extension-side auth status always settles with an auth-state post", () => {
+  // A rejection here was reported as a task result, which the auth gate ignores,
+  // leaving the view stuck on its initial surface with no way to sign in. The panel
+  // settles through postAuth, the sidebar through a raw auth-state post.
+  assert.match(panelSource(), /authErrorText\(error\)/);
+  assert.match(sidebarSource(), /state: "refresh-failed"/);
+  assert.match(panelSource(), /private async authStatus\(\) \{[\s\S]*?try \{[\s\S]*?\} catch \(error\) \{[\s\S]*?this\.postAuth\("refresh-failed"/);
+  assert.match(sidebarSource(), /command === "auth-status"\) \{ try \{[\s\S]*?\} catch \(error\) \{[\s\S]*?state: "refresh-failed"/);
+});
+
+test("every webview script block parses as JavaScript", () => {
+  // A single broken string literal (the esc() map was once split mid-line) made the
+  // whole sidebar <script> a SyntaxError, so no listener, no auth-status request and
+  // no watchdog ever ran: the view was stranded on "Loading minitok..." forever.
+  // vm.Script compiles without executing, so acquireVsCodeApi() is safe here.
+  for (const [name, html] of [["panel", panel()], ["sidebar", sidebar()]]) {
+    const blocks = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)]
+      .map(m => m[1])
+      .filter(code => code.trim().length > 0);
+    assert.ok(blocks.length > 0, `${name} must contain at least one script block`);
+    blocks.forEach((code, i) => {
+      assert.doesNotThrow(() => new vm.Script(code, { filename: `${name}.html#script${i + 1}` }), `${name} script block ${i + 1} has a syntax error`);
+    });
+  }
+});
+
+test("webview status and error messages surface as in-webview toasts", () => {
+  // The toast UI must be webview-internal (not vscode.window.show*Message): a fixed
+  // container plus a showToast helper that renders a themed, auto-dismissing toast.
+  for (const [name, html] of [["sidebar", sidebar()], ["panel", panel()]]) {
+    // The container and helper exist in both webviews.
+    assert.match(html, /id="toastContainer" class="toast-container" aria-live="polite"/, `${name} must render a toast container`);
+    assert.match(html, /function showToast\(text,kind\)/, `${name} must define showToast(text,kind)`);
+    assert.match(html, /setTimeout\(\(\)=>\{t\.remove\(\)\},\d+\)/, `${name} toasts must auto-dismiss`);
+    // Toasts stay on the editor's theme, never a hard-coded color.
+    assert.match(html, /\.toast-container\s*\{/, `${name} must style the toast container`);
+    assert.match(html, /background:\s*var\(--vscode-notifications-background\)/, `${name} toast uses the themed notification background`);
+    assert.match(html, /\.toast\.error\s*\{/, `${name} must style the error toast variant`);
+  }
+});
+
+test("error paths route their message through showToast", () => {
+  const html = sidebar();
+  // Auth failures (login / not-entitled / entitlement / watchdog) must toast, not
+  // only paint inline, so the message is visible without scrolling to the auth card.
+  assert.match(html, /if\(authMsg\)showToast\(authMsg,'error'\)/);
+  assert.match(html, /showToast\(m\.text\|\|'An active paid plan is required\.','error'\)/);
+  assert.match(html, /showToast\('Could not confirm your minitok session\.','error'\)/);
+  // Billing and run failures toast as errors too.
+  assert.match(html, /showToast\(m\.text\|\|'Billing action failed\.','error'\)/);
+  assert.match(html, /m\.ok===false\)showToast\('Run failed/);
+  // Previously invisible messages now reach the user: mcp-connect and summary had no
+  // render path, and info/activation/update-result only wrote into the settings card.
+  assert.match(html, /m\.type==='mcp-connect'\)\{showToast\(/);
+  assert.match(html, /m\.type==='summary'\)\{if\(m\.text\)showToast\(/);
+  assert.match(html, /m\.type==='info'\)\{[^}]*showToast\(m\.text,'info'\)/);
+  assert.match(html, /m\.type==='activation'\)\{[^}]*showToast\(m\.text,'info'\)/);
+  assert.match(html, /m\.type==='update-result'\)\{[^}]*showToast\(m\.text,m\.ok===false\?'error':'info'\)/);
+});
+
+// --- Execution-based webview harness ---------------------------------------
+// The assertions above match source text; the ones below actually run the
+// webview <script> blocks in a vm sandbox and drive window 'message' events,
+// so a message-shape mismatch (e.g. panel.ts post() omitting type:'result')
+// fails the test instead of silently dropping feedback in production.
+
+function extractScripts(html) {
+  return [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)]
+    .map(m => m[1])
+    .filter(code => code.trim().length > 0);
+}
+
+function makeEl(id) {
+  return {
+    id,
+    hidden: false,
+    disabled: false,
+    textContent: "",
+    className: "",
+    value: "",
+    dataset: {},
+    focus() {},
+    setAttribute() {},
+    addEventListener() {},
+  };
+}
+
+// Runs the scripts that attach window 'message' listeners, with a DOM stub
+// rich enough for both webviews. `ids` are the element ids the scripts touch;
+// blockIndex selects which <script> blocks to execute (auth handler block and,
+// for the panel, the result handler block). Returns the recorded toasts plus
+// a dispatch() for webview-bound messages.
+function runWebview(html, blockIndexes, ids) {
+  const listeners = [];
+  const toasts = [];
+  const els = new Map(ids.map(id => [id, makeEl(id)]));
+  const documentStub = {
+    getElementById: id => (els.has(id) ? els.get(id) : (els.set(id, makeEl(id)), els.get(id))),
+    createElement: () => makeEl("created"),
+    addEventListener() {},
+  };
+  const sandbox = {
+    document: documentStub,
+    window: { addEventListener: (type, fn) => { if (type === "message") listeners.push(fn); } },
+    acquireVsCodeApi: () => ({ postMessage() {} }),
+    setTimeout: () => 0,
+    clearTimeout() {},
+    console,
+  };
+  vm.createContext(sandbox);
+  const scripts = extractScripts(html);
+  // const/let declarations do not cross separate runInContext calls, but webview
+  // blocks share them (block 1 does `const authVscode=vscode` from block 0), so
+  // run the selected blocks as one combined script in declaration order.
+  const combined = blockIndexes.map(i => scripts[i]).join("\n;\n");
+  new vm.Script(combined, { filename: "webview#combined" }).runInContext(sandbox);
+  // Neutralize the DOM-dependent toast renderer, keep a recorder instead.
+  vm.runInContext("showToast = (text, kind) => { __toasts.push({ text, kind }); };", Object.assign(sandbox, { __toasts: toasts }));
+  return {
+    toasts,
+    els,
+    dispatch: data => { for (const fn of listeners) fn({ data }); },
+  };
+}
+
+test("panel result listener drops messages without type:'result' (post() contract)", () => {
+  // panel.ts post() must send { type:"result", ok, text }; if the type field is
+  // dropped the webview returns early and the user sees nothing.
+  const panelPost = panelSource().match(/private post\(ok: boolean, text: string\) \{[^}]*\}/)?.[0] || "";
+  assert.match(panelPost, /type: "result"/, "panel post() must tag messages with type:\"result\" or the webview listener ignores them");
+
+  const view = runWebview(panel(), [0], ["state", "task", "toastContainer"]);
+  view.dispatch({ ok: false, text: "run exploded" }); // no type: must be ignored
+  assert.equal(view.els.get("state").textContent, "", "untyped message must not reach the status element");
+  assert.equal(view.toasts.length, 0, "untyped message must not toast");
+
+  view.dispatch({ type: "result", ok: false, text: "run exploded" });
+  assert.equal(view.els.get("state").textContent, "run exploded");
+  assert.equal(view.els.get("state").className, "status error");
+  assert.deepEqual(view.toasts.map(t => t.kind), ["error"], "failed runs must surface an error toast");
+});
+
+test("panel auth-state handler toasts signed-out errors and gates controls", () => {
+  // Block 0 declares `const vscode=acquireVsCodeApi()` and showToast; block 1
+  // (auth handler) depends on both, so run them together.
+  const view = runWebview(panel(), [0, 1], ["state", "task", "toastContainer", "authGate", "app", "logoutButton", "loginForm", "authPrompt", "authError", "run", "dry", "status", "activateButton", "manageButton"]);
+  view.dispatch({ type: "auth-state", authenticated: false, state: "signed-out", text: "Login failed: denied" });
+  assert.equal(view.els.get("authGate").hidden, false);
+  assert.equal(view.els.get("app").hidden, true);
+  assert.deepEqual(view.toasts.map(t => t.text), ["Login failed: denied"], "login failure must surface as an error toast");
+  assert.equal(view.els.get("authError").textContent, "", "no inline auth error may be painted");
+
+  view.toasts.length = 0;
+  view.dispatch({ type: "auth-state", authenticated: true, entitled: false });
+  assert.equal(view.els.get("run").disabled, true, "run must stay disabled without entitlement");
+  assert.ok(view.toasts.length >= 1, "not-entitled state must toast");
+  assert.equal(view.els.get("activateButton").hidden, false, "not-entitled users need the activate CTA");
+});
+
+test("sidebar auth-state handler toasts errors and never paints them inline", () => {
+  // Block 0 declares `const vscode=acquireVsCodeApi()`, showToast, add, esc and
+  // the DOM refs; block 1 (auth handler) depends on them, so run both.
+  const view = runWebview(sidebar(), [0, 1], ["loading", "authGate", "app", "logoutButton", "loginForm", "authPrompt", "authError", "run", "dry", "mcpBadge", "activateButton", "manageButton"]);
+  view.dispatch({ type: "auth-state", authenticated: false, state: "signed-out", text: "Login failed: denied" });
+  assert.equal(view.els.get("loading").hidden, true);
+  assert.equal(view.els.get("app").hidden, true);
+  assert.equal(view.els.get("authError").textContent, "", "inline auth error stays empty; feedback is toast-only");
+  assert.deepEqual(view.toasts.map(t => t.text), ["Login failed: denied"]);
+
+  view.toasts.length = 0;
+  view.dispatch({ type: "billing", text: "Checkout could not be opened" });
+  assert.deepEqual(view.toasts.map(t => t.text), ["Checkout could not be opened"], "billing failures must toast");
 });
 
 console.log("auth-ui tests: sidebar and panel authentication visibility contracts loaded");
