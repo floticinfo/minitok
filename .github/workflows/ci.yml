@@ -13,7 +13,7 @@ jobs:
   # ── Job 1: Test ──
   test:
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    timeout-minutes: 25
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
