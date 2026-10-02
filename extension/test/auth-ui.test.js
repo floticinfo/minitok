@@ -46,7 +46,11 @@ test("initial auth UI is loading-only and signed-out copy is not entitlement cop
   const html = sidebar().replace(/\s+/g, "");
   assert.match(html, /id="authPrompt"[^>]*>Checkingyourminitoksession/);
   assert.match(html, /id="loginForm"hidden/);
-  assert.match(html, /signed-outauthpromptisempty:/);
+  // The login form stays visible during "checking" so a cancelled or failed
+  // browser sign-in can be retried immediately; only the cancel button is
+  // gated to the in-flight state.
+  assert.match(html, /Keeptheloginformvisibleduring"checking"/);
+  assert.match(html, /id="cancelLoginButton"[^>]*hidden/);
   assert.match(html, /state==='checking'/);
   const sidebarSource = fs.readFileSync(path.join(__dirname, "..", "src", "sidebar.ts"), "utf8");
   assert.match(sidebarSource, /state: "refresh-failed"/);
@@ -76,9 +80,7 @@ test("entitlement gates execution controls and explains access state", () => {
   assert.match(html, /Activate or manage your plan/);
   assert.match(html, /const notEntitled=state==='not-entitled'/);
   assert.match(html, /id="activateButton"[^>]*hidden/);
-  assert.match(html, /id="manageButton"[^>]*hidden/);
   assert.match(html, /command:"activate"/);
-  assert.match(html, /command:"manage-plan"/);
 });
 
 test("billing actions use the authenticated customer session", () => {
@@ -120,7 +122,7 @@ test("both webviews reveal the sign-in CTA when the auth check never answers", (
     // The watchdog must show the CTA, never the authenticated app surface.
     assert.match(html, /showToast\('Could not confirm your minitok session\.','error'\)/);
   }
-  assert.match(panel(), /setTimeout\([\s\S]*loginForm\.hidden=false;[\s\S]*authPrompt\.textContent=''[\s\S]*\},AUTH_WATCHDOG_MS\)/);
+  assert.match(panel(), /setTimeout\([\s\S]*loginForm\.hidden=false;[\s\S]*authPrompt\.textContent='Sign-in did not answer\. Try again below\.'[\s\S]*\},AUTH_WATCHDOG_MS\)/);
   assert.match(sidebar(), /setTimeout\([\s\S]*loading\.hidden=true;[\s\S]*authGate\.hidden=false;[\s\S]*app\.hidden=true;[\s\S]*\},AUTH_WATCHDOG_MS\)/);
 });
 
@@ -138,7 +140,9 @@ test("extension-side auth status always settles with an auth-state post", () => 
   assert.match(panelSource(), /authErrorText\(error\)/);
   assert.match(sidebarSource(), /state: "refresh-failed"/);
   assert.match(panelSource(), /private async authStatus\(\) \{[\s\S]*?try \{[\s\S]*?\} catch \(error\) \{[\s\S]*?this\.postAuth\("refresh-failed"/);
-  assert.match(sidebarSource(), /command === "auth-status"\) \{ try \{[\s\S]*?\} catch \(error\) \{[\s\S]*?state: "refresh-failed"/);
+  // The sidebar's auth-status path was extracted into refreshAuth() so activation
+  // can repaint the gate; the settle guarantee now lives on that method.
+  assert.match(sidebarSource(), /public async refreshAuth\(\) \{[\s\S]*?try \{[\s\S]*?\} catch \(error\) \{[\s\S]*?state: "refresh-failed"/);
 });
 
 test("every webview script block parses as JavaScript", () => {
@@ -276,7 +280,7 @@ test("panel result listener drops messages without type:'result' (post() contrac
 test("panel auth-state handler toasts signed-out errors and gates controls", () => {
   // Block 0 declares `const vscode=acquireVsCodeApi()` and showToast; block 1
   // (auth handler) depends on both, so run them together.
-  const view = runWebview(panel(), [0, 1], ["state", "task", "toastContainer", "authGate", "app", "logoutButton", "loginForm", "authPrompt", "authError", "run", "dry", "status", "activateButton", "manageButton"]);
+  const view = runWebview(panel(), [0, 1], ["state", "task", "toastContainer", "authGate", "app", "logoutButton", "loginForm", "authPrompt", "authError", "run", "dry", "status", "activateButton"]);
   view.dispatch({ type: "auth-state", authenticated: false, state: "signed-out", text: "Login failed: denied" });
   assert.equal(view.els.get("authGate").hidden, false);
   assert.equal(view.els.get("app").hidden, true);
@@ -293,7 +297,7 @@ test("panel auth-state handler toasts signed-out errors and gates controls", () 
 test("sidebar auth-state handler toasts errors and never paints them inline", () => {
   // Block 0 declares `const vscode=acquireVsCodeApi()`, showToast, add, esc and
   // the DOM refs; block 1 (auth handler) depends on them, so run both.
-  const view = runWebview(sidebar(), [0, 1], ["loading", "authGate", "app", "logoutButton", "loginForm", "authPrompt", "authError", "run", "dry", "mcpBadge", "activateButton", "manageButton"]);
+  const view = runWebview(sidebar(), [0, 1], ["loading", "authGate", "app", "logoutButton", "loginForm", "authPrompt", "authError", "run", "dry", "mcpBadge", "activateButton"]);
   view.dispatch({ type: "auth-state", authenticated: false, state: "signed-out", text: "Login failed: denied" });
   assert.equal(view.els.get("loading").hidden, true);
   assert.equal(view.els.get("app").hidden, true);
@@ -303,6 +307,79 @@ test("sidebar auth-state handler toasts errors and never paints them inline", ()
   view.toasts.length = 0;
   view.dispatch({ type: "billing", text: "Checkout could not be opened" });
   assert.deepEqual(view.toasts.map(t => t.text), ["Checkout could not be opened"], "billing failures must toast");
+});
+
+test("the hidden attribute actually hides in both webviews", () => {
+  // Regression: every auth state switches surfaces by toggling `hidden`, but an
+  // author `display` value outranks the user-agent [hidden] rule. .auth-gate and
+  // #loading are display:flex, so a successful sign-in set hidden=true and still
+  // left the sign-in card painted over the app (position:fixed, inset:0, z-index:10)
+  // -- the user was stuck on "Sign in to minitok" after signing in.
+  for (const [name, html] of [["sidebar", sidebar()], ["panel", panel()]]) {
+    assert.match(
+      html,
+      /\[hidden\]\s*\{\s*display:none!important\s*\}/,
+      `${name} must force [hidden] to win over the author display values`
+    );
+  }
+  // The per-selector patch is redundant once the global rule exists; keeping it
+  // invited the belief that only .approval needed it.
+  assert.doesNotMatch(sidebar(), /\.approval\[hidden\]\s*\{/);
+});
+
+test("the signed-in prompt never double-prefixes the extension's own sentence", () => {
+  // The extension already sends a complete sentence ("Signed in as admin.",
+  // "Signed in with Level 1 plan."), so the webview template used to render
+  // "Signed in with Signed in as admin.".
+  for (const [name, html] of [["sidebar", sidebar()], ["panel", panel()]]) {
+    assert.doesNotMatch(
+      html,
+      /Signed in with \$\{m\.text/,
+      `${name} must not prefix a message that is already a full sentence`
+    );
+    assert.match(
+      html,
+      /entitled\?\(m\.text\|\|'Signed in with your minitok account\.'\)/,
+      `${name} must fall back to a default sentence only when the extension sent none`
+    );
+  }
+});
+
+test("both auth surfaces expose the same email sign-in and admin route", () => {
+  // The admin route was wired to the sidebar's ID sign-in button only, so the
+  // panel's auth gate had no way to reach it (it had no credentials form at all)
+  // and an admin sign-in there fell through to "Unsupported command".
+  for (const [name, html] of [["sidebar", sidebar()], ["panel", panel()]]) {
+    assert.match(html, /id="loginEmail"/, `${name} must offer an email field`);
+    assert.match(html, /id="loginPassword"/, `${name} must offer a password field`);
+    assert.match(html, /id="loginButton"/, `${name} must offer an ID sign-in button`);
+    assert.match(
+      html,
+      /const adminRoute=e\.ctrlKey&&e\.shiftKey/,
+      `${name} must route a modifier-clicked sign-in to the admin endpoint`
+    );
+    assert.match(
+      html,
+      /command:adminRoute\?'admin-login':'customer-login'/,
+      `${name} must post the admin or customer command accordingly`
+    );
+  }
+  for (const [name, source] of [["sidebar", sidebarSource()], ["panel", panelSource()]]) {
+    assert.match(source, /message\?\.command === "customer-login"/, `${name} must handle customer-login`);
+    assert.match(source, /message\?\.command === "admin-login"/, `${name} must handle admin-login`);
+  }
+});
+
+test("an admin session alone satisfies every signed-in check and is cleared on sign-out", () => {
+  // The admin session bypasses the plan gate, so a view reopened after an admin
+  // sign-in must not fall back to the customer session and re-paint the sign-in
+  // card. A sign-out that left it behind would re-authenticate the next command.
+  const auth = fs.readFileSync(path.join(__dirname, "..", "src", "device-auth.ts"), "utf8");
+  assert.match(auth, /export async function hasAdminSession/, "a shared admin-session probe must exist");
+  for (const [name, source] of [["sidebar", sidebarSource()], ["panel", panelSource()]]) {
+    assert.match(source, /hasAdminSession\(this\.context\)/, `${name} auth status must consult the admin session`);
+    assert.match(source, /await logoutAdmin\(this\.context\)/, `${name} sign-out must clear the admin session`);
+  }
 });
 
 console.log("auth-ui tests: sidebar and panel authentication visibility contracts loaded");

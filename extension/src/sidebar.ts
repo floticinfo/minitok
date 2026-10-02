@@ -7,7 +7,8 @@ import * as os from "node:os";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { cliPath, mcpCommand, mcpEnvironment, configuredMcpScopes, ensureMcpAuthToken, workspacePath, requireTrustedWorkspace, autoApprove, spawnSpec, spawnOptionsFor, npmSpawnSpec, normalizeProviderName, appendBoundedOutput, workspaceRelativePath } from "./workspace";
 import { checkEntitlement, invalidateEntitlementCache, requireEntitlement } from "./entitlement";
-import { authErrorText, deviceLogin, logoutExtension, refreshExtensionSession } from "./device-auth";
+import { adminLogin, authErrorText, deviceLogin, DeviceLoginCancellation, hasAdminSession, logoutAdmin, logoutExtension, refreshExtensionSession } from "./device-auth";
+import { setEntitlementContext } from "./entitlement";
 import { redactSensitiveText } from "./redaction";
 
 function cliRelease(context: vscode.ExtensionContext) {
@@ -94,9 +95,12 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
   private activeRunId?: string;
   private activeRunStartedAt?: string;
   private latestCliVersion?: string;
+  private deviceLoginCancellation?: DeviceLoginCancellation;
   constructor(private readonly extensionUri: vscode.Uri, private readonly context: vscode.ExtensionContext) {}
   resolveWebviewView(view: vscode.WebviewView) {
     this.view = view;
+    // The entitlement gate needs the context to consult the admin session.
+    setEntitlementContext(this.context);
     view.webview.options = { enableScripts: true, localResourceRoots: [this.extensionUri] };
     view.webview.html = this.html(view.webview);
     view.webview.onDidReceiveMessage(message => {
@@ -198,15 +202,59 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
     const summary = /Summary:.*?(\d+) cycles,.*?(\d[\d,]*) tokens.*?(?:, ~\$(\d+(?:\.\d+)?))?/.exec(line);
     if (summary) this.view?.webview.postMessage({ type: "summary", cycles: summary[1], tokens: summary[2], cost: summary[3] || "0" });
   }
+  /**
+   * Re-resolve the session and entitlement state and repaint the auth gate.
+   *
+   * Extracted from the `auth-status` message handler so a command that changes
+   * entitlement out of band — activation — can repaint the sidebar instead of
+   * leaving the pre-activation denial on screen until the window is reloaded.
+   * Every path settles with an auth-state post: a rejection here previously left
+   * the sidebar on "Loading minitok..." with no way to sign in.
+   */
+  public async refreshAuth() {
+    try {
+      // An admin session bypasses the plan gate, so it must satisfy "is anybody
+      // signed in?" on its own; refreshExtensionSession only knows the customer
+      // session.
+      if (await hasAdminSession(this.context)) { invalidateEntitlementCache(); this.view?.webview.postMessage({ type: "auth-state", state: "authenticated", ok: true, authenticated: true, entitled: true, text: redactOutputText("Signed in as admin.") }); return; }
+      const session = await refreshExtensionSession(this.context);
+      if (!session) { invalidateEntitlementCache(); this.view?.webview.postMessage({ type: "auth-state", state: "signed-out", ok: false, authenticated: false, entitled: false }); return; }
+      invalidateEntitlementCache();
+      const result = await checkEntitlement();
+      this.view?.webview.postMessage({ type: "auth-state", state: result.allowed ? "authenticated" : "not-entitled", ok: result.allowed, authenticated: true, entitled: result.allowed, text: redactOutputText(result.allowed ? `Signed in with ${result.plan} plan.` : `Entitlement error: ${result.message || "An active paid plan is required."}`) });
+    } catch (error) {
+      this.view?.webview.postMessage({ type: "auth-state", state: "refresh-failed", ok: false, authenticated: false, entitled: false, text: redactOutputText(authErrorText(error)) });
+    }
+  }
+
+  /** Repaint the auth gate, e.g. after a command activated this installation. */
+  public async refresh() {
+    await this.refreshAuth();
+  }
+
   private async handle(message: { command: string; task?: string; email?: string; password?: string; provider?: string; target?: string; checkpoint?: string; key?: string; settings?: Record<string, unknown>; secrets?: Record<string, string> }) {
     // Every auth-status path below must settle with an auth-state post. A rejection
     // here was caught by the caller and reported as a task result, which the auth
     // gate ignores, so the sidebar stayed on "Loading minitok..." with no way to
     // sign in. refresh-failed still renders the signed-out CTA in the webview.
-    if (message?.command === "auth-status") { try { const session = await refreshExtensionSession(this.context); if (!session) { invalidateEntitlementCache(); this.view?.webview.postMessage({ type: "auth-state", state: "signed-out", ok: false, authenticated: false, entitled: false }); return; } invalidateEntitlementCache(); const result = await checkEntitlement(); this.view?.webview.postMessage({ type: "auth-state", state: result.allowed ? "authenticated" : "not-entitled", ok: result.allowed, authenticated: true, entitled: result.allowed, text: redactOutputText(result.allowed ? `Signed in with ${result.plan} plan.` : `Entitlement error: ${result.message || "An active paid plan is required."}`) }); } catch (error) { this.view?.webview.postMessage({ type: "auth-state", state: "refresh-failed", ok: false, authenticated: false, entitled: false, text: redactOutputText(authErrorText(error)) }); } return; }
-    if (message?.command === "device-login") { try { await deviceLogin(this.context, text => this.view?.webview.postMessage({ type: "auth-state", state: "checking", ok: false, authenticated: false, entitled: false, text: redactOutputText(text) })); invalidateEntitlementCache(); const result = await checkEntitlement(); if (!result.allowed) { this.view?.webview.postMessage({ type: "auth-state", state: "not-entitled", ok: false, authenticated: true, entitled: false, text: redactOutputText(`Entitlement error: ${result.message || "An active paid plan is required."}`) }); return; } this.view?.webview.postMessage({ type: "auth-state", state: "authenticated", ok: true, authenticated: true, entitled: true, text: redactOutputText(`Signed in with ${result.plan} plan.`) }); } catch (error) { this.view?.webview.postMessage({ type: "auth-state", state: "refresh-failed", ok: false, authenticated: false, entitled: false, text: redactOutputText(authErrorText(error)) }); } return; }
-    if (message?.command === "device-logout") { const remoteRevoked = await logoutExtension(this.context); invalidateEntitlementCache(); this.view?.webview.postMessage({ type: "auth-state", state: "signed-out", ok: false, authenticated: false, entitled: false, text: redactOutputText(remoteRevoked ? "Signed out locally and from the server." : "Signed out locally. The server session could not be revoked; sign in again when online.") }); return; }
+    // An admin session bypasses the plan gate, so it must satisfy "is anybody signed
+    // in?" on its own; refreshExtensionSession only knows the customer session.
+    if (message?.command === "auth-status") { await this.refreshAuth(); return; }
+    if (message?.command === "device-login") {
+      if (this.deviceLoginCancellation && !this.deviceLoginCancellation.cancelled) { this.view?.webview.postMessage({ type: "auth-state", state: "checking", ok: false, authenticated: false, entitled: false, text: "A browser sign-in is already in progress. Cancel it first." }); return; }
+      const cancellation: DeviceLoginCancellation = { cancelled: false };
+      this.deviceLoginCancellation = cancellation;
+      try { await deviceLogin(this.context, text => this.view?.webview.postMessage({ type: "auth-state", state: "checking", ok: false, authenticated: false, entitled: false, text: redactOutputText(text) }), cancellation); invalidateEntitlementCache(); const result = await checkEntitlement(); if (!result.allowed) { this.view?.webview.postMessage({ type: "auth-state", state: "not-entitled", ok: false, authenticated: true, entitled: false, text: redactOutputText(`Entitlement error: ${result.message || "An active paid plan is required."}`) }); return; } this.view?.webview.postMessage({ type: "auth-state", state: "authenticated", ok: true, authenticated: true, entitled: true, text: redactOutputText(`Signed in with ${result.plan} plan.`) }); }
+      catch (error) { if ((error as any)?.code === "cancelled") { this.view?.webview.postMessage({ type: "auth-state", state: "signed-out", ok: false, authenticated: false, entitled: false, text: "Browser sign-in cancelled." }); } else { this.view?.webview.postMessage({ type: "auth-state", state: "refresh-failed", ok: false, authenticated: false, entitled: false, text: redactOutputText(authErrorText(error)) }); } }
+      finally { if (this.deviceLoginCancellation === cancellation) this.deviceLoginCancellation = undefined; }
+      return;
+    }
+    if (message?.command === "cancel-login") { if (this.deviceLoginCancellation) this.deviceLoginCancellation.cancelled = true; return; }
+    // An admin session is stored separately and bypasses the entitlement gate, so
+    // leaving it behind would re-authenticate the next command after a sign-out.
+    if (message?.command === "device-logout") { const remoteRevoked = await logoutExtension(this.context); await logoutAdmin(this.context); invalidateEntitlementCache(); this.view?.webview.postMessage({ type: "auth-state", state: "signed-out", ok: false, authenticated: false, entitled: false, text: redactOutputText(remoteRevoked ? "Signed out locally and from the server." : "Signed out locally. The server session could not be revoked; sign in again when online.") }); return; }
     if (message?.command === "customer-login") { await this.customerLogin(message.email, message.password); return; }
+    if (message?.command === "admin-login") { await this.adminLogin(message.email, message.password); return; }
     // Dry run still performs provider planning and can expose paid workflow
     // output, so it intentionally remains entitlement-gated rather than becoming
     // an accidental free execution path.
@@ -215,7 +263,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
       try { await requireEntitlement(); }
       catch (error) { this.view?.webview.postMessage({ type: "entitlement", ok: false, text: redactOutputText(String(error)) }); return; }
     }
-    const commands = new Set(["device-login", "device-logout", "show-output", "stop", "interrupt", "approve", "reject", "open-evidence", "open-diff", "restore-session", "mcp-status", "mcp-connect", "mcp-list", "history", "sessions", "clear-history", "info", "discover-models", "activate", "manage-plan", "attach-file", "attach-folder", "attach-problems", "settings", "save-settings",  "update", "run", "dry-run"]);
+    const commands = new Set(["device-login", "device-logout", "show-output", "stop", "interrupt", "approve", "reject", "open-evidence", "open-diff", "restore-session", "mcp-status", "mcp-connect", "mcp-list", "history", "sessions", "clear-history", "info", "discover-models", "activate", "attach-file", "attach-folder", "attach-problems", "settings", "save-settings",  "update", "run", "dry-run"]);
     if (!message || typeof message.command !== "string" || !commands.has(message.command)) { this.view?.webview.postMessage({ type: "result", ok: false, text: "Unsupported command" }); return; }
     if (message.task !== undefined && (typeof message.task !== "string" || message.task.length > 20000)) { this.view?.webview.postMessage({ type: "result", ok: false, text: "Task is invalid or too long" }); return; }
     const cwd = workspacePath();
@@ -249,7 +297,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
     if (message.command === "clear-history") { await this.context.workspaceState.update("minitok.history", []); this.view?.webview.postMessage({ type: "history-cleared", text: "Local Extension run history cleared. Repository evidence, checkpoints, and patches were preserved." }); return; }
     if (message.command === "info") { await this.readInfo(cwd); return; }
     if (message.command === "discover-models") { await requireEntitlement(); await this.discoverModels(cwd, message.provider); return; }
-    if (message.command === "activate" || message.command === "manage-plan") { await this.openBilling(message.command === "activate" ? "checkout" : "portal"); return; }
+    if (message.command === "activate") { await this.openBilling(); return; }
     if (message.command === "attach-file") { const uri = await vscode.window.showOpenDialog({ canSelectMany: false, openLabel: "Attach file" }); if (uri?.[0]) this.view?.webview.postMessage({ type: "attachment", value: `@file ${vscode.workspace.asRelativePath(uri[0])}` }); return; }
     if (message.command === "attach-folder") { const uri = await vscode.window.showOpenDialog({ canSelectFolders: true, canSelectMany: false, openLabel: "Attach folder" }); if (uri?.[0]) this.view?.webview.postMessage({ type: "attachment", value: `@folder ${vscode.workspace.asRelativePath(uri[0])}` }); return; }
     if (message.command === "attach-problems") { const diagnostics = vscode.languages.getDiagnostics().flatMap(([uri, items]) => items.map(item => `${vscode.workspace.asRelativePath(uri)}:${item.range.start.line + 1} ${item.message}`)); this.view?.webview.postMessage({ type: "attachment", value: redactOutputText(diagnostics.length ? `@problems\n${diagnostics.join("\n")}` : "") }); return; }
@@ -291,22 +339,26 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
       this.view?.webview.postMessage({ type: "result", ok: false, text: safeError, runId: this.activeRunId });
     } finally { this.activeRunId = undefined; this.activeRunStartedAt = undefined; }
   }
-  private async openBilling(kind: "checkout" | "portal") {
+  // Checkout is the only billing action any surface reaches: the webviews dropped
+  // their plan-management button, so nothing asks for the billing portal and
+  // this helper has no second call path. The CLI still ships `minitok portal`
+  // as its own public command; the Extension just never spawns it.
+  private async openBilling() {
     const session = await refreshExtensionSession(this.context);
     if (!session?.access_token) { this.view?.webview.postMessage({ type: "billing", ok: false, text: "Sign in before managing your plan." }); return; }
     const envName = "MINITOK_EXTENSION_CUSTOMER_TOKEN";
     const env: NodeJS.ProcessEnv = { ...process.env, MINITOK_UPDATE_CHECK: "0", [envName]: session.access_token };
-    const args = [kind, "--token-env", envName, "--json"];
+    const args = ["checkout", "--token-env", envName, "--json"];
     const spec = spawnSpec(cliPath(), args);
     execFile(spec.command, spec.args, { ...spawnOptionsFor(spec, { cwd: workspacePath(), env }), timeout: 30000 }, async (error, stdout, stderr) => {
       delete env[envName];
       if (error) { this.view?.webview.postMessage({ type: "billing", ok: false, text: redactOutputText(stderr || error.message) }); return; }
       try {
-        const result = JSON.parse(String(stdout).trim()) as { checkout_url?: string; portal_url?: string };
-        const target = kind === "checkout" ? result.checkout_url : result.portal_url;
+        const result = JSON.parse(String(stdout).trim()) as { checkout_url?: string };
+        const target = result.checkout_url;
         if (!target || !/^https:\/\//i.test(target)) throw new Error("Billing service returned an invalid URL");
         await vscode.env.openExternal(vscode.Uri.parse(target));
-        this.view?.webview.postMessage({ type: "billing", ok: true, text: kind === "checkout" ? "Checkout opened in your browser." : "Billing portal opened in your browser." });
+        this.view?.webview.postMessage({ type: "billing", ok: true, text: "Checkout opened in your browser." });
       } catch (parseError) { this.view?.webview.postMessage({ type: "billing", ok: false, text: redactOutputText(parseError instanceof Error ? parseError.message : String(parseError)) }); }
     });
   }
@@ -323,6 +375,17 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
       this.view?.webview.postMessage({ type: "auth-state", state: result.allowed ? "authenticated" : "not-entitled", ok: result.allowed, authenticated: true, entitled: result.allowed, text: redactOutputText(result.allowed ? `Signed in with ${result.plan} plan.` : result.message || stdout) });
     });
   }
+  private async adminLogin(email?: string, password?: string) {
+    if (!email?.trim() || !password) { this.view?.webview.postMessage({ type: "auth-state", state: "signed-out", ok: false, authenticated: false, entitled: false, text: "Email and password are required." }); return; }
+    this.view?.webview.postMessage({ type: "auth-state", state: "checking", ok: false, authenticated: false, entitled: false, text: "Signing in as admin..." });
+    try {
+      await adminLogin(this.context, email.trim(), password);
+      invalidateEntitlementCache();
+      this.view?.webview.postMessage({ type: "auth-state", state: "authenticated", ok: true, authenticated: true, entitled: true, text: "Signed in as admin." });
+    } catch (error) {
+      this.view?.webview.postMessage({ type: "auth-state", state: "signed-out", ok: false, authenticated: false, entitled: false, text: redactOutputText(authErrorText(error)) });
+    }
+  }
 private async discoverModels(cwd?: string, provider?: string) {
      requireTrustedWorkspace(cwd);
      await requireEntitlement();
@@ -333,7 +396,13 @@ private async discoverModels(cwd?: string, provider?: string) {
     const spec = spawnSpec(cliPath(), args);
     execFile(spec.command, spec.args, { ...spawnOptionsFor(spec, { cwd }), timeout: 30000 }, (error, stdout, stderr) => {
       const text = redactOutputText(error ? stderr || error.message : stdout);
-      const models = error ? [] : [...new Set((stdout.match(/(?:claude|gpt|o[134]|gemini|[\w-]+-\w+)[\w.:-]*/gi) || []).filter(id => !/^(models|available|provider)$/i.test(id)))];
+      // Parse model IDs from CLI output. Handles common formats:
+      // "claude-sonnet-4-20250514", "gpt-4o", "o1-preview", "gemini-2.0-flash",
+      // "llama-3.3-70b", "deepseek-v3", "qwen2.5-coder", etc.
+      // Excludes common header words that might match the pattern.
+      const headerWords = new Set(["models", "available", "provider", "default", "name", "id", "----"]);
+      const models = error ? [] : [...new Set((stdout.match(/(?:claude|gpt|o[134]|gemini|llama|deepseek|qwen|mistral|mixtral|phi|yi|solar|starcoder|codellama|gemma|command|dbrx|jamba|nova|spark|hunyuan|step|kimi|minimax|moonshot|zhipu|baichuan|internlm|chatglm|qwq|qvq|grok)[\w.:-]*|[\w][\w.-]*-[\w.-]+/gi) || [])
+        .filter(id => id.length > 2 && !headerWords.has(id.toLowerCase()) && !/^\d/.test(id)))];
       this.view?.webview.postMessage({ type: "models", ok: !error, text, provider: provider || "all", models });
     });
   }
@@ -564,7 +633,11 @@ private async discoverModels(cwd?: string, provider?: string) {
   private async readSettings() {
     const settings = Object.fromEntries(["provider", "model", "showCost", "evidencePath", "autoApprove", "storeTaskText", "enterBehavior", "plan.provider", "plan.model", "work.provider", "work.model", "review.provider", "review.model", "intel.provider", "intel.model"].map(key => [key, key === "autoApprove" || key === "storeTaskText" ? vscode.workspace.getConfiguration("minitok").get<boolean>(key, false) : this.context.workspaceState.get(`minitok.setting.${key}`, undefined)]));
     const secrets = { providerApiKeySet: Boolean(await this.context.secrets.get("minitok.secret.providerApiKey")), customBaseUrlSet: Boolean(await this.context.secrets.get("minitok.secret.customBaseUrl")) };
-    this.view?.webview.postMessage({ type: "settings", settings, secrets });
+    this.view?.webview.postMessage({ type: "settings", settings, secrets, version: cliRelease(this.context).version });
   }
-  private html(webview: vscode.Webview) { const source = fs.readFileSync(path.join(this.extensionUri.fsPath, "src", "sidebar.html"), "utf8"); return source.replaceAll("{{nonce}}", randomBytes(16).toString("base64")).replace("{{cspSource}}", webview.cspSource); }
+  // The sidebar brand mark must render the same Harlekin 'm' glyph the Activity
+  // Bar icon (media/minitok-activitybar.svg) uses, so the glyph is the SVG
+  // artwork (media/minitok.svg) rather than a system-ui text 'm'. The webview
+  // only resolves the file through asWebviewUri(); CSP img-src allows it.
+  private html(webview: vscode.Webview) { const source = fs.readFileSync(path.join(this.extensionUri.fsPath, "src", "sidebar.html"), "utf8"); const brandUri = webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "media", "minitok.svg")); return source.replaceAll("{{nonce}}", randomBytes(16).toString("base64")).replaceAll("{{brandUri}}", brandUri.toString()).replace("{{cspSource}}", webview.cspSource); }
 }

@@ -5,7 +5,7 @@ import { spawn, ChildProcessWithoutNullStreams, execFile } from "node:child_proc
 import { randomBytes } from "node:crypto";
 import { cliPath, workspacePath, requireTrustedWorkspace, autoApprove, spawnSpec, spawnOptionsFor, appendBoundedOutput, workspaceRelativePath } from "./workspace";
 import { checkEntitlement, invalidateEntitlementCache, requireEntitlement } from "./entitlement";
-import { deviceLogin, logoutExtension, refreshExtensionSession, readExtensionSession, authErrorText } from "./device-auth";
+import { deviceLogin, adminLogin, logoutExtension, logoutAdmin, refreshExtensionSession, readExtensionSession, hasAdminSession, authErrorText, DeviceLoginCancellation } from "./device-auth";
 import { redactSensitiveText } from "./redaction";
 import { runProcess, killProcessTree } from "./run-process";
 
@@ -36,10 +36,11 @@ export class minitokPanel {
   private readonly extensionUri: vscode.Uri;
   private readonly disposables: vscode.Disposable[] = [];
   private process?: ChildProcessWithoutNullStreams;
+  private deviceLoginCancellation?: DeviceLoginCancellation;
 
   static createOrShow(context: vscode.ExtensionContext) {
     if (minitokPanel.current) { minitokPanel.current.panel.reveal(); return; }
-    const panel = vscode.window.createWebviewPanel("minitok", "minitok", vscode.ViewColumn.Beside, { enableScripts: true, retainContextWhenHidden: true });
+    const panel = vscode.window.createWebviewPanel("minitok", "minitok", vscode.ViewColumn.Beside, { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [context.extensionUri] });
     minitokPanel.current = new minitokPanel(panel, context.extensionUri, context);
   }
 
@@ -53,21 +54,25 @@ export class minitokPanel {
     this.panel.onDidDispose(() => { minitokPanel.current = undefined; this.dispose(); }, null, this.disposables);
   }
 
-  private async openBilling(kind: "checkout" | "portal") {
+  // Checkout is the only billing action any surface reaches: the webviews dropped
+  // their plan-management button, so nothing asks for the billing portal and
+  // this helper has no second call path. The CLI still ships `minitok portal`
+  // as its own public command; the Extension just never spawns it.
+  private async openBilling() {
     const session = await refreshExtensionSession(this.context);
     if (!session?.access_token) { this.post(false, "Sign in before managing your plan."); return; }
     const envName = "MINITOK_EXTENSION_CUSTOMER_TOKEN";
     const env: NodeJS.ProcessEnv = { ...process.env, MINITOK_UPDATE_CHECK: "0", [envName]: session.access_token };
-    const spec = spawnSpec(cliPath(), [kind, "--token-env", envName, "--json"]);
+    const spec = spawnSpec(cliPath(), ["checkout", "--token-env", envName, "--json"]);
     execFile(spec.command, spec.args, { ...spawnOptionsFor(spec, { cwd: workspacePath(), env }), timeout: 30000 }, async (error, stdout, stderr) => {
       delete env[envName];
       if (error) { this.post(false, redactPanelOutput(stderr || error.message)); return; }
       try {
-        const result = JSON.parse(String(stdout).trim()) as { checkout_url?: string; portal_url?: string };
-        const target = kind === "checkout" ? result.checkout_url : result.portal_url;
+        const result = JSON.parse(String(stdout).trim()) as { checkout_url?: string };
+        const target = result.checkout_url;
         if (!target || !/^https:\/\//i.test(target)) throw new Error("Billing service returned an invalid URL");
         await vscode.env.openExternal(vscode.Uri.parse(target));
-        this.post(true, kind === "checkout" ? "Checkout opened in your browser." : "Billing portal opened in your browser.");
+        this.post(true, "Checkout opened in your browser.");
       } catch (parseError) { this.post(false, redactPanelOutput(parseError instanceof Error ? parseError.message : String(parseError))); }
     });
   }
@@ -78,6 +83,14 @@ export class minitokPanel {
     // minitok session..." card with the sign-in button still hidden, so the user had
     // no way in. Fall back to an explicit auth-state instead of going silent.
     try {
+      // An admin session authorizes every gated command without a customer plan, so
+      // it has to satisfy this question on its own: refreshExtensionSession only
+      // knows the customer session and would report signed-out for a valid admin.
+      if (await hasAdminSession(this.context)) {
+        invalidateEntitlementCache();
+        this.postAuth("authenticated", true, true, "Signed in as admin.");
+        return;
+      }
       const session = await refreshExtensionSession(this.context);
       if (!session) {
         this.postAuth("signed-out", false, false);
@@ -95,24 +108,58 @@ export class minitokPanel {
     this.panel.webview.postMessage({ type: "auth-state", state, authenticated, entitled, text: redactPanelOutput(text) });
   }
 
-  private async handle(message: { command: string; task?: string }) {
+  private async customerLogin(email?: string, password?: string) {
+    if (!email?.trim() || !password) { this.postAuth("signed-out", false, false, "Email and password are required."); return; }
+    const env: NodeJS.ProcessEnv = { ...process.env, MINITOK_UPDATE_CHECK: "0", MINITOK_CUSTOMER_EMAIL: email.trim(), MINITOK_CUSTOMER_PASSWORD: password };
+    const spec = spawnSpec(cliPath(), ["auth", "customer-login", "--email-env", "MINITOK_CUSTOMER_EMAIL", "--password-env", "MINITOK_CUSTOMER_PASSWORD", "--json"]);
+    execFile(spec.command, spec.args, { ...spawnOptionsFor(spec, { cwd: workspacePath(), env }), timeout: 30000 }, async (error, stdout, stderr) => {
+      delete env.MINITOK_CUSTOMER_EMAIL; delete env.MINITOK_CUSTOMER_PASSWORD;
+      if (error) { this.postAuth("signed-out", false, false, stderr || error.message); return; }
+      invalidateEntitlementCache();
+      await this.authStatus();
+    });
+  }
+
+  private async adminLogin(email?: string, password?: string) {
+    if (!email?.trim() || !password) { this.postAuth("signed-out", false, false, "Email and password are required."); return; }
+    this.postAuth("checking", false, false, "Signing in as admin...");
+    try {
+      await adminLogin(this.context, email.trim(), password);
+      invalidateEntitlementCache();
+      this.postAuth("authenticated", true, true, "Signed in as admin.");
+    } catch (error) {
+      this.postAuth("signed-out", false, false, authErrorText(error));
+    }
+  }
+
+  private async handle(message: { command: string; task?: string; email?: string; password?: string }) {
     if (message?.command === "auth-status") { await this.authStatus(); return; }
     if (message?.command === "device-login") {
+      if (this.deviceLoginCancellation && !this.deviceLoginCancellation.cancelled) { this.postAuth("checking", false, false, "A browser sign-in is already in progress. Cancel it first."); return; }
+      const cancellation: DeviceLoginCancellation = { cancelled: false };
+      this.deviceLoginCancellation = cancellation;
       try {
-        await deviceLogin(this.context, text => this.postAuth("checking", false, false, text));
+        await deviceLogin(this.context, text => this.postAuth("checking", false, false, text), cancellation);
         invalidateEntitlementCache();
         await this.authStatus();
       } catch (error) { this.postAuth("refresh-failed", false, false, authErrorText(error)); }
+      finally { if (this.deviceLoginCancellation === cancellation) this.deviceLoginCancellation = undefined; }
       return;
     }
-    if (message?.command === "activate" || message?.command === "manage-plan") { await this.openBilling(message.command === "activate" ? "checkout" : "portal"); return; }
+    if (message?.command === "cancel-login") { if (this.deviceLoginCancellation) this.deviceLoginCancellation.cancelled = true; return; }
+    if (message?.command === "activate") { await this.openBilling(); return; }
+    if (message?.command === "customer-login") { await this.customerLogin(message.email, message.password); return; }
+    if (message?.command === "admin-login") { await this.adminLogin(message.email, message.password); return; }
     if (message?.command === "device-logout") {
       const remoteRevoked = await logoutExtension(this.context);
+      // An admin session is stored separately and bypasses the entitlement gate, so
+      // leaving it behind would re-authenticate the next command after a sign-out.
+      await logoutAdmin(this.context);
       invalidateEntitlementCache();
       this.postAuth("signed-out", false, false, remoteRevoked ? "Signed out locally and from the server." : "Signed out locally. The server session could not be revoked; sign in again when online.");
       return;
     }
-    if (!message || !["status", "run", "dry-run", "stop", "activate", "manage-plan"].includes(message.command)) { this.post(false, "Unsupported command"); return; }
+    if (!message || !["status", "run", "dry-run", "stop", "activate"].includes(message.command)) { this.post(false, "Unsupported command"); return; }
     if (message.task !== undefined && (typeof message.task !== "string" || message.task.length > 20000)) { this.post(false, "Task is invalid or too long"); return; }
       const cwd = workspacePath();
       const cli = cliPath();
@@ -172,6 +219,10 @@ export class minitokPanel {
     killProcessTree(child);
   }
   private post(ok: boolean, text: string) { this.panel.webview.postMessage({ type: "result", ok, text: redactPanelOutput(text) }); }
-  private html() { const nonce = randomBytes(16).toString("base64"); const source = fs.readFileSync(path.join(this.extensionUri.fsPath, "src", "panel.html"), "utf8"); return source.replaceAll("{{nonce}}", nonce).replace("{{cspSource}}", this.panel.webview.cspSource); }
+  // The panel brand mark must render the same Harlekin 'm' glyph the Activity
+  // Bar icon (media/minitok-activitybar.svg) uses, so the glyph is the SVG
+  // artwork (media/minitok.svg) rather than a system-ui text 'm'. The webview
+  // only resolves the file through asWebviewUri(); CSP img-src allows it.
+  private html() { const nonce = randomBytes(16).toString("base64"); const source = fs.readFileSync(path.join(this.extensionUri.fsPath, "src", "panel.html"), "utf8"); const brandUri = this.panel.webview.asWebviewUri(vscode.Uri.joinPath(this.extensionUri, "media", "minitok.svg")); return source.replaceAll("{{nonce}}", nonce).replaceAll("{{brandUri}}", brandUri.toString()).replace("{{cspSource}}", this.panel.webview.cspSource); }
   private dispose() { this.stopProcess(); while (this.disposables.length) this.disposables.pop()?.dispose(); this.panel.dispose(); }
 }

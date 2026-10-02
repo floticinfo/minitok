@@ -5,7 +5,7 @@ import { spawnSpec, requireTrustedWorkspace } from "./workspace";
 import { runProcess, killProcessTree as killProcessTreeShared } from "./run-process";
 import { minitokSidebar } from "./sidebar";
 import { cliPath, workspacePath, autoApprove, isCliCompatible, mcpCommand, mcpEnvironment, configuredMcpScopes, ensureMcpAuthToken, spawnOptionsFor, appendBoundedOutput, capabilityFile } from "./workspace";
-import { checkEntitlement, EntitlementState } from "./entitlement";
+import { checkEntitlement, EntitlementState, activateEntitlement } from "./entitlement";
 import { redactSensitiveText } from "./redaction";
 import { clipWithNote, buildProblemsTask, MAX_PROBLEM_ENTRIES } from "./truncate";
 
@@ -192,6 +192,38 @@ try { requireTrustedWorkspace(workspacePath()); } catch (error) { vscode.window.
       const statusCwd = workspacePath();
       output.appendLine(redactExtensionOutput(await runCli(cliPath(), statusCwd ? ["status", "--repo", statusCwd] : ["status"], { timeoutMs: CLI_STATUS_TIMEOUT_MS, requireWorkspace: false })));
     } catch (error) { output.appendLine(redactExtensionOutput(String(error))); }
+  }));
+  /**
+   * Activate this installation without leaving the editor.
+   *
+   * The activate CTA in the webviews only opens the billing checkout, so the key
+   * a customer paid for had to be redeemed in a terminal. The command asks for
+   * the key with a masked prompt and hands it to the CLI through the child
+   * environment, which keeps it out of argv and out of the process list.
+   */
+  context.subscriptions.push(vscode.commands.registerCommand("minitok.activate", async () => {
+    const key = await vscode.window.showInputBox({
+      title: "Activate minitok",
+      prompt: "Paste the activation key from your purchase or trial email.",
+      placeHolder: "MINITOK-XXXX-XXXX-XXXX",
+      password: true,
+      ignoreFocusOut: true,
+      validateInput: value => value.trim() ? undefined : "An activation key is required.",
+    });
+    if (key === undefined) return;
+    const result = await vscode.window.withProgress(
+      { location: vscode.ProgressLocation.Notification, title: "Activating minitok", cancellable: false },
+      () => activateEntitlement(key),
+    );
+    if (!result.ok) {
+      output.appendLine(redactExtensionOutput(`Activation failed: ${result.message}`));
+      vscode.window.showErrorMessage(`minitok activation failed: ${redactExtensionOutput(result.message)}`);
+      return;
+    }
+    vscode.window.showInformationMessage(`minitok activated${result.plan ? ` (plan: ${result.plan})` : ""}.`);
+    // Every surface caches the pre-activation denial; the sidebar is repainted so
+    // the run controls appear without a window reload.
+    await sidebar.refresh();
   }));
 }
 
