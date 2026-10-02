@@ -48,4 +48,14 @@ describe("customer token storage", () => {
       else process.env.minitok_customer_token = previous;
     }
   });
+
+  it("does not fall back to the real home session for a custom token path", () => {
+    const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-token-isolation-"));
+    const tokenFile = path.join(root, "customer-token.json");
+    removeCustomerToken(tokenFile);
+    // No session.json next to the custom token file: any token returned here
+    // could only come from the developer's real ~/.minitok account session.
+    assert.equal(loadCustomerToken(tokenFile), null);
+    fs.rmSync(root, { recursive: true, force: true });
+  });
 });

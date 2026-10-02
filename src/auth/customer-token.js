@@ -34,7 +34,11 @@ function loadCustomerToken(filePath = CUSTOMER_TOKEN_FILE) {
     const record = JSON.parse(fs.readFileSync(filePath, "utf-8"));
     if (typeof record.token === "string" && record.token && !isExpiredJwt(record.token)) return record.token;
   } catch {}
-  const normalized = loadCustomerSession();
+  // A custom token path must stay scoped to its own directory: falling back to
+  // the real home session here let tests (and any multi-user setup) read a
+  // credential they never asked for. The default path keeps the home fallback.
+  const sessionFile = filePath === CUSTOMER_TOKEN_FILE ? ACCOUNT_SESSION_FILE : path.join(path.dirname(filePath), "session.json");
+  const normalized = loadCustomerSession(sessionFile);
   if (normalized?.access_token && (!normalized.expires_at || Date.now() < new Date(normalized.expires_at).getTime() - 60000)) return normalized.access_token;
   return null;
 }

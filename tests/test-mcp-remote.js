@@ -158,13 +158,15 @@ test("an expired cached OAuth token is not reused", () => {
     // the 401 handler only re-authorized when no token was present at all, so an
     // expired cache entry blocked refresh permanently.
     store.save("mcp-service.example", { resource: "https://service.example/mcp", access_token: "expired-token", expires_at: new Date(Date.now() - 60000).toISOString() });
-    const stale = new RemoteMcpClient({ url: "https://service.example/mcp", tokenStore: store });
+    // A missing tokenFile would fall back to the real home credential, coupling
+    // this test to the developer's session; the temp path keeps it isolated.
+    const stale = new RemoteMcpClient({ url: "https://service.example/mcp", tokenStore: store, tokenFile: path.join(root, "customer-token.json") });
     assert.equal(stale.token, null, "an expired cached token must not be presented");
     // The expired entry is eagerly removed so the 401 handler doesn't need to do it.
     assert.equal(store.isValid("mcp-service.example"), false, "the expired entry must be purged from the store");
 
     store.save("mcp-service.example", { resource: "https://service.example/mcp", access_token: "fresh-token", expires_at: new Date(Date.now() + 3600000).toISOString() });
-    const fresh = new RemoteMcpClient({ url: "https://service.example/mcp", tokenStore: store });
+    const fresh = new RemoteMcpClient({ url: "https://service.example/mcp", tokenStore: store, tokenFile: path.join(root, "customer-token.json") });
     assert.equal(fresh.token, "fresh-token", "a valid cached token is still reused");
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
@@ -217,7 +219,9 @@ test("a 401 with an expired cached token enters the OAuth refresh path", async (
   try {
     const store = new TokenStore(path.join(root, "tokens"));
     store.save("mcp-service.example", { resource: "https://service.example/mcp", access_token: "expired-token", expires_at: new Date(Date.now() - 60000).toISOString() });
-    const client = new RemoteMcpClient({ url: "https://service.example/mcp", tokenStore: store });
+    // A missing tokenFile would fall back to the real home credential; the temp
+    // path keeps this test isolated from the developer's session.
+    const client = new RemoteMcpClient({ url: "https://service.example/mcp", tokenStore: store, tokenFile: path.join(root, "customer-token.json") });
     const seen = [];
     global.fetch = async (url) => {
       seen.push(String(url));
