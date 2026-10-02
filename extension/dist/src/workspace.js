@@ -212,6 +212,11 @@ const CLI_EXPLICIT_ENV = new Set([
     "MINITOK_MCP_AUTH_TOKEN_FILE", "MINITOK_MCP_SCOPES", "MINITOK_MCP_WORKSPACE_ROOT",
     "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "GOOGLE_API_KEY", "GEMINI_API_KEY",
     "MINITOK_EXTENSION_CUSTOMER_TOKEN", "MINITOK_CUSTOMER_EMAIL", "MINITOK_CUSTOMER_PASSWORD",
+    // Entitlement activation key. Passed by name to `minitok activate --key-env`
+    // and never on argv, so the secret stays out of process listings: the CLI
+    // rejects a key it cannot find in the environment rather than on the command
+    // line. Callers delete it from the child env as soon as the spawn returns.
+    "MINITOK_ACTIVATION_KEY",
 ]);
 function isAllowedCliEnv(key) {
     return CLI_ENV_ALLOWLIST.includes(key) || CLI_EXPLICIT_ENV.has(key) || /^minitok_(?:default_provider|model|server_url|plan_|work_|review_|intel_)/.test(key);

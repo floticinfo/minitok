@@ -37,6 +37,10 @@ exports.readExtensionSession = readExtensionSession;
 exports.refreshExtensionSession = refreshExtensionSession;
 exports.deviceLogin = deviceLogin;
 exports.logoutExtension = logoutExtension;
+exports.adminLogin = adminLogin;
+exports.readAdminSession = readAdminSession;
+exports.hasAdminSession = hasAdminSession;
+exports.logoutAdmin = logoutAdmin;
 exports.authErrorText = authErrorText;
 const vscode = __importStar(require("vscode"));
 const fs = __importStar(require("node:fs"));
@@ -69,6 +73,7 @@ function normalizeCustomerSession(value) {
     return session?.refresh_token ? session : undefined;
 }
 const SESSION_KEY = "minitok.secret.accountSession";
+const ADMIN_SESSION_KEY = "minitok.secret.adminSession";
 const SHARED_SESSION_FILE = path.join(os.homedir(), ".minitok", "account", "session.json");
 const LEGACY_CUSTOMER_TOKEN_FILE = path.join(os.homedir(), ".minitok", "entitlement", "customer-token.json");
 function legacyCustomerSession() {
@@ -220,7 +225,7 @@ async function refreshExtensionSession(context) {
         return undefined;
     }
 }
-async function deviceLogin(context, onStatus) {
+async function deviceLogin(context, onStatus, cancellation) {
     let start;
     try {
         start = await request("/v1/auth/device/authorize", { client_id: "minitok-extension" });
@@ -243,6 +248,8 @@ async function deviceLogin(context, onStatus) {
     const deadline = Date.now() + Math.min(Number(start.expires_in || start.expiresIn || 600) * 1000, 10 * 60 * 1000);
     let interval = Math.max(2000, Number(start.interval || 5) * 1000);
     while (Date.now() < deadline) {
+        if (cancellation?.cancelled)
+            throw Object.assign(new Error("Browser sign-in was cancelled."), { kind: "login", code: "cancelled" });
         await new Promise(resolve => setTimeout(resolve, interval));
         try {
             const result = await request("/v1/auth/device/token", { device_code: deviceCode });
@@ -288,6 +295,61 @@ async function logoutExtension(context) {
         fs.unlinkSync(LEGACY_CUSTOMER_TOKEN_FILE);
     }
     catch { }
+    return remoteRevoked;
+}
+/**
+ * Server-side admin sign-in over /v1/admin/login.
+ *
+ * Unlike device login, admin login is a direct credentials POST: the server
+ * returns the admin token in the body (webAuthResponse only strips it for
+ * x-minitok-web browser requests, and the extension is not one). The admin
+ * session is stored separately from the customer session so an admin sign-in
+ * never collides with, or revokes, a customer session in the shared CLI file.
+ */
+async function adminLogin(context, email, password) {
+    const result = await request("/v1/admin/login", { email, password });
+    const token = result?.token;
+    if (typeof token !== "string" || !token)
+        throw Object.assign(new Error("Admin login response is missing a token."), { kind: "login" });
+    await context.secrets.store(ADMIN_SESSION_KEY, JSON.stringify({ token, admin_id: result.admin_id, saved_at: new Date().toISOString() }));
+    return { token, admin_id: result.admin_id };
+}
+/** Read the stored admin session, if one exists. */
+async function readAdminSession(context) {
+    const raw = await context.secrets.get(ADMIN_SESSION_KEY);
+    if (!raw)
+        return undefined;
+    try {
+        return JSON.parse(raw);
+    }
+    catch {
+        return undefined;
+    }
+}
+/**
+ * True while an admin session is stored.
+ *
+ * The entitlement gate already treats an admin session as a full bypass, but both
+ * webviews also ask "is anybody signed in?" before they render. That question was
+ * answered from the customer session alone, so a view reopened after an admin
+ * sign-in reported signed-out and painted the sign-in card again. Every surface
+ * now checks the admin session first.
+ */
+async function hasAdminSession(context) {
+    return Boolean((await readAdminSession(context))?.token);
+}
+/** Sign out of the admin session only (server-side revocation via /v1/admin/logout). */
+async function logoutAdmin(context) {
+    const session = await readAdminSession(context);
+    let remoteRevoked = false;
+    if (session?.token) {
+        try {
+            await fetch(`${(0, workspace_1.configuredServerUrl)()}/v1/admin/logout`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${session.token}` } });
+            remoteRevoked = true;
+        }
+        catch { }
+    }
+    await context.secrets.delete(ADMIN_SESSION_KEY);
     return remoteRevoked;
 }
 function authErrorText(error) {
