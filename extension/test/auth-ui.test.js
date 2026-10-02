@@ -309,6 +309,35 @@ test("sidebar auth-state handler toasts errors and never paints them inline", ()
   assert.deepEqual(view.toasts.map(t => t.text), ["Checkout could not be opened"], "billing failures must toast");
 });
 
+test("sidebar run/dry restore after run end still respects not-entitled state (B1 regression)", () => {
+  // The result/stopped/timeout handlers used to hard-restore
+  // run.disabled=dry.disabled=false, re-enabling Run for users the auth-state
+  // handler had just disabled. entitledNow must carry the entitlement across.
+  const html = sidebar();
+  assert.match(html, /let entitledNow=false/, "entitlement must default to not-entitled until auth-state resolves");
+  assert.match(html, /entitledNow=entitled/, "auth-state handler must record the latest entitlement");
+  assert.equal(
+    (html.match(/run\.disabled=dry\.disabled=!entitledNow/g) || []).length,
+    3,
+    "result, stopped and timeout handlers must all gate the restore on entitledNow"
+  );
+
+  const view = runWebview(html, [0, 1], ["loading", "authGate", "app", "logoutButton", "loginForm", "authPrompt", "authError", "run", "dry", "mcpBadge", "activateButton", "stop", "stage", "task", "state", "evidence"]);
+  view.dispatch({ type: "auth-state", authenticated: true, entitled: false });
+  assert.equal(view.els.get("run").disabled, true);
+  view.dispatch({ type: "result", ok: true });
+  assert.equal(view.els.get("run").disabled, true, "result must not re-enable run without entitlement");
+  assert.equal(view.els.get("dry").disabled, true, "result must not re-enable dry without entitlement");
+  view.dispatch({ type: "stopped" });
+  assert.equal(view.els.get("run").disabled, true, "stopped must not re-enable run without entitlement");
+  view.dispatch({ type: "timeout" });
+  assert.equal(view.els.get("run").disabled, true, "timeout must not re-enable run without entitlement");
+
+  view.dispatch({ type: "auth-state", authenticated: true, entitled: true });
+  view.dispatch({ type: "result", ok: true });
+  assert.equal(view.els.get("run").disabled, false, "entitled users get run back after a result");
+});
+
 test("the hidden attribute actually hides in both webviews", () => {
   // Regression: every auth state switches surfaces by toggling `hidden`, but an
   // author `display` value outranks the user-agent [hidden] rule. .auth-gate and
