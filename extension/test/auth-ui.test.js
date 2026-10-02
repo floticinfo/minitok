@@ -234,6 +234,11 @@ function runWebview(html, blockIndexes, ids) {
   const documentStub = {
     getElementById: id => (els.has(id) ? els.get(id) : (els.set(id, makeEl(id)), els.get(id))),
     createElement: () => makeEl("created"),
+    // The settings view wires one Validate button per provider via
+    // querySelectorAll('.validate-key'); the auth tests run a DOM-free slice of
+    // the scripts, so an empty NodeList is the safe stub.
+    querySelectorAll: () => [],
+    querySelector: () => null,
     addEventListener() {},
   };
   const sandbox = {
@@ -425,6 +430,58 @@ test("an admin session alone satisfies every signed-in check and is cleared on s
     assert.match(source, /hasAdminSession\(this\.context\)/, `${name} auth status must consult the admin session`);
     assert.match(source, /await logoutAdmin\(this\.context\)/, `${name} sign-out must clear the admin session`);
   }
+});
+
+test("settings UI splits provider keys and posts per-provider secrets", () => {
+  const html = sidebar();
+  // Four independent key fields, one per CLI-known provider, plus a status badge.
+  for (const p of ["anthropic", "openai", "google", "custom"]) {
+    assert.match(html, new RegExp(`id="${p}ApiKey"`), `must expose a ${p} key field`);
+    assert.match(html, new RegExp(`id="${p}ApiKeyBadge"`), `must expose a ${p} set badge`);
+  }
+  // The single shared key field is gone; it masked which provider a key served.
+  assert.doesNotMatch(html, /id="providerApiKey"/);
+  // Badges render from the extension's per-provider map, not a single boolean.
+  assert.match(html, /s\.secrets\?\.providerApiKeySet/);
+  // Save collects only non-empty per-provider keys and posts the new contract.
+  assert.match(html, /secrets=\{providerApiKeys:\{\}\}/);
+  assert.match(html, /if\(v\)secrets\.providerApiKeys\[p\]=v/);
+  // The custom endpoint row is still gated to the custom provider.
+  assert.match(html, /customBaseUrlRow'\)\.hidden=document\.getElementById\('provider'\)\.value!=='custom'/);
+  assert.match(html, /secrets\.customBaseUrl=document\.getElementById\('customBaseUrl'\)\.value/);
+  // The extension must consume the per-provider map and keep the legacy single key.
+  const src = sidebarSource();
+  assert.match(src, /key === "providerApiKeys"/);
+  assert.match(src, /key === "providerApiKey"/);
+});
+
+test("settings UI offers per-provider key validation and the extension answers it", () => {
+  const html = sidebar();
+  // Each provider row carries a Validate button and a status slot.
+  for (const p of ["anthropic", "openai", "google", "custom"]) {
+    assert.match(html, new RegExp(`validate-key[^>]*data-provider="${p}"`), `must expose a ${p} validate button`);
+    assert.match(html, new RegExp(`data-key-status="${p}"`), `must expose a ${p} validation status slot`);
+  }
+  // Buttons post the validate-key command and surface the result by provider.
+  assert.match(html, /command:'validate-key',provider:p/);
+  assert.match(html, /m\.type==='key-validation'/);
+  // Validation runs against the stored secret: a typed-but-unsaved key is saved first.
+  assert.match(html, /setKeyStatus\(p,'',unsaved\?'Saving/);
+  const src = sidebarSource();
+  // The extension handles validate-key and replies with key-validation.
+  assert.match(src, /message\.command === "validate-key"/);
+  assert.match(src, /type: "key-validation"/);
+  assert.match(src, /private async validateApiKey/);
+  // It reads the stored key (not form text) and refuses empty providers.
+  assert.match(src, /No key stored for this provider/);
+  assert.match(src, /apiKeySecretKey\(provider\)/);
+  // The check injects the key under the vendor variable the CLI's envMap reads,
+  // and materializes the custom endpoint, mirroring execute().
+  assert.match(src, /env\.ANTHROPIC_API_KEY = key/);
+  assert.match(src, /env\.GOOGLE_API_KEY = key/);
+  assert.match(src, /MINITOK_CUSTOM_BASE_URL = baseUrl/);
+  // The CLI probe is the lightweight discover-models path, judged on live output.
+  assert.match(src, /"models", "--discover", "--json", provider/);
 });
 
 console.log("auth-ui tests: sidebar and panel authentication visibility contracts loaded");

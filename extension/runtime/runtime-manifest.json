@@ -178,8 +178,8 @@
       "embedded": "e6edb640bdbf2c3c3697efbbe4164d61142853929300e19dcee3e8c47f44ac4a"
     },
     "entitlement/delegation.js": {
-      "source": "781e6860fb7d4f4893decfca817cb41857ce957fe24b0d2b42a4779e4553229e",
-      "embedded": "781e6860fb7d4f4893decfca817cb41857ce957fe24b0d2b42a4779e4553229e"
+      "source": "d3d78a92d1cb9be5d3aff69ce694e935644064617cd492170a8515104e600e27",
+      "embedded": "d3d78a92d1cb9be5d3aff69ce694e935644064617cd492170a8515104e600e27"
     },
     "entitlement/gate.js": {
       "source": "41134846a2a29534cd20d1f5145a12072d22b5934cb674dfd30b0dd87dedcec9",
@@ -366,8 +366,8 @@
       "embedded": "b3ff29d8c704391c8521d0fbd430a079885ccd19f2d5284bbaa34974d28deed1"
     },
     "goal/session.js": {
-      "source": "c2d1cf1418cde6256f7debe12390974fedb7eb712ed526a6d5c806108507f5f9",
-      "embedded": "c2d1cf1418cde6256f7debe12390974fedb7eb712ed526a6d5c806108507f5f9"
+      "source": "082e54f7025e4ae414eaafcd8b57a80ba2bb744d3132438553c4db9cee3239ad",
+      "embedded": "082e54f7025e4ae414eaafcd8b57a80ba2bb744d3132438553c4db9cee3239ad"
     },
     "goal/spec.js": {
       "source": "6c3b55251313a812dc144096f5ae3d06aa3ad47bdee6d80502084213a4ba1aad",

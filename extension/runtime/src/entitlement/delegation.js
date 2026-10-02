@@ -50,7 +50,7 @@ function delegationGateResult({ state, message, delegated, runId, runIds, entitl
 async function verifyRunDelegation(token, options = {}) {
   const serverUrl = options.serverUrl;
   if (!serverUrl) {
-    return delegationGateResult({ state: "SERVER_REJECTED", message: "Run delegation requires a configured entitlement server." });
+    return delegationGateResult({ state: "SERVER_REJECTED", message: "Run delegation requires a configured entitlement server.", delegated: false, runId: undefined, runIds: undefined, entitlement: undefined });
   }
   const runIds = Array.isArray(options.runIds) && options.runIds.every(id => typeof id === "string" && id.trim())
     ? options.runIds.map(id => id.trim())
@@ -68,21 +68,21 @@ async function verifyRunDelegation(token, options = {}) {
         state: "ALLOWED",
         message: "Run authorized by a one-time admin delegation.",
         delegated: true,
-        runId: response.body.run_id,
-        runIds: response.body.run_ids,
+        runId: /** @type {string|undefined} */ (response.body.run_id),
+        runIds: /** @type {string[]|undefined} */ (response.body.run_ids),
         entitlement,
       });
     }
     const detail = response?.body?.error || "The run delegation token was rejected by the server.";
-    return delegationGateResult({ state: "SERVER_REJECTED", message: detail });
+    return delegationGateResult({ state: "SERVER_REJECTED", message: detail, delegated: false, runId: undefined, runIds: undefined, entitlement: undefined });
   } catch (error) {
     if (error?.name === "AbortError" || error?.code === "ERR_INVALID_URL") {
-      return delegationGateResult({ state: "SERVER_REJECTED", message: "Run delegation verification response was invalid." });
+      return delegationGateResult({ state: "SERVER_REJECTED", message: "Run delegation verification response was invalid.", delegated: false, runId: undefined, runIds: undefined, entitlement: undefined });
     }
     // No offline grace for delegation: the whole point is a single online
     // verification that burns the token. Reusing an offline grace window to
     // admit a delegated admin run would defeat the one-time contract.
-    return delegationGateResult({ state: "SERVER_UNREACHABLE", message: `The run delegation could not be verified: ${error?.message || "server unavailable"}.` });
+    return delegationGateResult({ state: "SERVER_UNREACHABLE", message: `The run delegation could not be verified: ${error?.message || "server unavailable"}.`, delegated: false, runId: undefined, runIds: undefined, entitlement: undefined });
   }
 }
 

@@ -51,6 +51,26 @@ function cliRelease(context) {
     return { packageName: typeof release?.cliPackage === "string" ? release.cliPackage : "@flotic/minitok", version: typeof release?.cliVersion === "string" ? release.cliVersion : "0.0.0" };
 }
 const redactTaskText = redaction_1.redactSensitiveText;
+// Providers with their own SecretStorage key. `custom` has no conventional
+// vendor variable of its own — the CLI materializes it with
+// api_key_env: OPENAI_API_KEY (see src/config/loader.js).
+const API_KEY_PROVIDERS = ["anthropic", "openai", "google", "custom"];
+const apiKeySecretKey = (provider) => `minitok.secret.apiKey.${provider}`;
+const isApiKeyProvider = (provider) => API_KEY_PROVIDERS.includes(provider);
+/**
+ * The pre-split store held one key for whichever provider was saved last. Move
+ * it to the current provider's slot (the best available attribution), never
+ * overwriting a per-provider key the user set afterwards, then delete it.
+ */
+async function migrateLegacyProviderApiKey(secrets, currentProvider) {
+    const legacy = await secrets.get("minitok.secret.providerApiKey");
+    if (legacy === undefined)
+        return;
+    if (isApiKeyProvider(currentProvider) && !(await secrets.get(apiKeySecretKey(currentProvider)))) {
+        await secrets.store(apiKeySecretKey(currentProvider), legacy);
+    }
+    await secrets.delete("minitok.secret.providerApiKey");
+}
 function taskRecord(task) {
     const preview = redactTaskText(task.trim().slice(0, 300));
     const record = {
@@ -183,21 +203,31 @@ class minitokSidebar {
             if (roleModel)
                 roleEnv[`minitok_${role}_model`] = roleModel;
         }
-        const apiKey = await this.context.secrets.get("minitok.secret.providerApiKey");
+        await migrateLegacyProviderApiKey(this.context.secrets, provider);
         const customBaseUrl = await this.context.secrets.get("minitok.secret.customBaseUrl");
         if (model)
             for (const role of roles)
                 if (!roleEnv[`minitok_${role}_model`])
                     roleEnv[`minitok_${role}_model`] = model;
         const env = { ...roleEnv, ...(provider ? { minitok_default_provider: provider } : {}) };
-        if (apiKey && provider === "anthropic")
-            env.ANTHROPIC_API_KEY = apiKey;
-        if (apiKey && provider === "openai")
-            env.OPENAI_API_KEY = apiKey;
-        if (apiKey && provider === "google")
-            env.GOOGLE_API_KEY = apiKey;
-        if (apiKey && provider === "custom")
-            env.OPENAI_API_KEY = apiKey;
+        // Inject every stored provider key, not just the selected provider's: roles
+        // (minitok_<role>_provider) may name a different provider than the default.
+        // Variable names match the CLI contract (src/auth/index.js envMap, and the
+        // custom provider materialized with api_key_env: OPENAI_API_KEY).
+        const keys = {};
+        for (const p of API_KEY_PROVIDERS) {
+            const key = await this.context.secrets.get(apiKeySecretKey(p));
+            if (key)
+                keys[p] = key;
+        }
+        if (keys.anthropic)
+            env.ANTHROPIC_API_KEY = keys.anthropic;
+        if (keys.openai)
+            env.OPENAI_API_KEY = keys.openai;
+        if (keys.google)
+            env.GOOGLE_API_KEY = keys.google;
+        if (keys.custom)
+            env.OPENAI_API_KEY = keys.custom;
         // Keep the endpoint outside workspace config/CLI args. The core loader
         // materializes this into providers.custom and retains the legacy variable as
         // a compatibility fallback for older installations.
@@ -392,7 +422,7 @@ class minitokSidebar {
                 return;
             }
         }
-        const commands = new Set(["device-login", "device-logout", "show-output", "stop", "interrupt", "approve", "reject", "open-evidence", "open-diff", "restore-session", "mcp-status", "mcp-connect", "mcp-list", "sessions", "clear-history", "info", "discover-models", "activate", "attach-file", "attach-folder", "attach-problems", "settings", "save-settings", "update", "run", "dry-run"]);
+        const commands = new Set(["device-login", "device-logout", "show-output", "stop", "interrupt", "approve", "reject", "open-evidence", "open-diff", "restore-session", "mcp-status", "mcp-connect", "mcp-list", "sessions", "clear-history", "info", "discover-models", "validate-key", "activate", "attach-file", "attach-folder", "attach-problems", "settings", "save-settings", "update", "run", "dry-run"]);
         if (!message || typeof message.command !== "string" || !commands.has(message.command)) {
             this.view?.webview.postMessage({ type: "result", ok: false, text: "Unsupported command" });
             return;
@@ -483,6 +513,10 @@ class minitokSidebar {
         if (message.command === "discover-models") {
             await (0, entitlement_1.requireEntitlement)();
             await this.discoverModels(cwd, message.provider);
+            return;
+        }
+        if (message.command === "validate-key") {
+            await this.validateApiKey(message);
             return;
         }
         if (message.command === "activate") {
@@ -692,6 +726,71 @@ class minitokSidebar {
             }
             this.view?.webview.postMessage({ type: "models", ok: models.length > 0 || !error, text, provider: provider || "all", models });
         });
+    }
+    /**
+     * Lightweight key check: run `minitok models --discover --json` for just this
+     * provider with the stored key injected, and judge validity by whether the
+     * live discovery returned models for it. The extension owns SecretStorage, so
+     * the CLI alone cannot see the key — it must be injected here, mirroring the
+     * materialization contract in execute(): custom maps to OPENAI_API_KEY plus
+     * the endpoint variables. `validate-key` is sent right after save-settings,
+     * so the key being checked is already stored.
+     */
+    async validateApiKey(message) {
+        const provider = typeof message?.provider === "string" ? (0, workspace_1.normalizeProviderName)(message.provider) : "";
+        if (!isApiKeyProvider(provider)) {
+            this.view?.webview.postMessage({ type: "key-validation", provider: message?.provider, ok: false, reason: "Unknown provider" });
+            return;
+        }
+        const key = await this.context.secrets.get(apiKeySecretKey(provider));
+        if (!key) {
+            this.view?.webview.postMessage({ type: "key-validation", provider, ok: false, reason: "No key stored for this provider" });
+            return;
+        }
+        // Inject the key under the vendor variable the CLI's envMap reads. For
+        // custom, api_key_env is OPENAI_API_KEY (src/config/loader.js) and the
+        // endpoint travels in MINITOK_CUSTOM_BASE_URL.
+        const env = { minitok_default_provider: provider };
+        if (provider === "anthropic")
+            env.ANTHROPIC_API_KEY = key;
+        else if (provider === "openai")
+            env.OPENAI_API_KEY = key;
+        else if (provider === "google")
+            env.GOOGLE_API_KEY = key;
+        else
+            env.OPENAI_API_KEY = key; // custom
+        if (provider === "custom") {
+            const baseUrl = await this.context.secrets.get("minitok.secret.customBaseUrl");
+            if (baseUrl) {
+                env.MINITOK_CUSTOM_BASE_URL = baseUrl;
+                env.MINITOK_OPENAI_COMPATIBLE_BASE_URL = baseUrl;
+            }
+        }
+        const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+        try {
+            const processSpec = (0, workspace_1.spawnSpec)((0, workspace_1.cliPath)(), ["models", "--discover", "--json", provider]);
+            const result = await (0, run_process_1.runProcess)(processSpec.command, processSpec.args, {
+                spawnOptions: (0, workspace_1.spawnOptionsFor)(processSpec, { cwd, env }),
+                timeoutMs: 25000,
+            });
+            const text = String(result).trim();
+            let payload = null;
+            try {
+                payload = JSON.parse(text.slice(text.indexOf("{")));
+            }
+            catch {
+                payload = null;
+            }
+            const discovered = payload?.live?.[provider] || payload?.models?.[provider] || [];
+            const models = (Array.isArray(discovered) ? discovered : [])
+                .map((m) => (typeof m === "string" ? m : m?.id || m?.name))
+                .filter((m) => typeof m === "string" && /^[A-Za-z0-9._\-/]+$/.test(m));
+            const ok = models.length > 0;
+            this.view?.webview.postMessage({ type: "key-validation", provider, ok, reason: ok ? undefined : (redactOutputText(text.slice(0, 300)) || "No models returned") });
+        }
+        catch (error) {
+            this.view?.webview.postMessage({ type: "key-validation", provider, ok: false, reason: redactOutputText(String(error).slice(0, 300)) });
+        }
     }
     async readInfo(cwd) {
         (0, workspace_1.requireTrustedWorkspace)(cwd);
@@ -992,6 +1091,7 @@ class minitokSidebar {
         }
     }
     async saveSettings(message) {
+        let provider = (0, workspace_1.normalizeProviderName)(this.context.workspaceState.get("minitok.setting.provider", ""));
         if (message.settings)
             for (const [key, value] of Object.entries(message.settings)) {
                 if (key === "autoApprove" || key === "storeTaskText") {
@@ -999,11 +1099,35 @@ class minitokSidebar {
                 }
                 else if (/^(provider|model|showCost|evidencePath|enterBehavior|(?:plan|work|review|intel)\.(?:provider|model))$/.test(key)) {
                     await this.context.workspaceState.update(`minitok.setting.${key}`, value);
+                    if (key === "provider")
+                        provider = (0, workspace_1.normalizeProviderName)(String(value));
                 }
             }
+        // Migrate before storing new secrets so an explicit per-provider key in this
+        // message is never overwritten by the legacy single-key migration.
+        await migrateLegacyProviderApiKey(this.context.secrets, provider);
         if (message.secrets)
-            for (const [key, value] of Object.entries(message.secrets))
-                await this.context.secrets.store(`minitok.secret.${key}`, value);
+            for (const [key, value] of Object.entries(message.secrets)) {
+                if (key === "providerApiKeys" && value && typeof value === "object" && !Array.isArray(value)) {
+                    // Per-provider keys from the settings form. Each maps to its own
+                    // SecretStorage slot; absent providers keep whatever was stored.
+                    for (const [p, secret] of Object.entries(value)) {
+                        if (isApiKeyProvider(p) && typeof secret === "string" && secret) {
+                            await this.context.secrets.store(apiKeySecretKey(p), secret);
+                        }
+                    }
+                }
+                else if (key === "providerApiKey" && typeof value === "string") {
+                    // Legacy single-key message from an older webview: it always belongs to
+                    // the provider chosen in the settings form. Only the four CLI-known
+                    // providers get a slot; anything else has no environment contract.
+                    if (isApiKeyProvider(provider) && value)
+                        await this.context.secrets.store(apiKeySecretKey(provider), value);
+                }
+                else if (typeof value === "string") {
+                    await this.context.secrets.store(`minitok.secret.${key}`, value);
+                }
+            }
         this.view?.webview.postMessage({ type: "settings-saved" });
     }
     async checkUpdate() {
@@ -1018,7 +1142,11 @@ class minitokSidebar {
     }
     async readSettings() {
         const settings = Object.fromEntries(["provider", "model", "showCost", "evidencePath", "autoApprove", "storeTaskText", "enterBehavior", "plan.provider", "plan.model", "work.provider", "work.model", "review.provider", "review.model", "intel.provider", "intel.model"].map(key => [key, key === "autoApprove" || key === "storeTaskText" ? vscode.workspace.getConfiguration("minitok").get(key, false) : this.context.workspaceState.get(`minitok.setting.${key}`, undefined)]));
-        const secrets = { providerApiKeySet: Boolean(await this.context.secrets.get("minitok.secret.providerApiKey")), customBaseUrlSet: Boolean(await this.context.secrets.get("minitok.secret.customBaseUrl")) };
+        await migrateLegacyProviderApiKey(this.context.secrets, (0, workspace_1.normalizeProviderName)(String(settings.provider || "")));
+        const providerApiKeySet = { anthropic: false, openai: false, google: false, custom: false };
+        for (const p of API_KEY_PROVIDERS)
+            providerApiKeySet[p] = Boolean(await this.context.secrets.get(apiKeySecretKey(p)));
+        const secrets = { providerApiKeySet, customBaseUrlSet: Boolean(await this.context.secrets.get("minitok.secret.customBaseUrl")) };
         this.view?.webview.postMessage({ type: "settings", settings, secrets, version: cliRelease(this.context).version });
     }
     // The sidebar brand mark must render the same Harlekin 'm' glyph the Activity
