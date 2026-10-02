@@ -175,19 +175,31 @@ export async function deviceLogin(context: vscode.ExtensionContext, onStatus: (t
   await vscode.env.openExternal(vscode.Uri.parse(verificationUrl));
   const deadline = Date.now() + Math.min(Number(start.expires_in || start.expiresIn || 600) * 1000, 10 * 60 * 1000);
   let interval = Math.max(2000, Number(start.interval || 5) * 1000);
+  // Transient network failures (a dropped connection or the 15s request
+  // timeout while the user is still in the browser) must not kill the whole
+  // login. Retry a bounded number of times; the 10-minute deadline above still
+  // caps the total wait, and the cancellation token is checked on every tick.
+  const maxNetworkRetries = 2;
+  let networkRetries = 0;
   while (Date.now() < deadline) {
     if (cancellation?.cancelled) throw Object.assign(new Error("Browser sign-in was cancelled."), { kind: "login" as const, code: "cancelled" });
     await new Promise(resolve => setTimeout(resolve, interval));
     try {
       const result = await request("/v1/auth/device/token", { device_code: deviceCode });
       if (result.access_token || result.accessToken) { await save(context, result); return normalizeCustomerSession(result); }
+      networkRetries = 0;
     } catch (error: any) {
       // RFC 8628: "authorization_pending" means keep polling, "slow_down" means
       // poll less often. Treating slow_down as fatal aborted valid logins; the
       // message comparison stays as a fallback for servers that only send text.
       const pollingCode = typeof error?.code === "string" ? error.code : error?.message;
-      if (pollingCode === "authorization_pending") continue;
-      if (pollingCode === "slow_down") { interval += 5000; continue; }
+      if (pollingCode === "authorization_pending") { networkRetries = 0; continue; }
+      if (pollingCode === "slow_down") { networkRetries = 0; interval += 5000; continue; }
+      if (error?.kind === "network" && networkRetries < maxNetworkRetries && Date.now() < deadline) {
+        networkRetries += 1;
+        onStatus(`Connection interrupted; still waiting for browser authorization (retry ${networkRetries}/${maxNetworkRetries}).`);
+        continue;
+      }
       throw Object.assign(error instanceof Error ? error : new Error(String(error)), { kind: error?.kind || "login" });
     }
   }
