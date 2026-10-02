@@ -392,7 +392,7 @@ class minitokSidebar {
                 return;
             }
         }
-        const commands = new Set(["device-login", "device-logout", "show-output", "stop", "interrupt", "approve", "reject", "open-evidence", "open-diff", "restore-session", "mcp-status", "mcp-connect", "mcp-list", "history", "sessions", "clear-history", "info", "discover-models", "activate", "attach-file", "attach-folder", "attach-problems", "settings", "save-settings", "update", "run", "dry-run"]);
+        const commands = new Set(["device-login", "device-logout", "show-output", "stop", "interrupt", "approve", "reject", "open-evidence", "open-diff", "restore-session", "mcp-status", "mcp-connect", "mcp-list", "sessions", "clear-history", "info", "discover-models", "activate", "attach-file", "attach-folder", "attach-problems", "settings", "save-settings", "update", "run", "dry-run"]);
         if (!message || typeof message.command !== "string" || !commands.has(message.command)) {
             this.view?.webview.postMessage({ type: "result", ok: false, text: "Unsupported command" });
             return;
@@ -465,10 +465,6 @@ class minitokSidebar {
         }
         if (message.command === "mcp-list") {
             this.listMcpHosts();
-            return;
-        }
-        if (message.command === "history") {
-            this.view?.webview.postMessage({ type: "history", items: this.context.workspaceState.get("minitok.history", []) });
             return;
         }
         if (message.command === "sessions") {
