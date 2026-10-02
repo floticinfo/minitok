@@ -98,6 +98,7 @@
   },
   "overrides": {
     "node-forge": "^1.4.0",
+    "@opentelemetry/core": "^2.8.0",
     "dify-ai-provider": {
       "@ai-sdk/provider-utils": {
         "undici": "^8.10.1"
