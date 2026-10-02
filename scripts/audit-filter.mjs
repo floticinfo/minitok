@@ -7,8 +7,7 @@
 // performs RSA PKCS#1 v1.5 signature verification through it, so the advisory
 // is non-exploitable in this codebase. The check re-arms automatically once a
 // fixed node-forge ships and npm stops reporting it.
-import { execFileSync } from "node:child_process";
-import path from "node:path";
+import { execSync } from "node:child_process";
 
 // Root-cause advisories that have no patched release and are non-exploitable
 // in this codebase (see header). Package names, not GHSA ids, so the check
@@ -17,10 +16,9 @@ const TOLERATED_ROOTS = new Set(["node-forge", "@opentelemetry/core", "@ai-sdk/p
 
 function auditReport() {
   try {
-    // Resolve npm's CLI entrypoint from the running Node installation so we do
-    // not depend on PATH or on cmd shims (which fail to spawn in some shells).
-    const npmCli = path.join(path.dirname(process.execPath), "node_modules", "npm", "bin", "npm-cli.js");
-    return JSON.parse(execFileSync(process.execPath, [npmCli, "audit", "--json"], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }));
+    // Run npm through the shell: npm is always on PATH in both our dev and CI
+    // environments, and this avoids cmd-shim spawn quirks on Windows.
+    return JSON.parse(execSync("npm audit --json", { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], maxBuffer: 32 * 1024 * 1024 }));
   } catch (error) {
     if (error.stdout) return JSON.parse(error.stdout);
     throw error;
