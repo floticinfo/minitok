@@ -263,7 +263,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
       try { await requireEntitlement(); }
       catch (error) { this.view?.webview.postMessage({ type: "entitlement", ok: false, text: redactOutputText(String(error)) }); return; }
     }
-    const commands = new Set(["device-login", "device-logout", "show-output", "stop", "interrupt", "approve", "reject", "open-evidence", "open-diff", "restore-session", "mcp-status", "mcp-connect", "mcp-list", "history", "sessions", "clear-history", "info", "discover-models", "activate", "attach-file", "attach-folder", "attach-problems", "settings", "save-settings",  "update", "run", "dry-run"]);
+    const commands = new Set(["device-login", "device-logout", "show-output", "stop", "interrupt", "approve", "reject", "open-evidence", "open-diff", "restore-session", "mcp-status", "mcp-connect", "mcp-list", "sessions", "clear-history", "info", "discover-models", "activate", "attach-file", "attach-folder", "attach-problems", "settings", "save-settings",  "update", "run", "dry-run"]);
     if (!message || typeof message.command !== "string" || !commands.has(message.command)) { this.view?.webview.postMessage({ type: "result", ok: false, text: "Unsupported command" }); return; }
     if (message.task !== undefined && (typeof message.task !== "string" || message.task.length > 20000)) { this.view?.webview.postMessage({ type: "result", ok: false, text: "Task is invalid or too long" }); return; }
     const cwd = workspacePath();
@@ -292,7 +292,6 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
     if (message.command === "mcp-status") { await this.checkMcpHealth(); return; }
     if (message.command === "mcp-connect") { requireTrustedWorkspace(workspacePath()); await this.connectMcp(message.target); return; }
     if (message.command === "mcp-list") { this.listMcpHosts(); return; }
-    if (message.command === "history") { this.view?.webview.postMessage({ type: "history", items: this.context.workspaceState.get<Array<Record<string, unknown>>>("minitok.history", []) }); return; }
     if (message.command === "sessions") { this.view?.webview.postMessage({ type: "sessions", items: this.context.workspaceState.get<Array<Record<string, unknown>>>("minitok.history", []) }); return; }
     if (message.command === "clear-history") { await this.context.workspaceState.update("minitok.history", []); this.view?.webview.postMessage({ type: "history-cleared", text: "Local Extension run history cleared. Repository evidence, checkpoints, and patches were preserved." }); return; }
     if (message.command === "info") { await this.readInfo(cwd); return; }

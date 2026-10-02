@@ -156,10 +156,9 @@ function webviewHandledTypes() {
   return out;
 }
 
-// `history` is posted by sidebar.ts and matched by no handler in sidebar.html.
-// The round trip is dead on both ends, so removing one side is safe; until that
-// cleanup happens, list it so a *new* orphan cannot hide behind it.
-const KNOWN_UNHANDLED_TYPES = ["history"];
+// No known unhandled types: any posted type without a webview handler fails the
+// test so a new orphan cannot hide behind a sealed exception.
+const KNOWN_UNHANDLED_TYPES = [];
 
 test("every message type the host posts is handled by the webview", () => {
   const handled = webviewHandledTypes();
