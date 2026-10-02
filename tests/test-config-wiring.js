@@ -12,7 +12,7 @@ const os = require("node:os");
 const path = require("node:path");
 
 const ROOT = path.join(__dirname, "..");
-const { loadConfig, DEFAULTS } = require(path.join(ROOT, "src", "config", "loader.js"));
+const { loadConfig, DEFAULTS, resolveProviderName } = require(path.join(ROOT, "src", "config", "loader.js"));
 const { applyChanges, DEFAULT_BLOCKED_EXTENSIONS } = require(path.join(ROOT, "src", "pipeline", "implementer.js"));
 
 const loopSource = fs.readFileSync(path.join(ROOT, "src", "pipeline", "loop.js"), "utf8");
@@ -66,8 +66,9 @@ test("the pipeline consumes the options the CLI and configuration expose", () =>
   // Both call sites — already-confirmed and first-confirmation — must carry those
   // options, not just one of them.
   assert.equal((loopSource.match(/applyChanges\(repoRoot, implResult\.changes, opts\.dryRun, applyOptions\)/g) || []).length, 2);
-  // --coding-adapter / --research-adapter / --review-adapter map onto roles.
-  assert.match(loopSource, /const adapterOverrides = \{ work: opts\.codingAdapter, intel: opts\.researchAdapter, review: opts\.reviewAdapter \}/);
+  // --plan-adapter / --coding-adapter / --research-adapter / --review-adapter
+  // map onto roles.
+  assert.match(loopSource, /const adapterOverrides = \{ plan: opts\.planAdapter, work: opts\.codingAdapter, intel: opts\.researchAdapter, review: opts\.reviewAdapter \}/);
   // validation.enabled, max_changed_files, and confidence_threshold are enforced.
   assert.match(loopSource, /const validationEnabled = config\.validation\?\.enabled !== false/);
   assert.match(loopSource, /maxChangedFiles > 0 && changeList\.length > maxChangedFiles/);
@@ -97,6 +98,23 @@ test("role provider and model environment overrides reach the loaded config", ()
       else process.env[name] = previous[name];
     }
   }
+
+test("an empty role provider env var falls back instead of failing validation", () => {
+  // The extension passes an empty string when a role override is cleared;
+  // coerceValue turns it into null and the loader must treat that as "use the
+  // default", not as a ConfigError.
+  const previous = process.env.MINITOK_PLAN_PROVIDER;
+  try {
+    process.env.MINITOK_PLAN_PROVIDER = "";
+    const config = loadConfig(path.join(os.tmpdir(), "minitok-does-not-exist.yml"));
+    assert.equal(config.roles.plan.provider, "");
+    assert.equal(resolveProviderName(config, "plan"), "openai");
+  } finally {
+    if (previous === undefined) delete process.env.MINITOK_PLAN_PROVIDER;
+    else process.env.MINITOK_PLAN_PROVIDER = previous;
+  }
+});
+
 });
 
 test("CLI role adapter overrides win over default_provider in preflight and pipeline", () => {

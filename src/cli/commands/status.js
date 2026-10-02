@@ -104,8 +104,10 @@ async function cmdStatusHuman(options = {}) {
   console.log(`\nProviders: ${providers.length > 0 ? providers.join(", ") : "none detected"}`);
   console.log(`Config:    ${require("fs").existsSync(configPath) ? configPath : "missing — run: minitok migrate"}`);
   console.log(`Roles:`);
-  for (const [role] of Object.entries(config.roles)) {
-    console.log(`  ${role.padEnd(8)} → ${resolveProviderName(config, role) || "unset"}`);
+  for (const [role, roleConfig] of Object.entries(config.roles)) {
+    const resolved = resolveProviderName(config, role) || "unset";
+    const model = roleConfig.model || config.model || "";
+    console.log(`  ${role.padEnd(8)} → ${resolved}${model ? ` (${model})` : ""}`);
   }
 
   return 0;
@@ -147,7 +149,7 @@ async function cmdStatus(options = {}) {
     }
     const providers = config ? await detectAvailableProviders(config) : [];
     const payload = gate.entitlement?.payload || gate.entitlement;
-    return { version: minitokVersion, server: resolveServerUrl({ cliServer: options.server }), entitlement: { state: gate.state, allowed: gate.allowed === true, plan: payload?.plan_id || null, expires_at: payload?.expires_at || null, ...(gate.error ? { error: gate.error } : {}) }, workspace, ...(workspaceError ? { workspace_error: workspaceError } : {}), ...(configError ? { config_error: { path: configPath, message: configError } } : {}), providers, roles: config ? Object.fromEntries(Object.keys(config.roles).map(role => [role, resolveProviderName(config, role) || null])) : {} };
+    return { version: minitokVersion, server: resolveServerUrl({ cliServer: options.server }), entitlement: { state: gate.state, allowed: gate.allowed === true, plan: payload?.plan_id || null, expires_at: payload?.expires_at || null, ...(gate.error ? { error: gate.error } : {}) }, workspace, ...(workspaceError ? { workspace_error: workspaceError } : {}), ...(configError ? { config_error: { path: configPath, message: configError } } : {}), providers, roles: config ? Object.fromEntries(Object.entries(config.roles).map(([role, roleConfig]) => [role, { provider: resolveProviderName(config, role) || null, model: roleConfig.model || config.model || null }])) : {} };
   }
   return cmdStatusHuman(options);
 }

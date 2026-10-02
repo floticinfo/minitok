@@ -2,7 +2,7 @@
 
 const { loadConfig } = require("../../config/loader");
 const { detectAvailableProviders } = require("../../llm/provider");
-const { listModels, discoverModels, formatModel } = require("../../llm/models");
+const { listModels, discoverModels, formatModel, ensureFreshCatalog } = require("../../llm/models");
 
 function register(program) {
   program
@@ -12,10 +12,11 @@ function register(program) {
     .action(async (provider, opts) => {
       try {
         const config = loadConfig();
+        const catalogRefresh = await ensureFreshCatalog(config);
         const available = await detectAvailableProviders(config);
 
         if (opts.discover) {
-          if (opts.json) { const discovered = await discoverModels(config.providers || {}); console.log(JSON.stringify({ available, ...discovered })); return; }
+          if (opts.json) { const discovered = await discoverModels(config.providers || {}); console.log(JSON.stringify({ available, catalog_updated_at: discovered.catalog_updated_at, ...discovered })); return; }
           console.log("Discovering models from provider APIs...\n");
           const result = await discoverModels(config.providers || {});
 
@@ -51,7 +52,7 @@ function register(program) {
             console.log("   These will work but lack metadata (context window, reasoning info).\n");
           }
         } else {
-          if (opts.json) { console.log(JSON.stringify({ available, models: listModels(provider) })); return; }
+          if (opts.json) { console.log(JSON.stringify({ available, catalog_updated_at: catalogRefresh.updated_at, models: listModels(provider) })); return; }
           // Offline catalog display
           const models = listModels(provider);
           const grouped = {};
@@ -68,6 +69,7 @@ function register(program) {
             console.log();
           }
 
+          if (catalogRefresh.updated) console.log(`Model catalog updated from remote (updated_at: ${catalogRefresh.updated_at || "unknown"})`);
           console.log("Use --discover to fetch live model list from provider APIs");
           console.log("Provider status: available = API key configured, unavailable = not configured");
         }

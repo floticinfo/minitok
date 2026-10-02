@@ -649,7 +649,7 @@ class minitokSidebar {
     async discoverModels(cwd, provider) {
         (0, workspace_1.requireTrustedWorkspace)(cwd);
         await (0, entitlement_1.requireEntitlement)();
-        const args = ["models", "--discover"];
+        const args = ["models", "--json"];
         if (provider)
             args.splice(1, 0, provider);
         // cliPath() resolves the real entry point; the configured setting alone
@@ -657,14 +657,40 @@ class minitokSidebar {
         const spec = (0, workspace_1.spawnSpec)((0, workspace_1.cliPath)(), args);
         (0, node_child_process_1.execFile)(spec.command, spec.args, { ...(0, workspace_1.spawnOptionsFor)(spec, { cwd }), timeout: 30000 }, (error, stdout, stderr) => {
             const text = redactOutputText(error ? stderr || error.message : stdout);
-            // Parse model IDs from CLI output. Handles common formats:
-            // "claude-sonnet-4-20250514", "gpt-4o", "o1-preview", "gemini-2.0-flash",
-            // "llama-3.3-70b", "deepseek-v3", "qwen2.5-coder", etc.
-            // Excludes common header words that might match the pattern.
-            const headerWords = new Set(["models", "available", "provider", "default", "name", "id", "----"]);
-            const models = error ? [] : [...new Set((stdout.match(/(?:claude|gpt|o[134]|gemini|llama|deepseek|qwen|mistral|mixtral|phi|yi|solar|starcoder|codellama|gemma|command|dbrx|jamba|nova|spark|hunyuan|step|kimi|minimax|moonshot|zhipu|baichuan|internlm|chatglm|qwq|qvq|grok)[\w.:-]*|[\w][\w.-]*-[\w.-]+/gi) || [])
-                    .filter(id => id.length > 2 && !headerWords.has(id.toLowerCase()) && !/^\d/.test(id)))];
-            this.view?.webview.postMessage({ type: "models", ok: !error, text, provider: provider || "all", models });
+            // Parse the CLI's --json output instead of regex-scraping human text;
+            // non-JSON output exits non-zero for unavailable providers, which used
+            // to leave the webview with an empty list. Catalog entries are a stable
+            // offline fallback when live discovery has no API key.
+            const wanted = (provider || "").toLowerCase();
+            let models = [];
+            let parsed = false;
+            try {
+                const data = JSON.parse(stdout);
+                parsed = true;
+                const ids = new Set();
+                const live = data.live && wanted ? data.live[wanted] : undefined;
+                for (const id of Array.isArray(live) ? live : [])
+                    if (typeof id === "string")
+                        ids.add(id);
+                for (const m of Array.isArray(data.models) ? data.models : []) {
+                    if (m && typeof m.id === "string" && (!wanted || String(m.provider).toLowerCase() === wanted))
+                        ids.add(m.id);
+                }
+                for (const m of Array.isArray(data.catalog) ? data.catalog : []) {
+                    if (m && typeof m.id === "string" && (!wanted || String(m.provider).toLowerCase() === wanted))
+                        ids.add(m.id);
+                }
+                models = [...ids];
+            }
+            catch {
+                parsed = false;
+            }
+            if (!parsed && !error) {
+                const headerWords = new Set(["models", "available", "provider", "default", "name", "id", "----"]);
+                models = [...new Set((stdout.match(/(?:claude|gpt|o[134]|gemini|llama|deepseek|qwen|mistral|mixtral|phi|yi|solar|starcoder|codellama|gemma|command|dbrx|jamba|nova|spark|hunyuan|step|kimi|minimax|moonshot|zhipu|baichuan|internlm|chatglm|qwq|qvq|grok)[\w.:-]*|[\w][\w.-]*-[\w.-]+/gi) || [])
+                        .filter(id => id.length > 2 && !headerWords.has(id.toLowerCase()) && !/^\d/.test(id)))];
+            }
+            this.view?.webview.postMessage({ type: "models", ok: models.length > 0 || !error, text, provider: provider || "all", models });
         });
     }
     async readInfo(cwd) {

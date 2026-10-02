@@ -304,10 +304,11 @@ async function runPipelineInWorkspace(task, opts = {}) {
   // (paid tokens) and still demanded intel provider credentials.
   const researchEnabled = config.execution?.research_enabled !== false;
 
-  // --coding-adapter / --research-adapter / --review-adapter select a role
-  // explicitly. Store the selection in both provider and adapter fields so the
-  // resolver and status output agree, even when default_provider is configured.
-  const adapterOverrides = { work: opts.codingAdapter, intel: opts.researchAdapter, review: opts.reviewAdapter };
+  // --plan-adapter / --coding-adapter / --research-adapter / --review-adapter
+  // select a role explicitly. Store the selection in both provider and adapter
+  // fields so the resolver and status output agree, even when default_provider
+  // is configured.
+  const adapterOverrides = { plan: opts.planAdapter, work: opts.codingAdapter, intel: opts.researchAdapter, review: opts.reviewAdapter };
   for (const [role, adapter] of Object.entries(adapterOverrides)) {
     if (typeof adapter !== "string" || !adapter.trim()) continue;
     // A CLI role-adapter flag is an explicit role selection. Store it as the
@@ -503,32 +504,36 @@ async function runPipelineInWorkspace(task, opts = {}) {
   // instead of merely compressing context and retrying.
   const escfg = (config.execution && config.execution.escalation) || {};
   const failureAnalyzer = new FailureAnalyzer();
-  const workProviderName = resolveProviderName(config, "work", opts.providerOverride) || defaultProvider;
-  const workCanonical = normalizeProvider(workProviderName);
   const escalationEngine = new EscalationEngine({
     failureThreshold: Number(escfg.failure_threshold) || 2,
     tokenHardLimit: hardTokenLimit,
     tokenStopRatio: Number(escfg.token_stop_ratio) || 0.9,
     escalationModels: escfg.models || {},
     role: "work",
-    modelResolver: (targetTier) => {
-      const m = findEscalationModel(workCanonical, targetTier);
+    // Role-aware: resolves the escalation model against the provider that owns
+    // the failing role (plan/work/review), so a planning failure escalates the
+    // plan role's own provider instead of always touching the work provider.
+    modelResolver: (role, targetTier) => {
+      const providerName = roleProviders[role]?.name
+        || resolveProviderName(config, role, opts.providerOverride)
+        || defaultProvider;
+      const m = findEscalationModel(normalizeProvider(providerName), targetTier);
       return m ? m.id : null;
     },
   });
 
-  /** Apply a model-tier escalation to the work role. */
-  const escalateWorkRole = (targetTier, model) => {
-    const roleCfg = config.roles.work || {};
+  /** Apply a model-tier escalation to the failing role. */
+  const escalateRole = (role, targetTier, model) => {
+    const roleCfg = config.roles[role] || (config.roles[role] = {});
     if (model) {
       roleCfg.model = model;
-      console.log(`  Escalating work model -> ${model} (tier: ${targetTier})`);
+      console.log(`  Escalating ${role} model -> ${model} (tier: ${targetTier})`);
     } else {
       // No catalog model for this provider — enable reasoning/thinking instead.
       roleCfg.effort = "high";
       roleCfg.thinking = "enabled";
       roleCfg.thinking_budget = roleCfg.thinking_budget || 20000;
-      console.log(`  Escalating work to high-effort/reasoning mode (tier: ${targetTier})`);
+      console.log(`  Escalating ${role} to high-effort/reasoning mode (tier: ${targetTier})`);
     }
   };
 
@@ -651,9 +656,9 @@ async function runPipelineInWorkspace(task, opts = {}) {
     if (planResult.plan.error) {
       const _pfCat = failureAnalyzer.categorize(planResult.plan.error || "");
       lastFailureCategory = _pfCat;
-      const _pfRec = escalationEngine.recordCycleOutcome(originalGoal, { success: false, category: _pfCat, tokens: (intelResult.tokens?.input || 0) + (intelResult.tokens?.output || 0) });
+      const _pfRec = escalationEngine.recordCycleOutcome(originalGoal, { success: false, category: _pfCat, tokens: (intelResult.tokens?.input || 0) + (intelResult.tokens?.output || 0), role: "plan" });
       if (_pfRec.stop) { console.log(`\n${_pfRec.stopReason}`); if (_pfRec.humanEscalation) humanEscalation = true; break; }
-      if (_pfRec.escalate) escalateWorkRole(_pfRec.targetTier, _pfRec.model);
+      if (_pfRec.escalate) escalateRole(_pfRec.role, _pfRec.targetTier, _pfRec.model);
       pushCycle({ cycle, task, plan: planResult.plan, status: "plan_failed" }, { status: "model_output_invalid", responseValid: false });
       continue;
     }
@@ -671,9 +676,9 @@ async function runPipelineInWorkspace(task, opts = {}) {
       console.log(`     Implement: ERROR: ${implResult.changes.error}`);
       const _icCat = failureAnalyzer.categorize(implResult.changes.error || "");
       lastFailureCategory = _icCat;
-      const _icRec = escalationEngine.recordCycleOutcome(originalGoal, { success: false, category: _icCat, tokens: (intelResult.tokens?.input || 0) + (intelResult.tokens?.output || 0) + (planResult.tokens?.input || 0) + (planResult.tokens?.output || 0) });
+      const _icRec = escalationEngine.recordCycleOutcome(originalGoal, { success: false, category: _icCat, tokens: (intelResult.tokens?.input || 0) + (intelResult.tokens?.output || 0) + (planResult.tokens?.input || 0) + (planResult.tokens?.output || 0), role: "work" });
       if (_icRec.stop) { console.log(`\n${_icRec.stopReason}`); if (_icRec.humanEscalation) humanEscalation = true; break; }
-      if (_icRec.escalate) escalateWorkRole(_icRec.targetTier, _icRec.model);
+      if (_icRec.escalate) escalateRole(_icRec.role, _icRec.targetTier, _icRec.model);
       pushCycle({ cycle, task, plan: planResult.plan, implement: implResult.changes, status: "impl_failed" }, { status: "model_output_invalid", responseValid: false });
       continue;
     }
@@ -786,13 +791,19 @@ async function runPipelineInWorkspace(task, opts = {}) {
     const failureCategory = failureEvidence ? failureAnalyzer.categorize(failureEvidence) : "unknown";
     const cycleSuccess = verdict === "APPROVE";
     if (!cycleSuccess) lastFailureCategory = failureCategory;
-    const escRec = escalationEngine.recordCycleOutcome(originalGoal, { success: cycleSuccess, category: failureCategory, tokens: cycleTokens });
+    // Pick the role to escalate: a model-side review failure escalates the
+    // review role, a verification failure the work role; mixed evidence falls
+    // back to work (the implementer).
+    const failedRole = !cycleSuccess
+      ? (implResult.changes?.error || checkPassed === false ? "work" : "review")
+      : "work";
+    const escRec = escalationEngine.recordCycleOutcome(originalGoal, { success: cycleSuccess, category: failureCategory, tokens: cycleTokens, role: failedRole });
     if (escRec.stop) {
       console.log(`\n${escRec.stopReason}`);
       if (escRec.humanEscalation) { humanEscalation = true; lastFailureCategory = "timeout"; }
       break;
     }
-    if (escRec.escalate) escalateWorkRole(escRec.targetTier, escRec.model);
+    if (escRec.escalate) escalateRole(escRec.role, escRec.targetTier, escRec.model);
 
     // If approved, goal-directed: check if overall goal is achieved
     // The goal-progress gate uses the configured confidence threshold instead of a

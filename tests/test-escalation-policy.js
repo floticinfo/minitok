@@ -154,6 +154,59 @@ describe("EscalationEngine: model escalation on repeated failure", () => {
   });
 });
 
+describe("EscalationEngine: per-role escalation", () => {
+  it("resolves the escalation model against the failing role, not always work", () => {
+    const engine = new EscalationEngine({
+      failureThreshold: 2,
+      tokenHardLimit: 2_000_000,
+      tokenStopRatio: 1,
+      escalationModels: { plan: "plan-pro-max" },
+    });
+    engine.recordCycleOutcome("g", { success: false, category: "test", tokens: 0, role: "plan" });
+    const rec = engine.recordCycleOutcome("g", { success: false, category: "test", tokens: 0, role: "plan" });
+    assert.equal(rec.escalate, true);
+    assert.equal(rec.role, "plan");
+    assert.equal(rec.model, "plan-pro-max");
+  });
+
+  it("passes the failing role to a role-aware modelResolver", () => {
+    const calls = [];
+    const engine = new EscalationEngine({
+      failureThreshold: 2,
+      tokenHardLimit: 2_000_000,
+      tokenStopRatio: 1,
+      modelResolver: (role, tier) => { calls.push([role, tier]); return `${role}-${tier}`; },
+    });
+    engine.recordCycleOutcome("g", { success: false, category: "test", tokens: 0, role: "review" });
+    const rec = engine.recordCycleOutcome("g", { success: false, category: "test", tokens: 0, role: "review" });
+    assert.equal(rec.escalate, true);
+    assert.equal(rec.role, "review");
+    assert.equal(rec.model, "review-balanced");
+    assert.deepEqual(calls, [["review", "balanced"]]);
+  });
+
+  it("still accepts a legacy single-argument modelResolver (tier only)", () => {
+    const engine = new EscalationEngine({
+      failureThreshold: 2,
+      tokenHardLimit: 2_000_000,
+      tokenStopRatio: 1,
+      modelResolver: (tier) => `legacy-${tier}`,
+    });
+    engine.recordCycleOutcome("g", { success: false, category: "test", tokens: 0, role: "plan" });
+    const rec = engine.recordCycleOutcome("g", { success: false, category: "test", tokens: 0, role: "plan" });
+    assert.equal(rec.escalate, true);
+    assert.equal(rec.role, "plan");
+    assert.equal(rec.model, "legacy-balanced");
+  });
+
+  it("falls back to the engine's default role when the outcome has no role", () => {
+    const engine = new EscalationEngine({ failureThreshold: 2, tokenHardLimit: 2_000_000, tokenStopRatio: 1 });
+    engine.recordCycleOutcome("g", { success: false, category: "test", tokens: 0 });
+    const rec = engine.recordCycleOutcome("g", { success: false, category: "test", tokens: 0 });
+    assert.equal(rec.role, "work");
+  });
+});
+
 describe("EscalationEngine: token hard guardrail", () => {
   it("stops and escalates to human when tokens approach the hard limit", () => {
     const engine = new EscalationEngine({ failureThreshold: 5, tokenHardLimit: 1000, tokenStopRatio: 0.9 });

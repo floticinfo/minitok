@@ -3,7 +3,7 @@
   "displayName": "minitok",
   "description": "Verified coding workflows for the terminal",
   "publisher": "Flotic",
-  "version": "0.3.21",
+  "version": "0.3.22",
   "minitok": {
     "cliPackage": "@flotic/minitok",
     "cliVersion": "1.4.20"
@@ -135,7 +135,7 @@
         "minitok.cliPath": {
           "type": "string",
           "default": "",
-          "description": "Optional path to the Node.js minitok CLI (…/node_modules/@flotic/minitok/bin/minitok.js). Leave empty to auto-detect the npm package entry point, then minitok.cmd/minitok. Python minitok executables are not supported."
+          "description": "Optional path to the Node.js minitok CLI (??node_modules/@flotic/minitok/bin/minitok.js). Leave empty to auto-detect the npm package entry point, then minitok.cmd/minitok. Python minitok executables are not supported."
         },
         "minitok.serverUrl": {
           "type": "string",

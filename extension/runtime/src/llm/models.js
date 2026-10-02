@@ -2,6 +2,7 @@
 
 const { authManager } = require("../auth");
 const { CAMELSTREAM_PROVIDER, CAMELSTREAM_BASE_URL, CAMELSTREAM_MODEL } = require("./camelstream");
+const catalogUpdater = require("./catalog-update");
 
 /**
  * Model registry — curated catalog + live API discovery.
@@ -62,12 +63,17 @@ const CATALOG = [
   { id: "gemini-2.0-flash-lite", display: "2.0 Flash-Lite (SHUT DOWN)", provider: "google", tier: "deprecated", context_window: 1048576, max_output: 8192, release_date: "2025-02-05", reasoning: { supported: false } },
 ];
 
+function effectiveCatalog() {
+  return catalogUpdater.getCatalog(CATALOG).models;
+}
+
 function listModels(providerFilter) {
-  return providerFilter ? CATALOG.filter(m => m.provider === providerFilter.toLowerCase()) : [...CATALOG];
+  const models = effectiveCatalog();
+  return providerFilter ? models.filter(m => m.provider === providerFilter.toLowerCase()) : [...models];
 }
 
 function findModel(modelId) {
-  return CATALOG.find(m => m.id === modelId);
+  return effectiveCatalog().find(m => m.id === modelId);
 }
 
 /**
@@ -131,7 +137,7 @@ async function fetchGoogleModels(baseUrl, apiKey, auth, providerName = "google")
 
 /** Discover live models from all configured providers + merge with catalog */
 async function discoverModels(providers) {
-  const result = { catalog: [...CATALOG], live: {}, unknown: [], custom: [] };
+  const result = { catalog: listModels(), catalog_updated_at: catalogUpdater.getCatalog(CATALOG).updated_at, live: {}, unknown: [], custom: [] };
 
   if (await authManager.isAvailable("openai", providers.openai || {})) {
     const cfg = providers.openai || {};
@@ -208,4 +214,4 @@ function formatModel(m) {
   return `  ${m.id.padEnd(32)} ${m.display.padEnd(24)} [${ctx} in, ${out} out]${reasoning}`;
 }
 
-module.exports = { CATALOG, listModels, findModel, findModelsByTier, findEscalationModel, fetchOpenAIModels, fetchGoogleModels, discoverModels, formatModel };
+module.exports = { CATALOG, listModels, findModel, findModelsByTier, findEscalationModel, fetchOpenAIModels, fetchGoogleModels, discoverModels, formatModel, ensureFreshCatalog: catalogUpdater.ensureFreshCatalog, catalogUpdater };

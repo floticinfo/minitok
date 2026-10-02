@@ -141,7 +141,7 @@ async function cmdDoctor(opts = {}) {
     const providerConfig = config.providers?.[availableProviderName] || config.providers?.[providerName] || {};
     const providerOk = providers.includes(availableProviderName) || cfg.adapter === "mock";
     const detail = providerOk
-      ? `provider=${providerName}`
+      ? `provider=${providerName}${cfg.model ? ` model=${cfg.model}` : ""}`
       : `provider=${providerName || "unset"}; configure roles.${role}.provider, default_provider, or a provider API key`;
     allOk = check(`  ${role}`, providerOk, detail) && allOk;
     if (providerOk && providerName && !providerConfig.models?.length && cfg.model) {

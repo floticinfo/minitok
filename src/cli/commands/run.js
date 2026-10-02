@@ -124,7 +124,7 @@ async function cmdRun(task, opts = {}) {
     // `minitok doctor --verify` is the command that audits all of them.
     const canonical = normalizeProvider;
     const override = canonical(opts.providerOverride);
-    const adapterOverrides = { work: opts.codingAdapter, intel: opts.researchAdapter, review: opts.reviewAdapter };
+    const adapterOverrides = { plan: opts.planAdapter, work: opts.codingAdapter, intel: opts.researchAdapter, review: opts.reviewAdapter };
     const preflightRoles = JSON.parse(JSON.stringify(preflightConfig));
     for (const [role, adapter] of Object.entries(adapterOverrides)) {
       if (typeof adapter !== "string" || !adapter.trim()) continue;
@@ -213,6 +213,7 @@ async function cmdRun(task, opts = {}) {
       signal: opts.signal,
       autoAccept: policyDecision ? policyDecision.allowed === true && opts.autoAccept === true : opts.autoAccept === true,
       providerOverride: opts.providerOverride,
+      planAdapter: opts.planAdapter,
       codingAdapter: opts.codingAdapter,
       researchAdapter: opts.researchAdapter,
       reviewAdapter: opts.reviewAdapter,

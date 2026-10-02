@@ -74,6 +74,7 @@
     "goal/tool_registry.js",
     "goal/validator.js",
     "llm/camelstream.js",
+    "llm/catalog-update.js",
     "llm/live_provider.js",
     "llm/models.js",
     "llm/provider.js",
@@ -145,8 +146,8 @@
       "embedded": "266cb457823a66187f52d4cbb025f01009e89e24f7014c0e5aa48eb8a4d5f0b7"
     },
     "config/loader.js": {
-      "source": "7d787eab54485c62feee7c8c7661d944a665bf822dc34e540796729b5ea442a9",
-      "embedded": "7d787eab54485c62feee7c8c7661d944a665bf822dc34e540796729b5ea442a9"
+      "source": "54a8bc58ecf45e4e3b50f9d786e5598e38ff6ac9d3778057157cacc0ee184d75",
+      "embedded": "54a8bc58ecf45e4e3b50f9d786e5598e38ff6ac9d3778057157cacc0ee184d75"
     },
     "context/compaction.js": {
       "source": "aee92eaf54f8c6881192679baa4f334c58c9816a88790730320c9ad85e16c835",
@@ -229,8 +230,8 @@
       "embedded": "8d12c32011d47bb3488edadec3f7173d79a39e8119389fd57621f5e9b858e9a9"
     },
     "evolution/policy.js": {
-      "source": "c2aca28335f7fe49bb14eab80e240f840a07e08486b9ea701263fa7d89217fc6",
-      "embedded": "c2aca28335f7fe49bb14eab80e240f840a07e08486b9ea701263fa7d89217fc6"
+      "source": "f2950723fd4f9b85df3422ad882770fe100df43512bc5fce343e1bf5611c9e93",
+      "embedded": "f2950723fd4f9b85df3422ad882770fe100df43512bc5fce343e1bf5611c9e93"
     },
     "evolution/sanitize.js": {
       "source": "deb7ed58f25550cce0b39e9b8e090c627ab284d67ab85b218128f4c658c695c6",
@@ -392,13 +393,17 @@
       "source": "e40fea002e563fc4e6a395bcc761f0129f9e28896549346e92f003e55059c711",
       "embedded": "e40fea002e563fc4e6a395bcc761f0129f9e28896549346e92f003e55059c711"
     },
+    "llm/catalog-update.js": {
+      "source": "46b9be3eb284c489f16d85352d2a05b676bda99cfc79ed6b126a760d76c42b8b",
+      "embedded": "46b9be3eb284c489f16d85352d2a05b676bda99cfc79ed6b126a760d76c42b8b"
+    },
     "llm/live_provider.js": {
       "source": "408a26a2eb76334743a23dfb64a0faf6a54b17ad150ac04a5a3636d2bd74f250",
       "embedded": "408a26a2eb76334743a23dfb64a0faf6a54b17ad150ac04a5a3636d2bd74f250"
     },
     "llm/models.js": {
-      "source": "7a1d0c98b5fa1d978d6b9ba9735cc03bdb54171a52e09d4bef4b27c0553ba82e",
-      "embedded": "7a1d0c98b5fa1d978d6b9ba9735cc03bdb54171a52e09d4bef4b27c0553ba82e"
+      "source": "62f353d9cf69f3b9a48ddbff99d2a1806a9d3d08c27c31e96715fad9c7009364",
+      "embedded": "62f353d9cf69f3b9a48ddbff99d2a1806a9d3d08c27c31e96715fad9c7009364"
     },
     "llm/provider.js": {
       "source": "6f70274df2475bce80c7d3fd70ad30be2707389ea7546813243227f50e851f9f",
@@ -437,8 +442,8 @@
       "embedded": "ad47652be5c41133b3e3d5388882b8528bfcd246e8d1bcdb5b18f19f9448f744"
     },
     "pipeline/loop.js": {
-      "source": "42bdda36e720dea1794e1c0a71f42d9e6540d76cebb88db647482be03e8762fd",
-      "embedded": "42bdda36e720dea1794e1c0a71f42d9e6540d76cebb88db647482be03e8762fd"
+      "source": "90e25a0f6279b6baa3d23f8207db928a1b38b31a1f60e4f3a1dfc699b5ab2dd8",
+      "embedded": "90e25a0f6279b6baa3d23f8207db928a1b38b31a1f60e4f3a1dfc699b5ab2dd8"
     },
     "pipeline/next_task.js": {
       "source": "27974e88edf15b1bdf878f0d596e8bb91bac18d8f6ed156113488dcf01dfa973",

@@ -30,6 +30,11 @@ const ENV_ALLOWLIST = new Set([
   "minitok_execution_research_enabled", "minitok_validation_enabled", "minitok_validation_script_path",
   "minitok_validation_timeout_ms", "minitok_validation_confidence_threshold", "minitok_validation_max_changed_files",
 ]);
+// The pipeline maps one role to each LLM stage: plan (task planning and
+// next-task generation), work (implementation), review (verification), and
+// intel (repository intelligence, only when research is enabled). These are
+// the only roles the pipeline consumes; adding a role requires a consumer in
+// pipeline/loop.js, and removing one breaks a stage.
 const _ROLE_KEYS = new Set(["plan", "review", "work", "intel"]);
 
 const DEFAULTS = {
@@ -267,7 +272,13 @@ function validateConfig(config) {
   for (const [role, value] of Object.entries(config.roles || {})) {
     if (!_ROLE_KEYS.has(role)) throw new ConfigError(`Unknown role '${role}'. Supported roles: ${[..._ROLE_KEYS].join(", ")}`);
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new ConfigError(`roles.${role} must be a mapping`);
-    for (const key of ["provider", "model", "fallback_model"]) if (value[key] !== undefined && typeof value[key] !== "string") throw new ConfigError(`roles.${role}.${key} must be a string`);
+    // Env coercion turns an explicitly empty role setting ("") into null. Treat
+    // null like the built-in "" (fall through to the next source) instead of
+    // failing validation, otherwise clearing a per-role override breaks the run.
+    for (const key of ["provider", "model", "fallback_model"]) {
+      if (value[key] === null) value[key] = "";
+      if (value[key] !== undefined && typeof value[key] !== "string") throw new ConfigError(`roles.${role}.${key} must be a string`);
+    }
     for (const key of ["provider", "adapter"]) assertSafeProviderName(value[key], `roles.${role}.${key}`);
   }
   if (config.default_provider !== undefined && config.default_provider !== null && typeof config.default_provider !== "string") throw new ConfigError("default_provider must be a string");

@@ -83,7 +83,8 @@ const DEFAULT_TIER_CHAIN = ["fast", "balanced", "flagship", "frontier", "reasoni
  *
  * Mirrors Python version's orchestrator/escalation.py:
  * after N successive failures (or a single high-complexity error) the
- * work adapter is switched to a higher-tier model. When the token
+ * failing role's adapter is switched to a higher-tier model (per-role
+ * escalation; the default role is "work"). When the token
  * hard limit is approached the loop is stopped and escalated to a human
  * rather than merely compressing context and retrying.
  */
@@ -95,10 +96,15 @@ class EscalationEngine {
     this.tierChain = options.tierChain || DEFAULT_TIER_CHAIN;
     /** Explicit per-role escalation models (config-driven override). */
     this.escalationModels = options.escalationModels || {};
-    /** (targetTier) => modelId | null. Bound to the work provider by the loop. */
+    /**
+     * (role, targetTier) => modelId | null. Bound by the loop to a catalog
+     * lookup for the provider that owns the failing role.
+     * A legacy single-argument (targetTier) => modelId function is also
+     * accepted and treated as a resolver for the default role.
+     */
     this.modelResolver = options.modelResolver || (() => null);
     this._state = new Map();
-    /** Role whose adapter/model is escalated (typically "work" — the implementer). */
+    /** Default role whose adapter/model is escalated when an outcome carries no role. */
     this.role = options.role || "work";
   }
 
@@ -127,8 +133,10 @@ class EscalationEngine {
   /**
    * Record a cycle's outcome and return the escalation decision.
    * @param {string} goalKey
-   * @param {{ success: boolean, category?: string, tokens?: number }} outcome
-   * @returns {{ escalate: boolean, stop: boolean, humanEscalation: boolean, targetTier?: string, model?: string|null, reason?: string, stopReason?: string }}
+   * @param {{ success: boolean, category?: string, tokens?: number, role?: string }} outcome
+   *   outcome.role names the pipeline role whose failure triggered the
+   *   escalation (e.g. "plan" when planning failed). Defaults to this.role.
+   * @returns {{ escalate: boolean, stop: boolean, humanEscalation: boolean, role?: string, targetTier?: string, model?: string|null, reason?: string, stopReason?: string }}
    */
   recordCycleOutcome(goalKey, outcome = /** @type {{ success: boolean, category?: string, tokens?: number }} */ ({ success: false })) {
     const ctx = this._ctx(goalKey);
@@ -159,9 +167,10 @@ class EscalationEngine {
     const highComplexity = HIGH_COMPLEXITY_CATEGORIES.has(ctx.lastCategory);
     const thresholdMet = ctx.consecutiveFailures >= this.failureThreshold;
     if (!ctx.escalated && (thresholdMet || highComplexity)) {
+      const role = outcome.role || this.role;
       const targetTier = highComplexity ? "reasoning" : this._stepUpTier(ctx.tierIndex);
       const tierIndex = this.tierChain.indexOf(targetTier);
-      const model = this.resolveModel(this.role, targetTier);
+      const model = this.resolveModel(role, targetTier);
       ctx.tierIndex = tierIndex;
       // Cap at the reasoning tier — do not escalate beyond it.
       ctx.escalated = targetTier === "reasoning" || tierIndex >= this.tierChain.length - 1;
@@ -170,6 +179,7 @@ class EscalationEngine {
         escalate: true,
         stop: false,
         humanEscalation: false,
+        role,
         targetTier,
         model,
         reason: highComplexity
@@ -203,7 +213,13 @@ class EscalationEngine {
 
   resolveModel(role, targetTier) {
     if (this.escalationModels[role]) return this.escalationModels[role];
-    return typeof this.modelResolver === "function" ? this.modelResolver(targetTier) : null;
+    if (typeof this.modelResolver !== "function") return null;
+    // A resolver declared with two parameters is role-aware
+    // ((role, targetTier) => modelId); a legacy one-parameter resolver
+    // ((targetTier) => modelId) stays bound to its original role.
+    return this.modelResolver.length >= 2
+      ? this.modelResolver(role, targetTier)
+      : this.modelResolver(targetTier);
   }
 }
 
