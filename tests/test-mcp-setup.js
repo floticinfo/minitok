@@ -146,8 +146,10 @@ test("Cline integration fails closed on malformed JSON instead of overwriting it
 test("Cline rule and skill guidance is marker-idempotent", () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-cline-guidance-"));
   const previousHome = process.env.USERPROFILE;
+  const previousPosixHome = process.env.HOME;
   const previousData = process.env.CLINE_DATA_DIR;
   process.env.USERPROFILE = root;
+  process.env.HOME = root;
   process.env.CLINE_DATA_DIR = path.join(root, ".cline", "data");
   try {
     const first = clineIntegration.installRuleAndSkill();
@@ -161,6 +163,8 @@ test("Cline rule and skill guidance is marker-idempotent", () => {
   } finally {
     if (previousHome === undefined) delete process.env.USERPROFILE;
     else process.env.USERPROFILE = previousHome;
+    if (previousPosixHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousPosixHome;
     if (previousData === undefined) delete process.env.CLINE_DATA_DIR;
     else process.env.CLINE_DATA_DIR = previousData;
     fs.rmSync(root, { recursive: true, force: true });
