@@ -20,7 +20,7 @@ const runNpm = (stage, args) => {
       encoding: "utf8",
       stdio: "pipe",
       env: { ...process.env, CI: "1", npm_config_audit: "false", npm_config_fund: "false" },
-      timeout: 120000,
+      timeout: 300000,
     });
     process.stderr.write(`[packed-install] ${stage}: passed in ${Date.now() - started}ms\n`);
     return output;
@@ -29,6 +29,22 @@ const runNpm = (stage, args) => {
     process.stderr.write(`${error.stdout || ""}${error.stderr || ""}`);
     throw error;
   }
+};
+const runNpmWithRetry = (stage, args, attempts = 2) => {
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      return runNpm(stage, args);
+    } catch (error) {
+      lastError = error;
+      if (attempt < attempts && (error.code === "ETIMEDOUT" || error.signal === "SIGTERM")) {
+        process.stderr.write(`[packed-install] ${stage}: retrying (${attempt}/${attempts})\n`);
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError;
 };
 const runCli = (cli, consumer, args) => {
   const started = Date.now();
@@ -59,7 +75,7 @@ try {
   const consumer = path.join(prefix, "consumer");
   mkdirSync(consumer, { recursive: true });
   writeFileSync(path.join(consumer, "package.json"), JSON.stringify({ name: "packed-consumer", private: true }));
-  runNpm("npm install", ["install", "--prefix", consumer, "--ignore-scripts", ...npmNetworkFlags, archive]);
+  runNpmWithRetry("npm install", ["install", "--prefix", consumer, "--ignore-scripts", ...npmNetworkFlags, archive]);
   const packageRoot = path.join(consumer, "node_modules", "@flotic", "minitok");
   const cli = path.join(packageRoot, "bin", "minitok.js");
   if (!existsSync(cli)) throw new Error(`packed install did not resolve the package bin: ${cli}`);
