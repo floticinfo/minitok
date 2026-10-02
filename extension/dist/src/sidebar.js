@@ -168,7 +168,7 @@ class minitokSidebar {
             });
         });
     }
-    async execute(args, cwd) {
+    async execute(args, cwd, extraEnv = {}) {
         (0, workspace_1.requireTrustedWorkspace)(cwd);
         const cli = (0, workspace_1.cliPath)();
         const provider = (0, workspace_1.normalizeProviderName)(this.context.workspaceState.get("minitok.setting.provider", ""));
@@ -216,7 +216,7 @@ class minitokSidebar {
         const processSpec = (0, workspace_1.spawnSpec)(cli, args);
         this.output.appendLine(`[spawn] cli command=${JSON.stringify(processSpec.command)} args=${JSON.stringify(redactTaskArgs(processSpec.args, args[1] === "run" ? args[2] : ""))} cwd=${JSON.stringify(cwd)}`);
         return (0, run_process_1.runProcess)(processSpec.command, processSpec.args, {
-            spawnOptions: (0, workspace_1.spawnOptionsFor)(processSpec, { cwd, env, detached: process.platform !== "win32" }),
+            spawnOptions: (0, workspace_1.spawnOptionsFor)(processSpec, { cwd, env: { ...env, ...extraEnv }, detached: process.platform !== "win32" }),
             onProcess: child => { this.process = child; },
             onStdout: chunk => {
                 const text = chunk.toString();
@@ -542,13 +542,19 @@ class minitokSidebar {
             this.activeRunStartedAt = startedAt;
             const evidenceSetting = vscode.workspace.getConfiguration("minitok").get("evidencePath", ".minitok/evidence/runs/latest.json").trim() || ".minitok/evidence/runs/latest.json";
             (0, workspace_1.workspaceRelativePath)(cwd, evidenceSetting, "evidencePath");
-            const args = ["run", message.task, "--repo", cwd, "--evidence-path", evidenceSetting];
+            const args = ["run", message.task, "--repo", cwd, "--evidence-path", evidenceSetting, "--run-id", runId];
             if (message.command === "dry-run")
                 args.push("--dry-run");
             else if ((0, workspace_1.autoApprove)())
                 args.push("--auto-accept");
+            // P-2 fix: an admin session authorizes this run through a one-time,
+            // runId-bound server token instead of the local signed entitlement. The
+            // admin token itself stays in SecretStorage and never crosses into the
+            // child; the delegation token travels only in the environment and the
+            // CLI burns it at its entitlement gate.
+            const delegationEnv = await (0, entitlement_1.adminRunDelegationEnv)(this.context, runId);
             this.view?.webview.postMessage({ type: "started", runId });
-            const text = await this.execute(args, cwd);
+            const text = await this.execute(args, cwd, delegationEnv);
             const evidence = cwd ? this.readEvidence(cwd) : null;
             const patch = cwd ? this.readPatch(cwd) : null;
             const history = this.context.workspaceState.get("minitok.history", []);

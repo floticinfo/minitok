@@ -152,6 +152,12 @@ const CLI_EXPLICIT_ENV = new Set([
   // rejects a key it cannot find in the environment rather than on the command
   // line. Callers delete it from the child env as soon as the spawn returns.
   "MINITOK_ACTIVATION_KEY",
+  // One-time run delegation token (admin run in the extension host). Same
+  // env-only contract as the activation key: the CLI reads it in the
+  // entitlement gate, verifies it against the server (which burns it), and
+  // deletes it from its own environment before the pipeline can spawn
+  // grandchildren, so the token never reaches argv or a shell command.
+  "MINITOK_RUN_DELEGATION",
 ]);
 function isAllowedCliEnv(key: string) {
   return (CLI_ENV_ALLOWLIST as readonly string[]).includes(key) || CLI_EXPLICIT_ENV.has(key) || /^minitok_(?:default_provider|model|server_url|plan_|work_|review_|intel_)/.test(key);

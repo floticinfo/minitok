@@ -2,9 +2,9 @@ import * as vscode from "vscode";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { spawn, ChildProcessWithoutNullStreams, execFile } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { cliPath, workspacePath, requireTrustedWorkspace, autoApprove, spawnSpec, spawnOptionsFor, appendBoundedOutput, workspaceRelativePath } from "./workspace";
-import { checkEntitlement, invalidateEntitlementCache, requireEntitlement } from "./entitlement";
+import { checkEntitlement, invalidateEntitlementCache, requireEntitlement, adminRunDelegationEnv } from "./entitlement";
 import { deviceLogin, adminLogin, logoutExtension, logoutAdmin, refreshExtensionSession, readExtensionSession, hasAdminSession, authErrorText, DeviceLoginCancellation } from "./device-auth";
 import { redactSensitiveText } from "./redaction";
 import { runProcess, killProcessTree } from "./run-process";
@@ -20,10 +20,10 @@ const redactPanelOutput = redactSensitiveText;
 // and its timer callback performs killProcessTree(child) then settles with the
 // "minitok timed out after 30 minutes" error, exactly as the inline timer did.
 
-function runCli(cliPath: string, args: string[], cwd: string | undefined, onProcess: (child: ChildProcessWithoutNullStreams | undefined) => void): Promise<string> {
+function runCli(cliPath: string, args: string[], cwd: string | undefined, onProcess: (child: ChildProcessWithoutNullStreams | undefined) => void, extraEnv: NodeJS.ProcessEnv = {}): Promise<string> {
   const processSpec = spawnSpec(cliPath, args);
   return runProcess(processSpec.command, processSpec.args, {
-    spawnOptions: spawnOptionsFor(processSpec, { cwd, detached: process.platform !== "win32" }),
+    spawnOptions: spawnOptionsFor(processSpec, { cwd, env: extraEnv, detached: process.platform !== "win32" }),
     onProcess,
     timeoutMs: CLI_TIMEOUT_MS,
     timeoutMessage: "minitok timed out after 30 minutes",
@@ -179,7 +179,8 @@ export class minitokPanel {
         if (this.process) throw new Error("A minitok run is already active");
         const evidenceSetting = vscode.workspace.getConfiguration("minitok").get<string>("evidencePath", ".minitok/evidence/runs/latest.json").trim() || ".minitok/evidence/runs/latest.json";
         workspaceRelativePath(cwd!, evidenceSetting, "evidencePath");
-        const args = ["run", message.task, "--repo", cwd!, "--evidence-path", evidenceSetting];
+        const runId = randomUUID();
+        const args = ["run", message.task, "--repo", cwd!, "--evidence-path", evidenceSetting, "--run-id", runId];
         if (message.command === "dry-run") args.push("--dry-run");
         else if (autoApprove()) args.push("--auto-accept");
         else {
@@ -192,7 +193,12 @@ export class minitokPanel {
           if (answer !== "Approve") return;
           args.push("--auto-accept");
         }
-        const output = await runCli(cli, args, cwd, child => { this.process = child; });
+        // P-2 fix: an admin session authorizes this run through a one-time,
+        // runId-bound server token (env only, never argv). The CLI binds the
+        // delegation to this runId via ensureRunId, so the id must be identical
+        // in the issue and verify calls.
+        const delegationEnv = await adminRunDelegationEnv(this.context, runId);
+        const output = await runCli(cli, args, cwd, child => { this.process = child; }, delegationEnv);
         const evidence = cwd ? this.readEvidence(cwd) : null;
         this.post(true, `${redactPanelOutput(output)}\n${evidence ? `Evidence: ${JSON.stringify(evidence, null, 2)}` : "Evidence unavailable"}`);
       }

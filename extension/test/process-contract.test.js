@@ -157,7 +157,7 @@ test("a run can be cancelled or timed out instead of hanging the extension host"
   assert.match(extension, /setTimeout\(\(\) => \{ killProcessTree\(child\); finish\(new Error\(`minitok timed out after/);
   assert.match(extension, /options\.token\?\.onCancellationRequested\(\(\) => \{ killProcessTree\(child\); finish\(new Error\("minitok run cancelled"\)\); \}\)/);
   assert.match(extension, /cancellable: true/);
-  assert.match(extension, /await runCli\(cliPath\(\), runArgs, \{ timeoutMs: CLI_RUN_TIMEOUT_MS, token \}\)/);
+  assert.match(extension, /await runCliWithEnv\(cliPath\(\), runArgs, \{ timeoutMs: CLI_RUN_TIMEOUT_MS, token \}, delegationEnv\)/);
   // The whole tree is killed: on Windows a Node child can survive its parent's
   // signal, and the CLI has the verification gate as a child of its own.
   assert.match(extension, /function killProcessTree\(/);

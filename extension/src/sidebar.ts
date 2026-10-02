@@ -6,7 +6,7 @@ import { runProcess, killProcessTree } from "./run-process";
 import * as os from "node:os";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { cliPath, mcpCommand, mcpEnvironment, configuredMcpScopes, ensureMcpAuthToken, workspacePath, requireTrustedWorkspace, autoApprove, spawnSpec, spawnOptionsFor, npmSpawnSpec, normalizeProviderName, appendBoundedOutput, workspaceRelativePath } from "./workspace";
-import { checkEntitlement, invalidateEntitlementCache, requireEntitlement } from "./entitlement";
+import { checkEntitlement, invalidateEntitlementCache, requireEntitlement, adminRunDelegationEnv } from "./entitlement";
 import { adminLogin, authErrorText, deviceLogin, DeviceLoginCancellation, hasAdminSession, logoutAdmin, logoutExtension, refreshExtensionSession } from "./device-auth";
 import { setEntitlementContext } from "./entitlement";
 import { redactSensitiveText } from "./redaction";
@@ -110,7 +110,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
     });
   }
 
-  private async execute(args: string[], cwd: string | undefined): Promise<string> {
+  private async execute(args: string[], cwd: string | undefined, extraEnv: NodeJS.ProcessEnv = {}): Promise<string> {
     requireTrustedWorkspace(cwd);
     const cli = cliPath();
     const provider = normalizeProviderName(this.context.workspaceState.get<string>("minitok.setting.provider", ""));
@@ -149,7 +149,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
     const processSpec = spawnSpec(cli, args);
     this.output.appendLine(`[spawn] cli command=${JSON.stringify(processSpec.command)} args=${JSON.stringify(redactTaskArgs(processSpec.args, args[1] === "run" ? args[2] : ""))} cwd=${JSON.stringify(cwd)}`);
     return runProcess(processSpec.command, processSpec.args, {
-      spawnOptions: spawnOptionsFor(processSpec, { cwd, env, detached: process.platform !== "win32" }),
+      spawnOptions: spawnOptionsFor(processSpec, { cwd, env: { ...env, ...extraEnv }, detached: process.platform !== "win32" }),
       onProcess: child => { this.process = child; },
       onStdout: chunk => {
         const text = chunk.toString();
@@ -318,11 +318,17 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
       this.activeRunStartedAt = startedAt;
     const evidenceSetting = vscode.workspace.getConfiguration("minitok").get<string>("evidencePath", ".minitok/evidence/runs/latest.json").trim() || ".minitok/evidence/runs/latest.json";
     workspaceRelativePath(cwd!, evidenceSetting, "evidencePath");
-    const args = ["run", message.task, "--repo", cwd!, "--evidence-path", evidenceSetting];
+    const args = ["run", message.task, "--repo", cwd!, "--evidence-path", evidenceSetting, "--run-id", runId];
     if (message.command === "dry-run") args.push("--dry-run");
     else if (autoApprove()) args.push("--auto-accept");
+      // P-2 fix: an admin session authorizes this run through a one-time,
+      // runId-bound server token instead of the local signed entitlement. The
+      // admin token itself stays in SecretStorage and never crosses into the
+      // child; the delegation token travels only in the environment and the
+      // CLI burns it at its entitlement gate.
+      const delegationEnv = await adminRunDelegationEnv(this.context, runId);
       this.view?.webview.postMessage({ type: "started", runId });
-      const text = await this.execute(args, cwd);
+      const text = await this.execute(args, cwd, delegationEnv);
       const evidence = cwd ? this.readEvidence(cwd) : null;
       const patch = cwd ? this.readPatch(cwd) : null;
       const history = this.context.workspaceState.get<Array<Record<string, unknown>>>("minitok.history", []);

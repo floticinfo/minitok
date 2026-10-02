@@ -1,5 +1,7 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
+exports.RUN_DELEGATION_ENV = void 0;
+exports.adminRunDelegationEnv = adminRunDelegationEnv;
 exports.activateEntitlement = activateEntitlement;
 exports.setEntitlementContext = setEntitlementContext;
 exports.invalidateEntitlementCache = invalidateEntitlementCache;
@@ -10,6 +12,21 @@ const workspace_1 = require("./workspace");
 const device_auth_1 = require("./device-auth");
 /** Environment variable that carries the activation key to the CLI child. */
 const ACTIVATION_KEY_ENV = "MINITOK_ACTIVATION_KEY";
+/** Environment variable that carries the one-time run delegation token. */
+exports.RUN_DELEGATION_ENV = "MINITOK_RUN_DELEGATION";
+/**
+ * Environment for a delegated admin run: a one-time token bound to this runId,
+ * issued by the server with the admin credential that stays in the extension
+ * host. Passed by environment only — never argv — and scrubbed by the CLI as
+ * soon as it is read, so neither the admin token nor the delegation token
+ * outlives the child's entitlement gate.
+ */
+async function adminRunDelegationEnv(context, runId) {
+    if (!(await isAdminSessionActive()))
+        return {};
+    const token = await (0, device_auth_1.issueRunDelegation)(context, runId);
+    return { [exports.RUN_DELEGATION_ENV]: token };
+}
 /**
  * Activate this installation against a billing-issued key.
  *

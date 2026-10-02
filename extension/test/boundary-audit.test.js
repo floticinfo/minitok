@@ -211,12 +211,16 @@ test("the entitlement gate short-circuits for an admin session", () => {
 //
 // The admin session is stored in VS Code SecretStorage
 // (`minitok.secret.adminSession`), which the CLI cannot read, and PREAUTHORIZED
-// is a process-local Symbol that cannot cross a process boundary. So a valid
-// admin is admitted by the webview and rejected by the CLI.
+// is a process-local Symbol that cannot cross a process boundary. The gap used
+// to be that a valid admin was admitted by the webview and rejected by the CLI.
 //
-// This test pins the boundary and fails the moment anyone wires it up, which is
-// the signal to replace it with a real end-to-end assertion.
-test("cross-process entitlement boundary is a known gap, not an oversight", () => {
+// The fix: the extension issues a one-time, runId-bound delegation token from
+// the server (admin credential stays in the extension host) and passes it in
+// the child environment only. The CLI verifies it online — the server burns the
+// token on verification — and scrubs the env before the pipeline can spawn
+// grandchildren. The raw admin token never crosses the boundary, argv never
+// carries a secret, and PREAUTHORIZED keeps its process-local meaning.
+test("cross-process entitlement delegation is wired through env only, never argv", () => {
   const cliFiles = [];
   (function walk(dir) {
     for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
@@ -231,15 +235,55 @@ test("cross-process entitlement boundary is a known gap, not an oversight", () =
   assert.deepEqual(
     adminAware.map((f) => path.relative(REPO, f)),
     [],
-    "the CLI can now see an admin session — replace this test with one that proves "
-      + "`minitok run` actually proceeds for an admin, because the gap it documents is closed"
+    "the CLI can now see an admin session — the delegation contract must never let "
+      + "the raw admin token reach a child process"
   );
 
-  // The spawn site proves the child is expected to authorize itself.
+  // The delegation wiring: issue with the admin token, deliver by env, burn at
+  // the CLI gate. Each assertion pins one step of that contract.
   const sidebar = read(path.join(SRC, "sidebar.ts"));
+  const entitlement = read(path.join(SRC, "entitlement.ts"));
+  const workspace = read(path.join(SRC, "workspace.ts"));
+  assert.match(
+    read(path.join(SRC, "device-auth.ts")),
+    /\/v1\/run-delegation\/issue/,
+    "the extension must issue the delegation token with the admin credential"
+  );
+  assert.match(
+    read(path.join(REPO, "src", "entitlement", "delegation.js")),
+    /\/v1\/run-delegation\/verify/,
+    "the CLI must verify the delegation token against the server (which burns it)"
+  );
+  assert.match(
+    read(path.join(REPO, "src", "entitlement", "delegation.js")),
+    /delete process\.env\[DELEGATION_ENV\]/,
+    "the CLI must scrub the delegation token before the pipeline can spawn grandchildren"
+  );
+  assert.match(
+    workspace,
+    /"MINITOK_RUN_DELEGATION"/,
+    "the delegation token must be in the CLI env allowlist so it survives spawnOptionsFor"
+  );
+  for (const [name, source] of [["sidebar", sidebar], ["panel", read(path.join(SRC, "panel.ts"))], ["extension", read(path.join(SRC, "extension.ts"))]]) {
+    assert.match(
+      source,
+      /adminRunDelegationEnv\(/,
+      `${name} run sites must request the delegation env (a no-op without an admin session)`
+    );
+  }
+  assert.match(
+    entitlement,
+    /adminRunDelegationEnv/,
+    "entitlement.ts must export the delegation env helper"
+  );
+  assert.doesNotMatch(
+    sidebar + read(path.join(SRC, "panel.ts")),
+    /delegation[^\n]*argv|--delegation-token/,
+    "a delegation secret must never appear on a command line"
+  );
   assert.match(
     sidebar,
-    /const args = \["run", message\.task, "--repo", cwd!, "--evidence-path", evidenceSetting\]/,
-    "if the run invocation changed, re-check what the child is told about authorization"
+    /const args = \["run", message\.task, "--repo", cwd!, "--evidence-path", evidenceSetting, "--run-id", runId\]/,
+    "the run invocation must pass the parent's runId so the delegation binding matches"
   );
 });

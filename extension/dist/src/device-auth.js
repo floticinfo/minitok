@@ -41,6 +41,7 @@ exports.adminLogin = adminLogin;
 exports.readAdminSession = readAdminSession;
 exports.hasAdminSession = hasAdminSession;
 exports.logoutAdmin = logoutAdmin;
+exports.issueRunDelegation = issueRunDelegation;
 exports.authErrorText = authErrorText;
 const vscode = __importStar(require("vscode"));
 const fs = __importStar(require("node:fs"));
@@ -366,6 +367,46 @@ async function logoutAdmin(context) {
     }
     await context.secrets.delete(ADMIN_SESSION_KEY);
     return remoteRevoked;
+}
+/**
+ * Issue a one-time run delegation token for the CLI child (P-2 fix).
+ *
+ * The admin token never crosses the process boundary: the extension asks the
+ * server for a short-lived token bound to this runId, and only that token —
+ * valid for exactly one verification against the same runId — reaches the
+ * spawned `minitok run` child, via the environment (never argv).
+ */
+async function issueRunDelegation(context, runId) {
+    const session = await readAdminSession(context);
+    if (!session?.token)
+        throw Object.assign(new Error("An admin session is required to issue a run delegation."), { kind: "login" });
+    let response;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    try {
+        response = await fetch(`${(0, workspace_1.configuredServerUrl)()}/v1/run-delegation/issue`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${session.token}` }, body: JSON.stringify({ run_id: runId, ttl_seconds: 300 }), signal: controller.signal });
+    }
+    catch (error) {
+        const aborted = error instanceof Error && error.name === "AbortError";
+        throw Object.assign(new Error(aborted ? `minitok request timed out after ${REQUEST_TIMEOUT_MS / 1000}s` : (error instanceof Error ? error.message : String(error))), { kind: "network" });
+    }
+    finally {
+        clearTimeout(timer);
+    }
+    let value = null;
+    try {
+        value = await response.json();
+    }
+    catch { }
+    if (!response.ok) {
+        const code = typeof value?.code === "string" ? value.code : typeof value?.error === "string" ? value.error : `http_${response.status}`;
+        const detail = typeof value?.error_description === "string" && value.error_description ? value.error_description : typeof value?.error === "string" ? value.error : code;
+        throw Object.assign(new Error(detail), { code, kind: response.status >= 500 ? "network" : "login" });
+    }
+    const token = value?.token;
+    if (typeof token !== "string" || !token)
+        throw Object.assign(new Error("Run delegation response is missing a token."), { kind: "login" });
+    return token;
 }
 function authErrorText(error) {
     const kind = error?.kind || "login";

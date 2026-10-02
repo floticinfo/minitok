@@ -1,12 +1,28 @@
 import { spawn } from "node:child_process";
 import { cliPath, workspacePath, spawnSpec, spawnOptionsFor, appendBoundedOutput } from "./workspace";
 import * as vscode from "vscode";
-import { readAdminSession } from "./device-auth";
+import { readAdminSession, issueRunDelegation } from "./device-auth";
 
 export type EntitlementState = { checked: boolean; allowed: boolean; plan?: string | null; message?: string; cached?: boolean };
 
 /** Environment variable that carries the activation key to the CLI child. */
 const ACTIVATION_KEY_ENV = "MINITOK_ACTIVATION_KEY";
+
+/** Environment variable that carries the one-time run delegation token. */
+export const RUN_DELEGATION_ENV = "MINITOK_RUN_DELEGATION";
+
+/**
+ * Environment for a delegated admin run: a one-time token bound to this runId,
+ * issued by the server with the admin credential that stays in the extension
+ * host. Passed by environment only — never argv — and scrubbed by the CLI as
+ * soon as it is read, so neither the admin token nor the delegation token
+ * outlives the child's entitlement gate.
+ */
+export async function adminRunDelegationEnv(context: vscode.ExtensionContext, runId: string): Promise<NodeJS.ProcessEnv> {
+  if (!(await isAdminSessionActive())) return {};
+  const token = await issueRunDelegation(context, runId);
+  return { [RUN_DELEGATION_ENV]: token };
+}
 
 /**
  * Activate this installation against a billing-issued key.

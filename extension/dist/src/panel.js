@@ -52,10 +52,10 @@ const redactPanelOutput = redaction_1.redactSensitiveText;
 // setTimeout(..., CLI_TIMEOUT_MS) — the constant this wrapper passes through —
 // and its timer callback performs killProcessTree(child) then settles with the
 // "minitok timed out after 30 minutes" error, exactly as the inline timer did.
-function runCli(cliPath, args, cwd, onProcess) {
+function runCli(cliPath, args, cwd, onProcess, extraEnv = {}) {
     const processSpec = (0, workspace_1.spawnSpec)(cliPath, args);
     return (0, run_process_1.runProcess)(processSpec.command, processSpec.args, {
-        spawnOptions: (0, workspace_1.spawnOptionsFor)(processSpec, { cwd, detached: process.platform !== "win32" }),
+        spawnOptions: (0, workspace_1.spawnOptionsFor)(processSpec, { cwd, env: extraEnv, detached: process.platform !== "win32" }),
         onProcess,
         timeoutMs: CLI_TIMEOUT_MS,
         timeoutMessage: "minitok timed out after 30 minutes",
@@ -268,7 +268,8 @@ class minitokPanel {
                     throw new Error("A minitok run is already active");
                 const evidenceSetting = vscode.workspace.getConfiguration("minitok").get("evidencePath", ".minitok/evidence/runs/latest.json").trim() || ".minitok/evidence/runs/latest.json";
                 (0, workspace_1.workspaceRelativePath)(cwd, evidenceSetting, "evidencePath");
-                const args = ["run", message.task, "--repo", cwd, "--evidence-path", evidenceSetting];
+                const runId = (0, node_crypto_1.randomUUID)();
+                const args = ["run", message.task, "--repo", cwd, "--evidence-path", evidenceSetting, "--run-id", runId];
                 if (message.command === "dry-run")
                     args.push("--dry-run");
                 else if ((0, workspace_1.autoApprove)())
@@ -284,7 +285,12 @@ class minitokPanel {
                         return;
                     args.push("--auto-accept");
                 }
-                const output = await runCli(cli, args, cwd, child => { this.process = child; });
+                // P-2 fix: an admin session authorizes this run through a one-time,
+                // runId-bound server token (env only, never argv). The CLI binds the
+                // delegation to this runId via ensureRunId, so the id must be identical
+                // in the issue and verify calls.
+                const delegationEnv = await (0, entitlement_1.adminRunDelegationEnv)(this.context, runId);
+                const output = await runCli(cli, args, cwd, child => { this.process = child; }, delegationEnv);
                 const evidence = cwd ? this.readEvidence(cwd) : null;
                 this.post(true, `${redactPanelOutput(output)}\n${evidence ? `Evidence: ${JSON.stringify(evidence, null, 2)}` : "Evidence unavailable"}`);
             }

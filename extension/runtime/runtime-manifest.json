@@ -20,6 +20,7 @@
     "core/package-manager.js",
     "discovery/index.js",
     "entitlement/capability.js",
+    "entitlement/delegation.js",
     "entitlement/gate.js",
     "entitlement/model.js",
     "entitlement/online.js",
@@ -175,6 +176,10 @@
       "source": "e6edb640bdbf2c3c3697efbbe4164d61142853929300e19dcee3e8c47f44ac4a",
       "embedded": "e6edb640bdbf2c3c3697efbbe4164d61142853929300e19dcee3e8c47f44ac4a"
     },
+    "entitlement/delegation.js": {
+      "source": "781e6860fb7d4f4893decfca817cb41857ce957fe24b0d2b42a4779e4553229e",
+      "embedded": "781e6860fb7d4f4893decfca817cb41857ce957fe24b0d2b42a4779e4553229e"
+    },
     "entitlement/gate.js": {
       "source": "41134846a2a29534cd20d1f5145a12072d22b5934cb674dfd30b0dd87dedcec9",
       "embedded": "41134846a2a29534cd20d1f5145a12072d22b5934cb674dfd30b0dd87dedcec9"
@@ -188,8 +193,8 @@
       "embedded": "bebb86373c5a040f85ecfb7f9914c2a9116e769e43cd2e3a1a0646549cfe1473"
     },
     "entitlement/policy.js": {
-      "source": "a29b442fdfdbf75c009fe94d85acc5821f68b86fe07659eb15b946ce881c1582",
-      "embedded": "a29b442fdfdbf75c009fe94d85acc5821f68b86fe07659eb15b946ce881c1582"
+      "source": "ef0242f656dc8226670cf9aa62f241989ef5e4970c1d66ecba899c609aafb8eb",
+      "embedded": "ef0242f656dc8226670cf9aa62f241989ef5e4970c1d66ecba899c609aafb8eb"
     },
     "entitlement/public-key.js": {
       "source": "7f8666cb8db97ec9a2f29f24f3ed8439dc0acb0461c1539e50747defb2439b2c",

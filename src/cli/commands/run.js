@@ -90,7 +90,10 @@ async function cmdRun(task, opts = {}) {
     // fail before detectAvailableProviders or verifyCredentials can contact an API.
     if (opts.authorization !== PREAUTHORIZED) {
       let gate;
-      try { gate = await authorizeEntitlement({ serverUrl: opts.serverUrl || resolveServerUrl(), entitlementDir: opts.entitlementDir }); }
+      // A run delegation token (extension-host admin run) is bound to the runId
+      // by the issuing server, so the preflight passes the id along for the
+      // binding check. The id also keys trial idempotency further below.
+      try { gate = await authorizeEntitlement({ serverUrl: opts.serverUrl || resolveServerUrl(), entitlementDir: opts.entitlementDir, delegationRunIds: [ensureRunId(opts)] }); }
       catch (error) { console.error(`Error: Entitlement check failed: ${error instanceof Error ? error.message : String(error)}`); return 1; }
       if (!gate.allowed) {
         console.error(`Error: Entitlement ${gate.state}: ${gate.message}`);

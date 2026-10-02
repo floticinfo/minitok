@@ -43,6 +43,7 @@ const run_process_1 = require("./run-process");
 const sidebar_1 = require("./sidebar");
 const workspace_2 = require("./workspace");
 const entitlement_1 = require("./entitlement");
+const node_crypto_1 = require("node:crypto");
 const redaction_1 = require("./redaction");
 const truncate_1 = require("./truncate");
 function extensionVersion(context) {
@@ -65,6 +66,20 @@ function killProcessTree(child) {
     // execFile("taskkill", ["/pid", String(child.pid), "/t", "/f"] ...) on Windows,
     // process.kill(-pid) on POSIX — the implementation lives in run-process.ts.
     return (0, run_process_1.killProcessTree)(child);
+}
+function runCliWithEnv(cliPath, args, options, env) {
+    const cwd = (0, workspace_2.workspacePath)();
+    if (options.requireWorkspace !== false)
+        (0, workspace_1.requireTrustedWorkspace)(cwd);
+    const timeoutMs = options.timeoutMs ?? CLI_RUN_TIMEOUT_MS;
+    const spec = (0, workspace_1.spawnSpec)(cliPath, args);
+    return (0, run_process_1.runProcess)(spec.command, spec.args, {
+        cwd,
+        spawnOptions: (0, workspace_2.spawnOptionsFor)(spec, { cwd, env, detached: process.platform !== "win32" }),
+        timeoutMs,
+        token: options.token,
+        timeoutMessage: `minitok timed out after ${Math.round(timeoutMs / 1000)}s`,
+    });
 }
 /**
  * One-line reference of the shared behaviour used to implement runCli, kept
@@ -239,12 +254,16 @@ function activate(context) {
         output.show(true);
         try {
             const evidencePath = vscode.workspace.getConfiguration("minitok").get("evidencePath", ".minitok/evidence/runs/latest.json").trim() || ".minitok/evidence/runs/latest.json";
-            const runArgs = ["run", task, "--repo", cwd, "--evidence-path", evidencePath, "--capability-file", (0, workspace_2.capabilityFile)(), ...(approved ? ["--auto-accept"] : [])];
+            const runId = (0, node_crypto_1.randomUUID)();
+            const runArgs = ["run", task, "--repo", cwd, "--evidence-path", evidencePath, "--run-id", runId, "--capability-file", (0, workspace_2.capabilityFile)(), ...(approved ? ["--auto-accept"] : [])];
+            // P-2 fix: an admin session authorizes this run through a one-time,
+            // runId-bound server token passed in the child environment only.
+            const delegationEnv = await (0, entitlement_1.adminRunDelegationEnv)(context, runId);
             // Run inside a cancellable notification. The spawned CLI has no TTY of its
             // own, so this is the only way to stop a long run short of reloading the
             // window (the promise used to have no timeout and no cancel path).
             await vscode.window.withProgress({ location: vscode.ProgressLocation.Notification, title: "minitok task", cancellable: true }, async (_progress, token) => {
-                output.appendLine(redactExtensionOutput(await runCli((0, workspace_2.cliPath)(), runArgs, { timeoutMs: CLI_RUN_TIMEOUT_MS, token })));
+                output.appendLine(redactExtensionOutput(await runCliWithEnv((0, workspace_2.cliPath)(), runArgs, { timeoutMs: CLI_RUN_TIMEOUT_MS, token }, delegationEnv)));
             });
         }
         catch (error) {
