@@ -50,7 +50,15 @@ export function activateEntitlement(key: string): Promise<{ ok: boolean; message
     let stderr = "";
     // Activation is one HTTP round trip; a minute covers a slow or proxied link
     // without leaving the webview waiting on a dead child.
-    const timer = setTimeout(() => { child.kill(); settle({ ok: false, message: "Activation timed out." }); }, 60000);
+    const timer = setTimeout(() => {
+      try {
+        child.kill();
+      } catch {
+        // A failed kill leaves the child and its stream listeners alive; the
+        // settle guard already dropped the result, so just stop watching.
+      }
+      settle({ ok: false, message: "Activation timed out." });
+    }, 60000);
     child.stdout.on("data", chunk => { stdout = appendBoundedOutput(stdout, chunk.toString()); });
     child.stderr.on("data", chunk => { stderr = appendBoundedOutput(stderr, chunk.toString()); });
     child.on("error", error => { clearTimeout(timer); settle({ ok: false, message: stderr || error.message }); });
@@ -107,27 +115,47 @@ export async function requireEntitlement(): Promise<EntitlementState> {
 }
 
 export function checkEntitlement(): Promise<EntitlementState> {
-  const now = Date.now();
   // The admin bypass is async (secret storage read), so it resolves before the
   // CLI spawn: an admin session authorizes every gated command without a plan.
-  return isAdminSessionActive().then(admin => new Promise<EntitlementState>(resolve => {
+  return isAdminSessionActive().then(admin => {
+    // Capture the cache window after the async admin check, not before the await:
+    // a timestamp taken up front is stale by however long the secret read took.
+    const now = Date.now();
+    return new Promise<EntitlementState>(resolve => {
   if (admin) { cachedDecision = undefined; resolve({ checked: true, allowed: true, plan: "admin", message: undefined }); return; }
   if (cachedDecision && now - cachedDecision.at < (cachedDecision.state.allowed ? ALLOWED_CACHE_MS : DENIED_CACHE_MS)) {
     resolve({ ...cachedDecision.state, cached: true });
     return;
   }
     let settled = false;
-    const settle = (state: EntitlementState) => { if (settled) return; settled = true; cachedDecision = { at: Date.now(), state }; resolve(state); };
+    const settle = (state: EntitlementState, cacheable = true) => {
+      if (settled) return;
+      settled = true;
+      // Only a decision the CLI actually reached is worth caching. A local spawn
+      // failure (ENOENT — CLI not installed yet) or a killed timeout says nothing
+      // about the plan, and caching it locked a just-installed user out for the
+      // denial window.
+      if (cacheable) cachedDecision = { at: Date.now(), state };
+      resolve(state);
+    };
     const spec = spawnSpec(cliPath(), ["status", "--json"]);
     let child: import("node:child_process").ChildProcessWithoutNullStreams;
     try { child = spawn(spec.command, spec.args, spawnOptionsFor(spec, { cwd: workspacePath() })); }
-    catch (error) { settle({ checked: true, allowed: false, message: error instanceof Error ? error.message : String(error) }); return; }
+    catch (error) { settle({ checked: true, allowed: false, message: error instanceof Error ? error.message : String(error) }, false); return; }
     let stdout = "";
     let stderr = "";
-    const timer = setTimeout(() => { child.kill(); settle({ checked: true, allowed: false, message: "Entitlement check timed out" }); }, 30000);
+    const timer = setTimeout(() => {
+      try {
+        child.kill();
+      } catch {
+        // A failed kill leaves the child running; the settle guard drops its
+        // output, so stop watching rather than throw out of the timer.
+      }
+      settle({ checked: true, allowed: false, message: "Entitlement check timed out" }, false);
+    }, 30000);
     child.stdout.on("data", chunk => { stdout = appendBoundedOutput(stdout, chunk.toString()); });
     child.stderr.on("data", chunk => { stderr = appendBoundedOutput(stderr, chunk.toString()); });
-    child.on("error", error => { clearTimeout(timer); settle({ checked: true, allowed: false, message: stderr || error.message }); });
+    child.on("error", error => { clearTimeout(timer); settle({ checked: true, allowed: false, message: stderr || error.message }, false); });
     child.on("close", code => {
       clearTimeout(timer);
       if (code !== 0) { settle({ checked: true, allowed: false, message: stderr || `minitok exited with code ${code}` }); return; }
@@ -140,5 +168,6 @@ export function checkEntitlement(): Promise<EntitlementState> {
         settle({ checked: true, allowed: false, message: `Could not verify minitok entitlement: ${parseError instanceof Error ? parseError.message : String(parseError)}` });
       }
     });
-  }));
+    });
+  });
 }
