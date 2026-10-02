@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src {{cspSource}} 'unsafe-inline'; script-src 'nonce-{{nonce}}'">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src {{cspSource}}; style-src {{cspSource}} 'unsafe-inline'; script-src 'nonce-{{nonce}}'">
     <style>
       /* minitok brand palette -- mirrors src/core/palette.js, which is the single
       source of truth; palette.test.js asserts this block stays identical.
@@ -54,6 +54,14 @@
       }
       * {
         box-sizing:border-box
+      }
+      /* Every auth state switches surfaces by toggling the hidden attribute, but
+         an author `display` value outranks the user-agent [hidden] rule: .auth-gate
+         and #loading are display:flex, so a successful sign-in set hidden=true and
+         still left the sign-in card painted over the app (position:fixed, inset:0,
+         z-index:10). This one rule makes the attribute authoritative again. */
+      [hidden] {
+        display:none!important
       }
       .auth-gate {
         position:fixed;
@@ -153,19 +161,17 @@
         font-weight:600;
         letter-spacing:.2px
       }
-      .brand:before {
-        content:'m';
-        display:grid;
-        place-items:center;
+      /* The brand glyph is the same Harlekin 'm' path the Activity Bar icon
+         uses (media/minitok-activitybar.svg), loaded through asWebviewUri so
+         the glyph is pixel-identical everywhere the mark appears. */
+      .brand-logo {
+        display:block;
         width:24px;
         height:24px;
+        flex:0 0 auto;
         border-radius:5px;
         background:var(--mt-brand-primary);
-        color:var(--mt-brand-on-primary);
-        font-family:system-ui,-apple-system,sans-serif;
-        font-weight:800;
-        font-size:15px;
-        line-height:1
+        color:var(--mt-brand-on-primary)
       }
       .header-actions {
         display:flex;
@@ -405,15 +411,26 @@
         background:var(--vscode-testing-iconFailed);
         color:var(--vscode-button-foreground)
       }
+      button:hover:not(:disabled) {
+        background:var(--vscode-button-hoverBackground)
+      }
+      button.secondary:hover:not(:disabled) {
+        background:var(--vscode-button-secondaryHoverBackground)
+      }
+      button:focus-visible {
+        outline:1px solid var(--vscode-focusBorder);
+        outline-offset:2px
+      }
       button:disabled {
         opacity:.5;
         cursor:default
       }
+      input:focus-visible,select:focus-visible,textarea:focus-visible {
+        outline:1px solid var(--vscode-focusBorder);
+        outline-offset:1px
+      }
       .approval {
         border-color:var(--vscode-testing-iconPassed)
-      }
-      .approval[hidden] {
-        display:none
       }
       .status-row {
         display:flex;
@@ -538,6 +555,9 @@
           <button id="browserLoginButton" type="button">
             Sign in with browser
           </button>
+          <button id="cancelLoginButton" type="button" class="secondary" hidden>
+            Cancel sign-in
+          </button>
         </div>
         <div id="authError" class="auth-error" role="alert" aria-live="assertive">
         </div>
@@ -548,18 +568,14 @@
         <button id="activateButton" class="secondary" type="button" hidden>
           Activate plan
         </button>
-        <button id="manageButton" class="secondary" type="button" hidden>
-          Manage plan
-        </button>
       </div>
       <header class="header">
         <div class="brand">
+          <img class="brand-logo" src="{{brandUri}}" alt="" aria-hidden="true">
           minitok
         </div>
         <div class="header-actions">
-          <button id="logoutButton" class="icon-button" type="button" hidden title="Sign out / switch account" aria-label="Sign out / switch account">
-            Sign out / switch account
-          </button>
+
           <button id="mcpBadge" class="badge" type="button" title="Connect minitok MCP" aria-label="Connect minitok MCP" aria-live="polite" disabled>
             MCP
           </button>
@@ -668,8 +684,6 @@
             </option>
           </select>
         </label>
-        <div id="modelStatus" class="empty">
-        </div>
         <div id="authStatus" class="empty">
         </div>
         <div class="label">
@@ -677,14 +691,7 @@
         </div>
         <div id="productStatus" class="evidence">
         </div>
-        <div class="row">
-          <button id="activateButton" class="secondary" type="button" hidden>
-            Activate plan
-          </button>
-          <button id="manageButton" class="secondary" type="button" hidden>
-            Manage plan
-          </button>
-        </div>
+
         <div class="label role-heading">
           Role providers
         </div>
@@ -714,10 +721,10 @@
           Enter key
         </label>
         <div class="toggle-actions">
-          <button id="enterRun" class="toggle-choice">
+          <button id="enterRun" class="toggle-choice" type="button" aria-pressed="true">
             Enter runs
           </button>
-          <button id="enterNewline" class="toggle-choice">
+          <button id="enterNewline" class="toggle-choice" type="button" aria-pressed="false">
             Shift+Enter runs
           </button>
         </div>
@@ -733,20 +740,21 @@
           <button id="clearHistory" class="secondary" type="button">
             Clear history
           </button>
+          <button id="logoutButton" class="secondary" type="button" hidden title="Sign out" aria-label="Sign out">
+            Sign out
+          </button>
           <button id="closeSettings" class="secondary">
             Close
           </button>
         </div>
         <div class="version-row">
           <span id="version">
-            v1.3.3
           </span>
           <button id="update" class="secondary" hidden>
             Update
           </button>
         </div>
-        <div id="settingsState" class="empty">
-        </div>
+
       </section>
       <script nonce="{{nonce}}">
         const vscode=acquireVsCodeApi(),task=document.getElementById('task'),evidence=document.getElementById('evidence'),run=document.getElementById('run'),dry=document.getElementById('dry'),stop=document.getElementById('stop'),approval=document.getElementById('approval'),stage=document.getElementById('stage'),badge=document.getElementById('mcpBadge');
@@ -758,7 +766,7 @@
         document.getElementById('file').onclick=()=>vscode.postMessage({command:'attach-file'});
         document.getElementById('folder').onclick=()=>vscode.postMessage({command:'attach-folder'});
         document.getElementById('problems').onclick=()=>vscode.postMessage({command:'attach-problems'});
-        function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}function showToast(text,kind){if(!text)return;const container=document.getElementById('toastContainer');if(!container)return;const t=document.createElement('div');t.className='toast '+(kind==='error'?'error':'info');t.setAttribute('role',kind==='error'?'alert':'status');t.textContent=text;container.appendChild(t);setTimeout(()=>{t.remove()},6000);t.addEventListener('click',()=>t.remove())}function add(text,failed=false){if(failed)showToast(text,'error')}document.addEventListener('keydown',e=>{if(e.key!=='Escape'||!running)return;if(!escapeArmed){escapeArmed=true;stage.textContent='Esc again to interrupt';stage.className='task-status running';clearTimeout(escapeTimer);escapeTimer=setTimeout(()=>{escapeArmed=false;if(running){stage.textContent='Running';stage.className='task-status running'}},2000);e.preventDefault();return}clearTimeout(escapeTimer);escapeArmed=false;vscode.postMessage({command:'interrupt'});e.preventDefault()});function send(mode){if(!task.value.trim()){add('Task description required.',true);return}running=true;escapeArmed=false;run.disabled=dry.disabled=true;stop.disabled=false;stage.textContent='Starting...';stage.className='task-status running';vscode.postMessage({command:mode,task:task.value})}function setEnterBehavior(value){document.getElementById('enterBehavior').value=value;document.getElementById('enterRun').classList.toggle('selected',value==='enter-run');document.getElementById('enterNewline').classList.toggle('selected',value==='enter-newline')}document.getElementById('enterRun').onclick=()=>setEnterBehavior('enter-run');document.getElementById('enterNewline').onclick=()=>setEnterBehavior('enter-newline');function fillModels(ids){const targets=[document.getElementById('model'),...['plan','work','review','intel'].map(r=>document.getElementById(r+'Model'))];for(const select of targets){const current=select.value;select.innerHTML='<option value="">Use provider default</option>'+ids.map(id=>`<option value="${esc(id)}">${esc(id)}</option>`).join('');if(current)select.value=current}}function showSettings(s){document.getElementById('settingsView').hidden=false;document.getElementById('task').dataset.enterBehavior=s.settings.enterBehavior||'enter-run';document.getElementById('settingsView').scrollIntoView({behavior:'smooth',block:'start'});for(const k of ['provider','model','evidencePath','enterBehavior'])if(s.settings[k]!==undefined)document.getElementById(k).value=s.settings[k];setEnterBehavior(document.getElementById('enterBehavior').value);const roles=['plan','work','review','intel'];document.getElementById('roleSettings').innerHTML=roles.map(role=>`<label>${role}<select id="${role}Provider" class="setting"><option value="">Use default</option><option value="anthropic">Anthropic</option><option value="openai">OpenAI</option><option value="google">Google Gemini</option><option value="custom">Custom</option></select><select id="${role}Model" class="setting"><option value="">Use provider default</option></select></label>`).join('');for(const role of roles){const p=s.settings[`${role}.provider`];const m=s.settings[`${role}.model`];if(p)document.getElementById(`${role}Provider`).value=p;if(m)document.getElementById(`${role}Model`).value=m}document.getElementById('customBaseUrlRow').hidden=document.getElementById('provider').value!=='custom';for(const k of ['showCost','autoApprove','storeTaskText'])if(s.settings[k]!==undefined)document.getElementById(k).checked=Boolean(s.settings[k])}run.onclick=()=>send('run');dry.onclick=()=>send('dry-run');stop.onclick=()=>vscode.postMessage({command:'stop'});document.getElementById('approve').onclick=()=>vscode.postMessage({command:'approve'});document.getElementById('reject').onclick=()=>vscode.postMessage({command:'reject'});const closeSettings=()=>{const view=document.getElementById('settingsView');let closed=false;const finish=()=>{if(closed)return;closed=true;view.removeEventListener('scrollend',finish);view.hidden=true};view.addEventListener('scrollend',finish,{once:true});window.scrollTo({top:0,behavior:'smooth'});setTimeout(finish,1400)};document.getElementById('update').onclick=()=>vscode.postMessage({command:'update'});document.getElementById('saveSettings').onclick=()=>{const settings={};for(const k of ['provider','model','evidencePath','enterBehavior'])settings[k]=document.getElementById(k).value;for(const role of ['plan','work','review','intel']){settings[`${role}.provider`]=document.getElementById(`${role}Provider`).value;settings[`${role}.model`]=document.getElementById(`${role}Model`).value}for(const k of ['showCost','autoApprove','storeTaskText'])settings[k]=document.getElementById(k).checked;const secrets={};for(const k of ['providerApiKey','customBaseUrl'])if(document.getElementById(k).value)secrets[k]=document.getElementById(k).value;vscode.postMessage({command:'save-settings',settings,secrets});closeSettings();};document.getElementById('clearHistory').onclick=()=>{vscode.postMessage({command:'clear-history'});document.getElementById('settingsState').textContent='History cleared.'};document.getElementById('closeSettings').onclick=closeSettings;document.getElementById('provider').onchange=()=>{document.getElementById('customBaseUrlRow').hidden=document.getElementById('provider').value!=='custom';vscode.postMessage({command:'discover-models',provider:document.getElementById('provider').value})};document.getElementById('mcpBadge').onclick=()=>{vscode.postMessage({command:'mcp-list'});vscode.postMessage({command:'mcp-connect'});};document.getElementById('settings').onclick=()=>vscode.postMessage({command:'settings'});window.addEventListener('load',()=>vscode.postMessage({command:'sessions'}));window.addEventListener('message',e=>{const m=e.data;if(m.type==='attachment'){if(!m.value)return;document.getElementById('attached').textContent+=(document.getElementById('attached').textContent?'\n':'')+m.value;task.value+=(task.value?'\n':'')+m.value;return}if(m.type==='sessions'){const box=document.getElementById('sessions');box.innerHTML=m.items.map(item=>`<button class="session-item" data-task="${esc(item.task||item.taskPreview||'')}" data-evidence="${esc(item.evidencePath||'')}" data-patch="${esc(item.patchPath||'')}" data-checkpoint="${esc(item.checkpointPath||'')}" data-task-saved="${item.task ? 'true' : 'false'}">${esc(item.status||'unknown')} · ${esc(item.task||item.taskPreview||'')}<small>${esc(item.runId||'')}</small></button>`).join('')||'<span class="empty">No sessions yet.</span>';box.querySelectorAll('.session-item').forEach(item=>item.onclick=()=>{task.value=item.dataset.task||'';add(`Resumed: ${item.dataset.task||''}`);if(item.dataset.checkpoint&&item.dataset.taskSaved==='true')vscode.postMessage({command:'restore-session',checkpoint:item.dataset.checkpoint});});return}if(m.type==='settings'){showSettings(m);document.getElementById('authStatus').textContent=m.secrets?.providerApiKeySet?'API key configured':'No API key configured';return}if(m.type==='models'){fillModels(m.models||[]);document.getElementById('modelStatus').textContent=m.ok?`${(m.models||[]).length} models available`:'Model discovery unavailable; using provider defaults.';return}if(m.type==='info'){showToast(m.text,'info');return}if(m.type==='activation'){showToast(m.text,'info');return}if(m.type==='update'){document.getElementById('version').textContent=`v${m.current} · latest v${m.latest}`;document.getElementById('update').hidden=m.current===m.latest;return}if(m.type==='update-result'){showToast(m.text,m.ok===false?'error':'info');return}if(m.type==='settings-saved'){document.getElementById('settingsState').textContent='Saved.';return}if(m.type==='started'){stage.textContent='Running';stage.className='task-status running';stop.setAttribute('aria-disabled','false');return}if(m.type==='progress'){const current=m.stage.toLowerCase().includes('gather')||m.stage.toLowerCase().includes('plan')?'Planning':m.stage.toLowerCase().includes('implement')?'Implementing':m.stage.toLowerCase().includes('verif')?'Verifying':m.stage.toLowerCase().includes('review')||m.stage.toLowerCase().includes('evaluat')?'Reviewing':null;stage.textContent=current?`${current} in progress`:m.stage;stage.className='task-status running';return}if(m.type==='summary'){if(m.text)showToast(m.text,'info');return}if(m.type==='approval-request'){approval.hidden=false;stage.textContent='Approval required';stage.className='task-status running';document.getElementById('approve').focus();return}if(m.type==='approval'){approval.hidden=true;stage.textContent=m.decision==='approve'?'Approved':'Rejected';stage.className=`task-status ${m.decision==='approve'?'success':'error'}`;task.focus();return}if(m.type==='mcp-hosts'){document.getElementById('mcpHosts').hidden=false;document.getElementById('mcpHosts').textContent=m.hosts.map(h=>`${h.name}: ${h.detected?'detected':'not found'}`).join('\n');return}if(m.type==='mcp-connect'){showToast(m.text||'MCP connect '+(m.ok?'succeeded.':'failed.'),m.ok?'info':'error');return}if(m.type==='history-cleared'){document.getElementById('settingsState').textContent=m.text||'History cleared.';return}if(m.type==='mcp'){badge.textContent=m.ok?'MCP online':'MCP offline';badge.className='badge '+(m.ok?'online':'offline');return}if(m.type==='stopped'){running=false;escapeArmed=false;clearTimeout(escapeTimer);stage.textContent='Stopped';stage.className='task-status error';run.disabled=dry.disabled=false;stop.disabled=true;stop.setAttribute('aria-disabled','true');task.focus();return}if(m.type==='result'){running=false;escapeArmed=false;clearTimeout(escapeTimer);run.disabled=dry.disabled=false;stop.disabled=true;stop.setAttribute('aria-disabled','true');stage.textContent=m.ok?'Verified':'Failed';stage.className=`task-status ${m.ok?'success':'error'}`;if(m.ok===false)showToast('Run failed. See stage for details.','error');if(m.evidence)evidence.textContent=JSON.stringify(m.evidence,null,2);task.focus()}});
+        function esc(s){return String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}function showToast(text,kind){if(!text)return;const container=document.getElementById('toastContainer');if(!container)return;const t=document.createElement('div');t.className='toast '+(kind==='error'?'error':'info');t.setAttribute('role',kind==='error'?'alert':'status');t.textContent=text;container.appendChild(t);setTimeout(()=>{t.remove()},6000);t.addEventListener('click',()=>t.remove())}function add(text,failed=false){if(failed)showToast(text,'error')}document.addEventListener('keydown',e=>{if(e.key!=='Escape'||!running)return;if(!escapeArmed){escapeArmed=true;stage.textContent='Esc again to interrupt';stage.className='task-status running';clearTimeout(escapeTimer);escapeTimer=setTimeout(()=>{escapeArmed=false;if(running){stage.textContent='Running';stage.className='task-status running'}},2000);e.preventDefault();return}clearTimeout(escapeTimer);escapeArmed=false;vscode.postMessage({command:'interrupt'});e.preventDefault()});function send(mode){if(!task.value.trim()){add('Task description required.',true);return}running=true;escapeArmed=false;run.disabled=dry.disabled=true;run.setAttribute('aria-disabled','true');dry.setAttribute('aria-disabled','true');stop.disabled=false;stop.setAttribute('aria-disabled','false');stage.textContent='Starting...';stage.className='task-status running';vscode.postMessage({command:mode,task:task.value})}function setEnterBehavior(value){document.getElementById('enterBehavior').value=value;document.getElementById('enterRun').classList.toggle('selected',value==='enter-run');document.getElementById('enterNewline').classList.toggle('selected',value==='enter-newline');document.getElementById('enterRun').setAttribute('aria-pressed',value==='enter-run'?'true':'false');document.getElementById('enterNewline').setAttribute('aria-pressed',value==='enter-newline'?'true':'false')}document.getElementById('enterRun').onclick=()=>setEnterBehavior('enter-run');document.getElementById('enterNewline').onclick=()=>setEnterBehavior('enter-newline');function fillModels(ids,provider){const defaultProvider=document.getElementById('provider')?.value||'';const targets=[document.getElementById('model')];for(const r of ['plan','work','review','intel']){const roleProvider=document.getElementById(r+'Provider')?.value||'';if((provider||defaultProvider)===(roleProvider||defaultProvider))targets.push(document.getElementById(r+'Model'))}for(const select of targets){const current=select.value;select.innerHTML='<option value="">Use provider default</option>'+ids.map(id=>`<option value="${esc(id)}">${esc(id)}</option>`).join('');if(current)select.value=current}}function showSettings(s){document.getElementById('settingsView').hidden=false;document.getElementById('task').dataset.enterBehavior=s.settings.enterBehavior||'enter-run';document.getElementById('settingsView').scrollIntoView({behavior:'smooth',block:'start'});for(const k of ['provider','model','evidencePath','enterBehavior'])if(s.settings[k]!==undefined)document.getElementById(k).value=s.settings[k];setEnterBehavior(document.getElementById('enterBehavior').value);const roles=['plan','work','review','intel'];document.getElementById('roleSettings').innerHTML=roles.map(role=>`<label>${role}<select id="${role}Provider" class="setting"><option value="">Use default</option><option value="anthropic">Anthropic</option><option value="openai">OpenAI</option><option value="google">Google Gemini</option><option value="custom">Custom</option></select><select id="${role}Model" class="setting"><option value="">Use provider default</option></select></label>`).join('');for(const role of roles){const p=s.settings[`${role}.provider`];const m=s.settings[`${role}.model`];if(p)document.getElementById(`${role}Provider`).value=p;if(m)document.getElementById(`${role}Model`).value=m;document.getElementById(`${role}Provider`).onchange=()=>{const rp=document.getElementById(`${role}Provider`).value;if(rp&&rp!==document.getElementById('provider').value)vscode.postMessage({command:'discover-models',provider:rp});else{const ms=document.getElementById(`${role}Model`);const cur=ms.value;ms.innerHTML='<option value="">Use provider default</option>';if(cur)ms.value=cur}}}document.getElementById('customBaseUrlRow').hidden=document.getElementById('provider').value!=='custom';for(const k of ['showCost','autoApprove','storeTaskText'])if(s.settings[k]!==undefined)document.getElementById(k).checked=Boolean(s.settings[k])}run.onclick=()=>send('run');dry.onclick=()=>send('dry-run');stop.onclick=()=>vscode.postMessage({command:'stop'});document.getElementById('approve').onclick=()=>vscode.postMessage({command:'approve'});document.getElementById('reject').onclick=()=>vscode.postMessage({command:'reject'});const closeSettings=()=>{const view=document.getElementById('settingsView');let closed=false;const finish=()=>{if(closed)return;closed=true;view.removeEventListener('scrollend',finish);view.hidden=true};view.addEventListener('scrollend',finish,{once:true});window.scrollTo({top:0,behavior:'smooth'});setTimeout(finish,1400)};document.getElementById('update').onclick=()=>vscode.postMessage({command:'update'});document.getElementById('saveSettings').onclick=()=>{const settings={};for(const k of ['provider','model','evidencePath','enterBehavior'])settings[k]=document.getElementById(k).value;for(const role of ['plan','work','review','intel']){settings[`${role}.provider`]=document.getElementById(`${role}Provider`).value;settings[`${role}.model`]=document.getElementById(`${role}Model`).value}for(const k of ['showCost','autoApprove','storeTaskText'])settings[k]=document.getElementById(k).checked;const secrets={};for(const k of ['providerApiKey','customBaseUrl'])if(document.getElementById(k).value)secrets[k]=document.getElementById(k).value;vscode.postMessage({command:'save-settings',settings,secrets});closeSettings();};document.getElementById('clearHistory').onclick=()=>{vscode.postMessage({command:'clear-history'})};document.getElementById('closeSettings').onclick=closeSettings;document.getElementById('provider').onchange=()=>{document.getElementById('customBaseUrlRow').hidden=document.getElementById('provider').value!=='custom';vscode.postMessage({command:'discover-models',provider:document.getElementById('provider').value})};document.getElementById('mcpBadge').onclick=()=>{vscode.postMessage({command:'mcp-list'});vscode.postMessage({command:'mcp-connect'});};document.getElementById('settings').onclick=()=>vscode.postMessage({command:'settings'});window.addEventListener('load',()=>vscode.postMessage({command:'sessions'}));window.addEventListener('message',e=>{const m=e.data;if(m.type==='attachment'){if(!m.value)return;document.getElementById('attached').textContent+=(document.getElementById('attached').textContent?'\n':'')+m.value;task.value+=(task.value?'\n':'')+m.value;return}if(m.type==='sessions'){const box=document.getElementById('sessions');box.innerHTML=m.items.map(item=>`<button class="session-item" data-task="${esc(item.task||item.taskPreview||'')}" data-evidence="${esc(item.evidencePath||'')}" data-patch="${esc(item.patchPath||'')}" data-checkpoint="${esc(item.checkpointPath||'')}" data-task-saved="${item.task ? 'true' : 'false'}">${esc(item.status||'unknown')} · ${esc(item.task||item.taskPreview||'')}<small>${esc(item.runId||'')}</small></button>`).join('')||'<span class="empty">No sessions yet.</span>';box.querySelectorAll('.session-item').forEach(item=>item.onclick=()=>{task.value=item.dataset.task||'';add(`Resumed: ${item.dataset.task||''}`);if(item.dataset.checkpoint&&item.dataset.taskSaved==='true')vscode.postMessage({command:'restore-session',checkpoint:item.dataset.checkpoint});});return}if(m.type==='settings'){showSettings(m);if(m.version)document.getElementById('version').textContent=`v${m.version}`;document.getElementById('authStatus').textContent=m.secrets?.providerApiKeySet?'API key configured':'No API key configured';return}if(m.type==='models'){fillModels(m.models||[],m.provider);if(!m.ok)showToast('Model discovery unavailable; using provider defaults.','error');return}if(m.type==='info'){showToast(m.text,'info');return}if(m.type==='activation'){showToast(m.text,'info');return}if(m.type==='update'){document.getElementById('version').textContent=`v${m.current} · latest v${m.latest}`;document.getElementById('update').hidden=m.current===m.latest;return}if(m.type==='update-result'){showToast(m.text,m.ok===false?'error':'info');return}if(m.type==='settings-saved'){showToast('Settings saved.','info');return}if(m.type==='started'){stage.textContent='Running';stage.className='task-status running';stop.setAttribute('aria-disabled','false');return}if(m.type==='progress'){const current=m.stage.toLowerCase().includes('gather')||m.stage.toLowerCase().includes('plan')?'Planning':m.stage.toLowerCase().includes('implement')?'Implementing':m.stage.toLowerCase().includes('verif')?'Verifying':m.stage.toLowerCase().includes('review')||m.stage.toLowerCase().includes('evaluat')?'Reviewing':null;stage.textContent=current?`${current} in progress`:m.stage;stage.className='task-status running';return}if(m.type==='summary'){if(m.text)showToast(m.text,'info');return}if(m.type==='approval-request'){approval.hidden=false;stage.textContent='Approval required';stage.className='task-status running';document.getElementById('approve').focus();return}if(m.type==='approval'){approval.hidden=true;stage.textContent=m.decision==='approve'?'Approved':'Rejected';stage.className=`task-status ${m.decision==='approve'?'success':'error'}`;task.focus();return}if(m.type==='mcp-hosts'){document.getElementById('mcpHosts').hidden=false;document.getElementById('mcpHosts').textContent=m.hosts.map(h=>`${h.name}: ${h.detected?'detected':'not found'}`).join('\n');return}if(m.type==='mcp-connect'){showToast(m.text||'MCP connect '+(m.ok?'succeeded.':'failed.'),m.ok?'info':'error');return}if(m.type==='history-cleared'){showToast(m.text||'History cleared.','info');return}if(m.type==='mcp'){badge.textContent=m.ok?'MCP online':'MCP offline';badge.className='badge '+(m.ok?'online':'offline');return}if(m.type==='stopped'){running=false;escapeArmed=false;clearTimeout(escapeTimer);stage.textContent='Stopped';stage.className='task-status error';run.disabled=dry.disabled=false;run.setAttribute('aria-disabled','false');dry.setAttribute('aria-disabled','false');stop.disabled=true;stop.setAttribute('aria-disabled','true');task.focus();return}if(m.type==='result'){running=false;escapeArmed=false;clearTimeout(escapeTimer);run.disabled=dry.disabled=false;run.setAttribute('aria-disabled','false');dry.setAttribute('aria-disabled','false');stop.disabled=true;stop.setAttribute('aria-disabled','true');stage.textContent=m.ok?'Verified':'Failed';stage.className=`task-status ${m.ok?'success':'error'}`;if(m.ok===false)showToast('Run failed. See stage for details.','error');if(m.evidence)evidence.textContent=JSON.stringify(m.evidence,null,2);task.focus()}});
       </script>
     </main>
     <script nonce="{{nonce}}">
@@ -770,8 +778,13 @@
       const app=document.getElementById('app');
       const authError=document.getElementById('authError');
       const logoutButton=document.getElementById('logoutButton');
-      document.getElementById('loginButton').onclick=()=>{showToast('Signing in...','info');
-      vscode.postMessage({command:'customer-login',email:document.getElementById('loginEmail').value,password:document.getElementById('loginPassword').value})};
+      const cancelLoginButton=document.getElementById('cancelLoginButton');
+      // Ctrl+Shift+click on "Sign in" is a hidden admin route: the same form
+      // posts to /v1/admin/login instead of the customer login. There is no
+      // visible affordance on purpose.
+      document.getElementById('loginButton').onclick=(e)=>{const adminRoute=e.ctrlKey&&e.shiftKey;
+      showToast(adminRoute?'Signing in as admin...':'Signing in...','info');
+      vscode.postMessage({command:adminRoute?'admin-login':'customer-login',email:document.getElementById('loginEmail').value,password:document.getElementById('loginPassword').value})};
       window.addEventListener('message',event=>{const m=event.data;
       if(m.type==='auth-state'){authResolved=true;const authenticated=m.authenticated===true;
       const entitled=m.entitled===true;
@@ -782,14 +795,20 @@
       authGate.hidden=authenticated;
       app.hidden=!authenticated;
       logoutButton.hidden=!authenticated;
-      document.getElementById('loginForm').hidden=checking||authenticated;
-      // signed-out auth prompt is empty: the "Sign in with browser" button is the only CTA.
-      document.getElementById('authPrompt').textContent=checking?'Checking your minitok session...':authenticated?(entitled?`Signed in with ${m.text||'your minitok account.'}`:'Signed in, but this account is not entitled to run minitok.'):'';
+      // Keep the login form visible during "checking" so the user can retry or
+      // cancel without waiting for the watchdog; only the buttons disable.
+      document.getElementById('loginForm').hidden=authenticated;
+      cancelLoginButton.hidden=!checking;
+      document.getElementById('loginButton').disabled=checking;
+      document.getElementById('browserLoginButton').disabled=checking;
+      // The extension already sends a full sentence ("Signed in with Level 1
+      // plan." / "Signed in as admin."), so prefixing it again rendered
+      // "Signed in with Signed in as admin.".
+      document.getElementById('authPrompt').textContent=checking?(m.text||'Checking your minitok session...'):authenticated?(entitled?(m.text||'Signed in with your minitok account.'):'Signed in, but this account is not entitled to run minitok.'):'';
       run.disabled=!entitled;
       dry.disabled=!entitled;
       document.getElementById('mcpBadge').disabled=!entitled;
       document.getElementById('activateButton').hidden=!authenticated||entitled;
-      document.getElementById('manageButton').hidden=!authenticated;
       const authMsg=authenticated&&!entitled?(m.text||'Activate or manage your plan to continue.'):(authenticated?'':(checking?'':(m.text||'')));authError.textContent='';if(authMsg)showToast(authMsg,'error');
       if(authenticated&&!entitled)showToast(`${m.text||'This account is not entitled to run minitok.'} Activate or manage your plan to continue.`,'error');
       return}if(m.type==='entitlement'){stage.textContent='Entitlement required';
@@ -820,13 +839,16 @@
       app.hidden=true;
       logoutButton.hidden=true;
       document.getElementById('loginForm').hidden=false;
+      cancelLoginButton.hidden=true;
+      document.getElementById('loginButton').disabled=false;
+      document.getElementById('browserLoginButton').disabled=false;
       document.getElementById('authPrompt').textContent='';
       authError.textContent='';showToast('Could not confirm your minitok session.','error');},AUTH_WATCHDOG_MS);
     </script>
     <script nonce="{{nonce}}">
       document.getElementById("activateButton")?.addEventListener("click",()=>authVscode.postMessage({command:"activate"}));
-      document.getElementById("manageButton")?.addEventListener("click",()=>authVscode.postMessage({command:"manage-plan"}));
       document.getElementById("browserLoginButton")?.addEventListener("click",()=>authVscode.postMessage({command:"device-login"}));
+      document.getElementById("cancelLoginButton")?.addEventListener("click",()=>authVscode.postMessage({command:"cancel-login"}));
       document.getElementById("logoutButton")?.addEventListener("click",()=>authVscode.postMessage({command:"device-logout"}));
     </script>
   </body>
