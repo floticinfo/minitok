@@ -338,6 +338,22 @@ test("sidebar run/dry restore after run end still respects not-entitled state (B
   assert.equal(view.els.get("run").disabled, false, "entitled users get run back after a result");
 });
 
+test("sidebar not-entitled auth-state toasts exactly once (B2 regression)", () => {
+  // The authMsg branch and a dedicated not-entitled branch both toasted, so a
+  // signed-in-but-not-entitled user saw the same message twice.
+  const view = runWebview(sidebar(), [0, 1], ["loading", "authGate", "app", "logoutButton", "loginForm", "authPrompt", "authError", "run", "dry", "mcpBadge", "activateButton"]);
+  view.dispatch({ type: "auth-state", authenticated: true, entitled: false });
+  assert.equal(view.toasts.length, 1, "not-entitled state must toast exactly once");
+  assert.equal(view.toasts[0].kind, "error");
+  assert.match(view.toasts[0].text, /not entitled|Activate or manage your plan/, "the single toast must still explain the not-entitled state");
+  assert.equal(view.els.get("activateButton").hidden, false, "the activate CTA stays visible for not-entitled users");
+
+  view.toasts.length = 0;
+  view.dispatch({ type: "auth-state", authenticated: true, entitled: false, text: "Plan expired" });
+  assert.equal(view.toasts.length, 1, "a server-supplied message must also toast exactly once");
+  assert.match(view.toasts[0].text, /Plan expired/);
+});
+
 test("the hidden attribute actually hides in both webviews", () => {
   // Regression: every auth state switches surfaces by toggling `hidden`, but an
   // author `display` value outranks the user-agent [hidden] rule. .auth-gate and

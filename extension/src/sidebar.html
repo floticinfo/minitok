@@ -811,8 +811,9 @@
       dry.disabled=!entitled;
       document.getElementById('mcpBadge').disabled=!entitled;
       document.getElementById('activateButton').hidden=!authenticated||entitled;
-      const authMsg=authenticated&&!entitled?(m.text||'Activate or manage your plan to continue.'):(authenticated?'':(checking?'':(m.text||'')));authError.textContent='';if(authMsg)showToast(authMsg,'error');
-      if(authenticated&&!entitled)showToast(`${m.text||'This account is not entitled to run minitok.'} Activate or manage your plan to continue.`,'error');
+      // B2: toast exactly once for not-entitled -- a dedicated branch below used
+      // to fire a second toast right after the authMsg one.
+      const authMsg=authenticated&&!entitled?(`${m.text||'This account is not entitled to run minitok.'} Activate or manage your plan to continue.`):(authenticated?'':(checking?'':(m.text||'')));authError.textContent='';if(authMsg)showToast(authMsg,'error');
       return}if(m.type==='entitlement'){stage.textContent='Entitlement required';
       stage.className='task-status error';
       showToast(m.text||'An active paid plan is required.','error');
