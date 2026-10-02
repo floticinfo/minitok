@@ -931,7 +931,7 @@ class minitokSidebar {
     async openDiff(cwd) {
         const patch = this.readPatch(cwd);
         if (!patch) {
-            vscode.window.showInformationMessage("No minitok patch found");
+            vscode.window.showInformationMessage("No minitok patch found. Run a minitok task first to produce one.");
             return;
         }
         const file = path.join(cwd, ".minitok", "last-run.patch");
@@ -952,7 +952,7 @@ class minitokSidebar {
         if (fs.existsSync(file))
             await vscode.window.showTextDocument(vscode.Uri.file(file));
         else
-            vscode.window.showWarningMessage("No minitok evidence found");
+            vscode.window.showWarningMessage("No minitok evidence found. Run a minitok task first to produce one.");
     }
     readEvidence(cwd) {
         const file = this.evidenceFile(cwd);

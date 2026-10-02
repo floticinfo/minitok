@@ -588,7 +588,7 @@ private async discoverModels(cwd?: string, provider?: string) {
   private readPatch(cwd: string) { try { return fs.readFileSync(path.join(cwd, ".minitok", "last-run.patch"), "utf8").slice(0, 200000); } catch { return null; } }
   private async openDiff(cwd: string) {
     const patch = this.readPatch(cwd);
-    if (!patch) { vscode.window.showInformationMessage("No minitok patch found"); return; }
+    if (!patch) { vscode.window.showInformationMessage("No minitok patch found. Run a minitok task first to produce one."); return; }
     const file = path.join(cwd, ".minitok", "last-run.patch");
     const original = await vscode.workspace.openTextDocument({ content: "", language: "diff" });
     const modified = await vscode.workspace.openTextDocument({ content: patch, language: "diff" });
@@ -605,7 +605,7 @@ private async discoverModels(cwd?: string, provider?: string) {
 
     const file = this.evidenceFile(cwd);
     if (fs.existsSync(file)) await vscode.window.showTextDocument(vscode.Uri.file(file));
-    else vscode.window.showWarningMessage("No minitok evidence found");
+    else vscode.window.showWarningMessage("No minitok evidence found. Run a minitok task first to produce one.");
   }
   private readEvidence(cwd: string) {
     const file = this.evidenceFile(cwd);

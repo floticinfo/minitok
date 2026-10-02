@@ -95,7 +95,7 @@ export function activate(context: vscode.ExtensionContext) {
     void context.globalState.update(onboardingKey, true).then(() => vscode.window.showInformationMessage("minitok MCP is ready to connect.", "Connect MCP Hosts", "Later").then(answer => { if (answer === "Connect MCP Hosts") return vscode.commands.executeCommand("minitok.connectMcp"); return undefined; }));
   }
   context.subscriptions.push(vscode.commands.registerCommand("minitok.openPanel", () => minitokPanel.createOrShow(context)));
-  context.subscriptions.push(vscode.commands.registerCommand("minitok.openSettings", () => vscode.commands.executeCommand("workbench.action.openSettings", "@ext:flotic.minitok-extension")));
+  context.subscriptions.push(vscode.commands.registerCommand("minitok.openSettings", () => vscode.commands.executeCommand("workbench.action.openSettings", "@ext:Flotic.minitok-extension")));
   context.subscriptions.push(vscode.commands.registerCommand("minitok.connectMcp", async () => {
     const answer = await vscode.window.showInformationMessage("Connect minitok to detected MCP hosts with read-only access?", "Connect", "Not now");
     if (answer !== "Connect") return;
@@ -109,7 +109,10 @@ export function activate(context: vscode.ExtensionContext) {
     } catch (error) {
       const message = redactExtensionOutput(String(error));
       output.appendLine(message);
-      vscode.window.showErrorMessage(`minitok MCP setup failed: ${message}`);
+      void vscode.window.showErrorMessage(`minitok MCP setup failed: ${message}`, "Open Output").then(answer => {
+        if (answer === "Open Output") output.show(true);
+        return undefined;
+      });
     }
   }));
   context.subscriptions.push(vscode.commands.registerCommand("minitok.mcpStatus", async () => {
@@ -117,12 +120,12 @@ try { requireTrustedWorkspace(workspacePath()); } catch (error) { vscode.window.
      output.show(true);
     try { configuredMcpScopes(); } catch (error) { vscode.window.showErrorMessage(redactExtensionOutput(String(error))); return; }
     const command = mcpCommand();
-    if (!command.length || !command[0]) { vscode.window.showErrorMessage("minitok MCP command is not configured"); return; }
+    if (!command.length || !command[0]) { void vscode.window.showErrorMessage("minitok MCP command is not configured. Set minitok.mcpCommand in Settings.", "Open Settings").then(answer => { if (answer === "Open Settings") return vscode.commands.executeCommand("workbench.action.openSettings", "minitok.mcpCommand"); return undefined; }); return; }
     const processSpec = spawnSpec(command[0], command.slice(1));
     // Refresh the short lived runtime token before spawning the server, so both
     // sides read the same credential.
     const token = await ensureMcpAuthToken();
-    if (!token) { vscode.window.showErrorMessage("minitok MCP authentication token could not be prepared"); return; }
+    if (!token) { void vscode.window.showErrorMessage("minitok MCP authentication token could not be prepared. Sign in again to refresh your session.", "Sign In").then(answer => { if (answer === "Sign In") return vscode.commands.executeCommand("minitok.sidebar.focus"); return undefined; }); return; }
     try { mcpEnvironment(); await requireEntitlement(); } catch (error) { vscode.window.showErrorMessage(redactExtensionOutput(String(error))); return; }
     output.appendLine(`[spawn] mcp command=${JSON.stringify(processSpec.command)} args=${JSON.stringify(processSpec.args)} cwd=${JSON.stringify(workspacePath())}`);
     let child: ChildProcessWithoutNullStreams;
@@ -170,7 +173,8 @@ try { requireTrustedWorkspace(workspacePath()); } catch (error) { vscode.window.
     } catch (error) {
       const safeError = redactExtensionOutput(String(error));
       output.appendLine(safeError);
-      vscode.window.showErrorMessage(String(error).includes("cancelled") ? "minitok task cancelled" : "minitok task failed");
+      if (String(error).includes("cancelled")) { vscode.window.showErrorMessage("minitok task cancelled"); }
+      else void vscode.window.showErrorMessage("minitok task failed. See the minitok output for details.", "Open Output").then(answer => { if (answer === "Open Output") output.show(true); return undefined; });
     }
   };
   context.subscriptions.push(vscode.commands.registerCommand("minitok.run", async () => {
@@ -236,7 +240,11 @@ try { requireTrustedWorkspace(workspacePath()); } catch (error) { vscode.window.
     );
     if (!result.ok) {
       output.appendLine(redactExtensionOutput(`Activation failed: ${result.message}`));
-      vscode.window.showErrorMessage(`minitok activation failed: ${redactExtensionOutput(result.message)}`);
+      void vscode.window.showErrorMessage(`minitok activation failed: ${redactExtensionOutput(result.message)}`, "Retry", "Open Output").then(answer => {
+        if (answer === "Retry") return vscode.commands.executeCommand("minitok.activate");
+        if (answer === "Open Output") output.show(true);
+        return undefined;
+      });
       return;
     }
     vscode.window.showInformationMessage(`minitok activated${result.plan ? ` (plan: ${result.plan})` : ""}.`);
