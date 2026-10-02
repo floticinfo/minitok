@@ -33,6 +33,7 @@ function normalizeCustomerSession(value: CustomerSessionResponse): ExtensionAuth
 export type AuthFailureKind = "login" | "entitlement" | "network";
 
 const SESSION_KEY = "minitok.secret.accountSession";
+const ADMIN_SESSION_KEY = "minitok.secret.adminSession";
 const SHARED_SESSION_FILE = path.join(os.homedir(), ".minitok", "account", "session.json");
 const LEGACY_CUSTOMER_TOKEN_FILE = path.join(os.homedir(), ".minitok", "entitlement", "customer-token.json");
 
@@ -151,7 +152,14 @@ export async function refreshExtensionSession(context: vscode.ExtensionContext) 
   } catch { return undefined; }
 }
 
-export async function deviceLogin(context: vscode.ExtensionContext, onStatus: (text: string) => void) {
+/**
+ * Cancellation token for the device login polling loop. Setting `cancelled`
+ * stops the loop on its next tick so a dismissed browser tab cannot strand the
+ * sidebar on "Waiting for browser authorization..." for up to ten minutes.
+ */
+export type DeviceLoginCancellation = { cancelled: boolean };
+
+export async function deviceLogin(context: vscode.ExtensionContext, onStatus: (text: string) => void, cancellation?: DeviceLoginCancellation) {
   let start: any;
   try { start = await request("/v1/auth/device/authorize", { client_id: "minitok-extension" }); }
   catch (error) { throw Object.assign(error instanceof Error ? error : new Error(String(error)), { kind: "network" as const }); }
@@ -168,6 +176,7 @@ export async function deviceLogin(context: vscode.ExtensionContext, onStatus: (t
   const deadline = Date.now() + Math.min(Number(start.expires_in || start.expiresIn || 600) * 1000, 10 * 60 * 1000);
   let interval = Math.max(2000, Number(start.interval || 5) * 1000);
   while (Date.now() < deadline) {
+    if (cancellation?.cancelled) throw Object.assign(new Error("Browser sign-in was cancelled."), { kind: "login" as const, code: "cancelled" });
     await new Promise(resolve => setTimeout(resolve, interval));
     try {
       const result = await request("/v1/auth/device/token", { device_code: deviceCode });
@@ -194,6 +203,57 @@ export async function logoutExtension(context: vscode.ExtensionContext) {
   // Browser sign-out must also end a CLI customer-login session; otherwise the
   // CLI token file would immediately authenticate the next Extension check.
   try { fs.unlinkSync(LEGACY_CUSTOMER_TOKEN_FILE); } catch {}
+  return remoteRevoked;
+}
+
+/**
+ * Server-side admin sign-in over /v1/admin/login.
+ *
+ * Unlike device login, admin login is a direct credentials POST: the server
+ * returns the admin token in the body (webAuthResponse only strips it for
+ * x-minitok-web browser requests, and the extension is not one). The admin
+ * session is stored separately from the customer session so an admin sign-in
+ * never collides with, or revokes, a customer session in the shared CLI file.
+ */
+export async function adminLogin(context: vscode.ExtensionContext, email: string, password: string) {
+  const result = await request("/v1/admin/login", { email, password });
+  const token = result?.token;
+  if (typeof token !== "string" || !token) throw Object.assign(new Error("Admin login response is missing a token."), { kind: "login" as const });
+  await context.secrets.store(ADMIN_SESSION_KEY, JSON.stringify({ token, admin_id: result.admin_id, saved_at: new Date().toISOString() }));
+  return { token, admin_id: result.admin_id };
+}
+
+/** Read the stored admin session, if one exists. */
+export async function readAdminSession(context: vscode.ExtensionContext) {
+  const raw = await context.secrets.get(ADMIN_SESSION_KEY);
+  if (!raw) return undefined;
+  try { return JSON.parse(raw) as { token: string; admin_id?: string }; } catch { return undefined; }
+}
+
+/**
+ * True while an admin session is stored.
+ *
+ * The entitlement gate already treats an admin session as a full bypass, but both
+ * webviews also ask "is anybody signed in?" before they render. That question was
+ * answered from the customer session alone, so a view reopened after an admin
+ * sign-in reported signed-out and painted the sign-in card again. Every surface
+ * now checks the admin session first.
+ */
+export async function hasAdminSession(context: vscode.ExtensionContext) {
+  return Boolean((await readAdminSession(context))?.token);
+}
+
+/** Sign out of the admin session only (server-side revocation via /v1/admin/logout). */
+export async function logoutAdmin(context: vscode.ExtensionContext) {
+  const session = await readAdminSession(context);
+  let remoteRevoked = false;
+  if (session?.token) {
+    try {
+      await fetch(`${configuredServerUrl()}/v1/admin/logout`, { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${session.token}` } });
+      remoteRevoked = true;
+    } catch {}
+  }
+  await context.secrets.delete(ADMIN_SESSION_KEY);
   return remoteRevoked;
 }
 

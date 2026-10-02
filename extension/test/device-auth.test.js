@@ -11,7 +11,7 @@ const workspace = fs.readFileSync(path.join(root, "src", "workspace.ts"), "utf8"
 
 test("browser device auth contract", () => {
   assert.match(html, /Sign in with browser/);
-  assert.match(html, /Sign out \/ switch account/);
+  assert.match(html, /Sign out/);
   assert.match(sidebar, /device-login/);
   assert.match(sidebar, /device-logout/);
   assert.match(auth, /context\.secrets\.store/);

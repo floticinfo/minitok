@@ -60,6 +60,7 @@
     "onCommand:minitok.openSettings",
     "onCommand:minitok.mcpStatus",
     "onCommand:minitok.connectMcp",
+    "onCommand:minitok.activate",
     "onView:minitok.sidebar"
   ],
   "main": "./dist/src/extension.js",
@@ -91,6 +92,10 @@
       ]
     },
     "commands": [
+      {
+        "command": "minitok.activate",
+        "title": "minitok: Activate License"
+      },
       {
         "command": "minitok.run",
         "title": "minitok: Run Task"
@@ -193,8 +198,8 @@
     "lint": "npm run typecheck && npm run lint:tests",
     "lint:tests": "eslint --config ../eslint.config.js --max-warnings=0 --rule no-useless-escape:off \"test/*.test.js\"",
     "test:host": "npm run compile && node dist/test/run-host.js",
-    "test:unit": "npm run compile && node --test test/process-contract.test.js test/mcp-config.test.js test/version.test.js test/spawn.test.js test/auth-ui.test.js test/device-auth.test.js test/truncate.test.js test/theme-contrast.test.js",
-    "test": "npm run compile && node --test test/process-contract.test.js test/mcp-config.test.js test/version.test.js test/spawn.test.js test/auth-ui.test.js test/device-auth.test.js && node dist/test/run-host.js"
+    "test:unit": "npm run compile && node --test test/process-contract.test.js test/mcp-config.test.js test/version.test.js test/spawn.test.js test/auth-ui.test.js test/device-auth.test.js test/activate.test.js test/truncate.test.js test/theme-contrast.test.js test/boundary-audit.test.js",
+    "test": "npm run compile && node --test test/process-contract.test.js test/mcp-config.test.js test/version.test.js test/spawn.test.js test/auth-ui.test.js test/device-auth.test.js test/boundary-audit.test.js && node dist/test/run-host.js"
   },
   "devDependencies": {
     "@types/node": "^26.4.1",

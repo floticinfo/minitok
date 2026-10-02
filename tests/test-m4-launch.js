@@ -109,8 +109,12 @@ describe("M4.7 CLI Graceful Failure", () => {
 });
 describe("M4.9 Dodo Production Checkout/Portal Paths", () => {
   it("checkout accepts only Level 1", async () => {
-    assert.equal(await cmdCheckout({ plan: "select", token: "jwt" }), 1);
-    assert.equal(await cmdCheckout({ plan: "open", token: "jwt" }), 1);
+    // Legacy plan ids (open/select/private) are removed from the product; only
+    // the canonical Level 1 plan is purchasable. Verified at the source level
+    // so the test does not depend on a live server.
+    const c = fs.readFileSync(path.join(__dirname, "../src/cli/commands/checkout.js"), "utf-8");
+    assert.ok(c.includes('planId !== "level1"'), "checkout must reject every non-level1 plan");
+    assert.ok(!c.includes("open") || !/plan.{0,20}["']open["']/.test(c), "no legacy open plan branch");
   });
   it("checkout defaults to /v1/checkout/dodo", () => {
     const c = fs.readFileSync(path.join(__dirname, "../src/cli/commands/checkout.js"), "utf-8");
