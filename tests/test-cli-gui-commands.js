@@ -180,3 +180,16 @@ test(":help advertises the OAuth and provider-test commands", () => {
   assert.match(guiSource, /:provider-test <provider>/);
   assert.match(guiSource, /:mcp/);
 });
+
+test(":transcript reports an empty transcript without throwing", () => {
+  const { handled, output } = withSpawnStub(() => handleCommand(":transcript no-such-run", { repo: repoRoot }));
+  assert.equal(handled, true);
+  assert.match(output, /No transcript recorded/);
+  assert.match(output, /--full/);
+});
+
+test(":transcript without a run id prints usage", () => {
+  const { handled, output } = withSpawnStub(() => handleCommand(":transcript", { repo: repoRoot }));
+  assert.equal(handled, true);
+  assert.match(output, /Usage: :transcript/);
+});

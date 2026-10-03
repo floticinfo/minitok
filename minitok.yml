@@ -31,3 +31,9 @@ validation:
   timeout_ms: 120000
   confidence_threshold: 0.8
   max_changed_files: 20
+
+# Optional: keep prompts and model responses on disk for later inspection.
+# Off by default — enabling this writes .minitok/transcripts/<run_id>.jsonl
+# (redacted, owner-only readable) for every pipeline run.
+transcript:
+  enabled: false

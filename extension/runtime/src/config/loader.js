@@ -13,7 +13,6 @@ const { ConfigError } = require("../core/errors");
 const { normalizeProvider } = require("../auth/aliases");
 const { EXECUTION_POLICY_MODES } = require("../goal/execution_policy");
 const { EXECUTION_CAPABILITIES, GENERAL_CAPABILITIES, isAlwaysBlockedCapability } = require("../goal/capabilities");
-const { CAMELSTREAM_PROVIDER, camelstreamPreset } = require("../llm/camelstream");
 
 const ENV_ALLOWLIST = new Set([
   "minitok_offline", "minitok_default_provider", "minitok_model", "minitok_server_url",
@@ -29,6 +28,7 @@ const ENV_ALLOWLIST = new Set([
   "minitok_execution_timeout_hard_limit_sec", "minitok_execution_retry_backoff_sec", "minitok_execution_retry_max_sec",
   "minitok_execution_research_enabled", "minitok_validation_enabled", "minitok_validation_script_path",
   "minitok_validation_timeout_ms", "minitok_validation_confidence_threshold", "minitok_validation_max_changed_files",
+  "minitok_transcript_enabled",
 ]);
 // The pipeline maps one role to each LLM stage: plan (task planning and
 // next-task generation), work (implementation), review (verification), and
@@ -69,6 +69,7 @@ const DEFAULTS = {
     research_enabled: true,
   },
   validation: { enabled: true, script_path: "VERIFY_CMD.mjs", timeout_ms: 120000, confidence_threshold: 0.8, max_changed_files: 20, environment_allowlist: [] },
+  transcript: { enabled: false },
   security: { blocked_extensions: [".env", ".pem", ".key", ".p12", ".pfx"] },
 };
 
@@ -149,6 +150,7 @@ function loadEnvVars() {
     validation_timeout_ms: ["validation", "timeout_ms"],
     validation_confidence_threshold: ["validation", "confidence_threshold"],
     validation_max_changed_files: ["validation", "max_changed_files"],
+    transcript_enabled: ["transcript", "enabled"],
     custom_base_url: ["custom_base_url"],
     openai_compatible_base_url: ["openai_compatible_base_url"],
   };
@@ -237,8 +239,7 @@ function normalizeProviderConfig(config) {
     const aliases = [];
     for (const [name, value] of Object.entries(config.providers)) {
       const canonical = normalizeProvider(name);
-      if (canonical === CAMELSTREAM_PROVIDER) providers[canonical] = camelstreamPreset(value || {});
-      else if (canonical === name.toLowerCase()) providers[canonical] = value;
+      if (canonical === name.toLowerCase()) providers[canonical] = value;
       else aliases.push([canonical, value]);
     }
     // A canonical key is authoritative when both `gpt` and `openai` exist.

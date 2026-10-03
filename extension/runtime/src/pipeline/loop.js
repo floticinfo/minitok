@@ -20,6 +20,7 @@ const { writeContract, writeContextManifest, readContract } = require("../state/
 const { recordRunEvidence, createCycleEvidence, fileHashEntries, sha256, updateCycleEvidence } = require("../run-evidence");
 const { createTerminalResult } = require("../goal/failure");
 const { generateNextTask } = require("./next_task");
+const { withTranscriptRecording } = require("./transcript");
 const { compactText, DEFAULT_CONTEXT_BUDGET_CHARS } = require("../context/compaction");
 const { KnowledgeStore } = require("../evolution/knowledge");
 const { analyzeFailurePatterns, FailureAnalyzer } = require("../evolution/analyzer");
@@ -393,11 +394,29 @@ async function runPipelineInWorkspace(task, opts = {}) {
     return { name: providerName, provider };
   };
   var roleProviders = {};
+  // Optional transcript recording (transcript.enabled, default off): prompts
+  // and provider responses stay out of every persisted artifact unless the
+  // operator opts in. When enabled, the wrapper records each complete() call
+  // into .minitok/transcripts/<run_id>.jsonl after redaction. Declared before
+  // the provider try block (var, like roleProviders itself).
+  var recordTranscript = config.transcript?.enabled === true && !opts.dryRun;
+  var currentCycle = 0;
   for (const role of ["plan", "work", "review", "intel"]) {
     // The intel role is only needed when research is enabled; requiring its
     // credentials unconditionally made an unrelated missing key fatal.
     if (role === "intel" && !researchEnabled) continue;
     roleProviders[role] = createRoleProvider(role);
+    if (recordTranscript) {
+      roleProviders[role].provider = withTranscriptRecording(roleProviders[role].provider, {
+        // Record into the operator-visible workspace, not the disposable
+        // isolation clone: the clone (and its .minitok) is removed after the
+        // run, which would take the transcript with it.
+        workspaceRoot: opts.approvalRoot || repoRoot,
+        runId: opts.runId,
+        role,
+        cycleProvider: () => currentCycle,
+      });
+    }
     if (!(await roleProviders[role].provider.isAvailable())) {
       throw new Error(`Provider '${roleProviders[role].name}' for role '${role}' is not available. Configure its credentials or choose another provider.`);
     }
@@ -602,6 +621,7 @@ async function runPipelineInWorkspace(task, opts = {}) {
     }
 
     console.log(`\nCycle ${cycle}/${adaptedMaxCycles}`);
+    currentCycle = cycle;
     // Context compaction (token savings)
     // P1: repo context is static on the real (non-isolated) repo while the
     // pipeline edits the disposable clone — compute once per run instead of
