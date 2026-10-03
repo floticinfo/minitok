@@ -94,6 +94,12 @@ export function validateApprovalManifest(manifest, { packageData: expectedPackag
 }
 
 export function readApprovalManifest(manifestPath = process.env[manifestEnvironmentVariable]) {
+  // Approval is version-pinned in-repo: approval-manifests/approval-manifest-<version>.json.
+  // An explicit env var still overrides (ad-hoc / out-of-tree approvals).
+  if (!manifestPath) {
+    const pinPath = path.join(root, "approval-manifests", `approval-manifest-${packageData.version}.json`);
+    if (fs.existsSync(pinPath)) manifestPath = pinPath;
+  }
   if (!manifestPath) return { state: "MISSING", errors: [`approval manifest path was not supplied (${manifestEnvironmentVariable}); start from scripts/approval-manifest.example.json`] };
   const resolvedPath = path.resolve(manifestPath);
   try {

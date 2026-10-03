@@ -49,6 +49,7 @@
     "release:verify": "node scripts/release-verify.mjs",
     "release:manifest": "node scripts/release-manifest.mjs validate",
     "release:manifest:generate": "node scripts/release-manifest.mjs generate",
+    "release:generate": "node scripts/release-manifest.mjs generate && node scripts/release-manifest.mjs validate && node scripts/release-verify.mjs",
     "registry:compat": "node scripts/registry-compat.mjs",
     "registry:verify": "node scripts/registry-compat.mjs",
     "commercial:readiness": "node scripts/commercial-readiness.mjs --json",
