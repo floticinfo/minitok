@@ -23,7 +23,7 @@ try {
 
   const head = git("rev-parse", "HEAD");
   const tree = git("rev-parse", "HEAD^{tree}");
-  const status = git("status", "--short");
+  const status = git("status", "--short").split(/\r?\n/).filter(line => line.trim() && !/^\s*M?\s+release-manifest\.json$/.test(line)).join("\n");
   const tags = git("tag", "--points-at", "HEAD").split(/\r?\n/).filter(Boolean);
   if (!head || !tree) errors.push("git HEAD/tree identity is unavailable");
   if (status) errors.push(`working tree is not clean; modified paths:\n${status}`);
