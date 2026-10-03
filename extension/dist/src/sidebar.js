@@ -683,36 +683,70 @@ class minitokSidebar {
     async discoverModels(cwd, provider) {
         (0, workspace_1.requireTrustedWorkspace)(cwd);
         await (0, entitlement_1.requireEntitlement)();
-        const args = ["models", "--json"];
+        // Always use --discover so the model list comes from live provider APIs,
+        // not the static catalog which may lag behind new releases.
+        const args = ["models", "--discover", "--json"];
         if (provider)
-            args.splice(1, 0, provider);
+            args.splice(2, 0, provider);
+        // The extension owns SecretStorage, so the CLI cannot see stored keys —
+        // inject the requested provider's key, mirroring validateApiKey().
+        const wanted = (provider || "").toLowerCase();
+        const env = {};
+        if (isApiKeyProvider(wanted)) {
+            const key = await this.context.secrets.get(apiKeySecretKey(wanted));
+            if (key) {
+                env.minitok_default_provider = wanted;
+                if (wanted === "anthropic")
+                    env.ANTHROPIC_API_KEY = key;
+                else if (wanted === "openai")
+                    env.OPENAI_API_KEY = key;
+                else if (wanted === "google")
+                    env.GOOGLE_API_KEY = key;
+                else
+                    env.OPENAI_API_KEY = key; // custom
+                if (wanted === "custom") {
+                    const baseUrl = await this.context.secrets.get("minitok.secret.customBaseUrl");
+                    if (baseUrl) {
+                        env.MINITOK_CUSTOM_BASE_URL = baseUrl;
+                        env.MINITOK_OPENAI_COMPATIBLE_BASE_URL = baseUrl;
+                    }
+                }
+            }
+        }
         // cliPath() resolves the real entry point; the configured setting alone
         // defaulted to "minitok" and could not be launched on Windows.
         const spec = (0, workspace_1.spawnSpec)((0, workspace_1.cliPath)(), args);
-        (0, node_child_process_1.execFile)(spec.command, spec.args, { ...(0, workspace_1.spawnOptionsFor)(spec, { cwd }), timeout: 30000 }, (error, stdout, stderr) => {
+        // Live API calls take longer than reading the local catalog; 45s gives
+        // headroom for slow networks without hanging the sidebar indefinitely.
+        (0, node_child_process_1.execFile)(spec.command, spec.args, { ...(0, workspace_1.spawnOptionsFor)(spec, { cwd, env }), timeout: 45000 }, (error, stdout, stderr) => {
             const text = redactOutputText(error ? stderr || error.message : stdout);
-            // Parse the CLI's --json output instead of regex-scraping human text;
-            // non-JSON output exits non-zero for unavailable providers, which used
-            // to leave the webview with an empty list. Catalog entries are a stable
-            // offline fallback when live discovery has no API key.
-            const wanted = (provider || "").toLowerCase();
+            // Parse the CLI's --discover --json output. Live-only: no catalog merge.
+            // Shape: { live: { provider: [id, ...] }, custom: [...], unknown: [...] }
             let models = [];
             let parsed = false;
             try {
                 const data = JSON.parse(stdout);
                 parsed = true;
                 const ids = new Set();
-                const live = data.live && wanted ? data.live[wanted] : undefined;
-                for (const id of Array.isArray(live) ? live : [])
-                    if (typeof id === "string")
-                        ids.add(id);
-                for (const m of Array.isArray(data.models) ? data.models : []) {
-                    if (m && typeof m.id === "string" && (!wanted || String(m.provider).toLowerCase() === wanted))
-                        ids.add(m.id);
+                // Live discovered IDs (per-provider string arrays)
+                if (data.live && typeof data.live === "object") {
+                    for (const [prov, liveIds] of Object.entries(data.live)) {
+                        if (!wanted || prov.toLowerCase() === wanted) {
+                            for (const id of Array.isArray(liveIds) ? liveIds : [])
+                                if (typeof id === "string")
+                                    ids.add(id);
+                        }
+                    }
                 }
-                for (const m of Array.isArray(data.catalog) ? data.catalog : []) {
-                    if (m && typeof m.id === "string" && (!wanted || String(m.provider).toLowerCase() === wanted))
-                        ids.add(m.id);
+                // Custom provider models (live endpoint discovery + user-defined)
+                for (const c of Array.isArray(data.custom) ? data.custom : []) {
+                    if (!c || !Array.isArray(c.models))
+                        continue;
+                    if (wanted && String(c.provider).toLowerCase() !== wanted)
+                        continue;
+                    for (const m of c.models)
+                        if (m && typeof m.id === "string")
+                            ids.add(m.id);
                 }
                 models = [...ids];
             }
@@ -724,7 +758,10 @@ class minitokSidebar {
                 models = [...new Set((stdout.match(/(?:claude|gpt|o[134]|gemini|llama|deepseek|qwen|mistral|mixtral|phi|yi|solar|starcoder|codellama|gemma|command|dbrx|jamba|nova|spark|hunyuan|step|kimi|minimax|moonshot|zhipu|baichuan|internlm|chatglm|qwq|qvq|grok)[\w.:-]*|[\w][\w.-]*-[\w.-]+/gi) || [])
                         .filter(id => id.length > 2 && !headerWords.has(id.toLowerCase()) && !/^\d/.test(id)))];
             }
-            this.view?.webview.postMessage({ type: "models", ok: models.length > 0 || !error, text, provider: provider || "all", models });
+            // ok tracks whether the list is actually usable. A configured provider
+            // with no stored API key returns no live models, and the old
+            // `|| !error` mask hid that case from the empty-state guidance toast.
+            this.view?.webview.postMessage({ type: "models", ok: models.length > 0, text, provider: provider || "all", models });
         });
     }
     /**

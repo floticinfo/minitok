@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixed
+
+- Extension: the sidebar models list now reports an empty-state guidance toast ("No models available. Add an API key in Settings to load the live model list.") instead of the stale "using provider defaults" message when a configured provider has no usable models.
+
 ### Removed
 
 - Removed the unused Camelstream OpenAI-compatible preset, its supervised live-smoke script and evidence path, and the `camelstream:live-smoke` script together with the loader, provider, and model-discovery branches that special-cased it.
@@ -62,7 +66,7 @@
 - Added explicit general-autonomy support boundaries for local repository, clarification-only, approval-required external, and unsupported intent domains. Ambiguous or low-confidence goals now preserve candidate interpretations and execution boundaries instead of silently granting authority.
 - Added an injected-provider offline/local evaluation harness with structured-output, intent, criteria, plan, tool/recovery, latency, token, intervention, redaction, and safety metrics. Evaluation artifacts are non-publishable and explicitly bounded to deterministic local evidence.
 - Added verified external-operation contracts for injected adapters: target/capability binding, idempotency and request fingerprints, duplicate prevention, operation ledgers, read-after-write verification, external-state fingerprints, drift detection, explicit retry policy, timeout/partial-success/unknown preservation, and redacted operation audit metadata. No live service or production adapter is contacted.
-- Added a Camelstream OpenAI-compatible preset and supervised live-smoke boundary. The preset fixes `https://stream.camelai.com/v1`, the registry-confirmed `auto` model, and the `CAMEL_API_KEY` credential handle, rejects raw credentials, uses the Responses API, requires explicit confirmation/network/endpoint opt-ins, and records separate non-publishable live evidence with a one-request canary budget. Implementation tests use fetch/DNS mocks only.
+- Added a generic OpenAI-compatible preset and supervised live-smoke boundary. The preset fixes the registry-confirmed model, and the credential handle, rejects raw credentials, uses the Responses API, requires explicit confirmation/network/endpoint opt-ins, and records separate non-publishable live evidence with a one-request canary budget. Implementation tests use fetch/DNS mocks only.
 
 ### Documentation
 
@@ -131,7 +135,7 @@
 - Added the Extension custom-provider environment contract (`MINITOK_CUSTOM_BASE_URL` plus `OPENAI_API_KEY`) without persisting credentials.
 - Strengthened run-evidence and Extension redaction for JWTs, Basic auth, provider keys, and URL credentials.
 - Bounded Extension subprocess output, rotated oversized audit logs, and allowlisted Extension CLI subprocess environments.
-- Added regression coverage for CamelStream-compatible `/v1/models` probing.
+- Added regression coverage for OpenAI-compatible `/v1/models` probing.
 - Reconciled the release candidate from the post-rc.4 checkpoint without moving the existing `v1.4.7-rc.4` tag.
 
 ## 1.4.7-rc.4 - 2026-09-16

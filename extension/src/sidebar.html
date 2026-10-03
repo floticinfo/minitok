@@ -212,9 +212,6 @@
         color:var(--vscode-descriptionForeground);
         margin-bottom:6px
       }
-      .role-heading {
-        margin-top:20px
-      }
       .key-badge {
         font-size:9px;
         letter-spacing:.06em;
@@ -385,28 +382,124 @@
       /* Settings card opens and closes with a slide-fade. The `[hidden]`
          attribute is only applied after the close transition finishes, and
          the reduced-motion blanket rule near the top of this stylesheet turns
-         the transition off for users who opt out. */
+         the transition off for users who opt out. Durations are deliberately
+         generous so the motion is perceptible without feeling slow. */
       #settingsView {
         overflow:hidden;
         opacity:0;
-        transform:translateY(-8px);
+        transform:translateY(-10px);
         max-height:0;
         margin-bottom:0;
         padding-top:0;
         padding-bottom:0;
         border-width:0;
         pointer-events:none;
-        transition:max-height .28s ease,opacity .22s ease,transform .22s ease,padding .22s ease,margin .22s ease,border-width .22s ease
+        transition:max-height .5s cubic-bezier(.25,.46,.45,.94),opacity .42s ease,transform .45s cubic-bezier(.25,.46,.45,.94),padding .42s ease,margin .42s ease,border-width .42s ease
       }
       #settingsView.open {
         opacity:1;
         transform:none;
-        max-height:2200px;
+        max-height:3200px;
         margin-bottom:10px;
         padding-top:10px;
         padding-bottom:10px;
         border-width:1px;
         pointer-events:auto
+      }
+      /* Each settings tab opens and closes with the same slide-fade the settings
+         card itself uses: the closed body has no height, padding or border and
+         is transparent + pointer-events:none, and the .open rule reverses all
+         of it. The [hidden] mirror rule above stays authoritative, and the
+         reduced-motion blanket near the top of the stylesheet still turns the
+         whole transition off. */
+      .settings-group-body {
+        opacity:0;
+        transform:translateY(-6px);
+        max-height:0;
+        padding-top:0;
+        padding-bottom:0;
+        border-top-width:0;
+        pointer-events:none;
+        transition:max-height .45s cubic-bezier(.25,.46,.45,.94),opacity .38s ease,transform .4s cubic-bezier(.25,.46,.45,.94),padding .38s ease,border-top-width .38s ease
+      }
+      .settings-group-body.open {
+        opacity:1;
+        transform:none;
+        max-height:2600px;
+        padding:6px 10px 10px;
+        border-top-width:1px;
+        pointer-events:auto
+      }
+      .settings-group-body[hidden] {
+        display:none
+      }
+      /* Collapsible group containers give the settings view its depth: one
+         level of hierarchy, a clear label row that toggles open/closed, and a
+         body that holds the related controls. */
+      .settings-group {
+        border:1px solid var(--vscode-input-border);
+        border-radius:6px;
+        margin:8px 0;
+        overflow:hidden
+      }
+      .settings-group>summary {
+        display:flex;
+        align-items:center;
+        gap:6px;
+        padding:8px 10px;
+        cursor:pointer;
+        list-style:none;
+        font-size:11px;
+        font-weight:600;
+        letter-spacing:.06em;
+        text-transform:uppercase;
+        color:var(--vscode-foreground);
+        background:var(--vscode-sideBar-background);
+        user-select:none
+      }
+      .settings-group>summary::-webkit-details-marker {
+        display:none
+      }
+      .settings-group>summary::before {
+        content:'';
+        width:0;
+        height:0;
+        border-left:4px solid transparent;
+        border-right:4px solid transparent;
+        border-top:5px solid var(--vscode-descriptionForeground);
+        transform:rotate(-90deg);
+        transition:transform .3s ease
+      }
+      .settings-group[open]>summary::before {
+        transform:none
+      }
+      .settings-group>summary:hover {
+        color:var(--mt-brand-surface-accent)
+      }
+      .settings-group>summary:focus-visible {
+        outline:1px solid var(--vscode-focusBorder);
+        outline-offset:-1px
+      }
+      .settings-actions {
+        display:flex;
+        flex-wrap:wrap;
+        gap:6px;
+        margin-top:12px;
+        padding-top:10px;
+        border-top:1px solid var(--vscode-input-border)
+      }
+      .general-actions {
+        display:flex;
+        flex-wrap:wrap;
+        gap:6px;
+        margin-top:10px;
+        padding-top:8px;
+        border-top:1px solid var(--vscode-input-border)
+      }
+      .settings-hint {
+        font-size:10px;
+        color:var(--vscode-descriptionForeground);
+        margin:2px 0 6px
       }
       .setting {
         display:block;
@@ -452,7 +545,9 @@
       .actions {
         display:flex;
         gap:6px;
-        margin-top:8px
+        margin-top:12px;
+        padding-top:10px;
+        border-top:1px solid var(--vscode-input-border)
       }
       button {
         flex:1;
@@ -723,6 +818,9 @@
         <div class="label">
           Settings
         </div>
+        <details class="settings-group" data-settings-group="general">
+          <summary>Provider &amp; Model</summary>
+          <div class="settings-group-body">
         <label>
           Default provider
           <select id="provider" class="setting">
@@ -748,27 +846,45 @@
             </option>
           </select>
         </label>
-        <div id="authStatus" class="empty">
-        </div>
-        <div class="label">
-          Product status
-        </div>
-        <div id="productStatus" class="evidence">
-        </div>
-
-        <div class="label role-heading">
-          Role providers
-        </div>
-        <div id="roleSettings">
-        </div>
         <label id="customBaseUrlRow" hidden>
           OpenAI-compatible endpoint
           <input id="customBaseUrl" class="setting" placeholder="https://api.example.com/v1">
         </label>
+        <div class="general-actions">
+          <button id="clearHistory" class="secondary" type="button">
+            Clear history
+          </button>
+          <button id="logoutButton" class="secondary" type="button" hidden title="Sign out" aria-label="Sign out">
+            Sign out
+          </button>
+        </div>
+          </div>
+        </details>
+
+        <details class="settings-group" data-settings-group="shortcuts">
+          <summary>Shortcuts</summary>
+          <div class="settings-group-body">
+        <div class="settings-hint">
+          Choose which key submits the task textarea.
+        </div>
         <label>
-          Evidence path
-          <input id="evidencePath" class="setting" value=".minitok/evidence/runs/latest.json">
+          Enter key
         </label>
+        <div class="toggle-actions">
+          <button id="enterRun" class="toggle-choice" type="button" aria-pressed="true">
+            Enter runs
+          </button>
+          <button id="enterNewline" class="toggle-choice" type="button" aria-pressed="false">
+            Shift+Enter runs
+          </button>
+        </div>
+        <input id="enterBehavior" type="hidden" value="enter-run">
+          </div>
+        </details>
+
+        <details class="settings-group" data-settings-group="run">
+          <summary>Run Behavior</summary>
+          <div class="settings-group-body">
         <label class="check">
           <input id="showCost" type="checkbox" checked>
           Show token and cost summary
@@ -782,20 +898,23 @@
           Store full task text locally
         </label>
         <label>
-          Enter key
+          Evidence path
+          <input id="evidencePath" class="setting" value=".minitok/evidence/runs/latest.json">
         </label>
-        <div class="toggle-actions">
-          <button id="enterRun" class="toggle-choice" type="button" aria-pressed="true">
-            Enter runs
-          </button>
-          <button id="enterNewline" class="toggle-choice" type="button" aria-pressed="false">
-            Shift+Enter runs
-          </button>
-        </div>
-        <input id="enterBehavior" type="hidden" value="enter-run">
-        <div class="label role-heading">
-          Provider API keys
-        </div>
+          </div>
+        </details>
+
+        <details class="settings-group" data-settings-group="roles">
+          <summary>Roles</summary>
+          <div class="settings-group-body">
+            <div id="roleSettings">
+            </div>
+          </div>
+        </details>
+
+        <details class="settings-group" data-settings-group="keys">
+          <summary>Account &amp; API Keys</summary>
+          <div class="settings-group-body">
         <div class="key-row">
           <label>
             Anthropic API key <span class="key-badge unset" data-key-provider="anthropic" id="anthropicApiKeyBadge" hidden></span>
@@ -836,25 +955,35 @@
             <span class="key-status" data-key-status="custom" hidden></span>
           </div>
         </div>
-        <div class="actions">
+          </div>
+        </details>
+
+        <details class="settings-group" data-settings-group="about">
+          <summary>About</summary>
+          <div class="settings-group-body">
+            <div id="authStatus" class="empty">
+            </div>
+            <div class="label">
+              Product status
+            </div>
+            <div id="productStatus" class="evidence">
+            </div>
+            <div class="version-row">
+              <span id="version">
+              </span>
+              <button id="update" class="secondary" hidden>
+                Update
+              </button>
+            </div>
+          </div>
+        </details>
+
+        <div class="settings-actions">
           <button id="saveSettings">
             Save
           </button>
-          <button id="clearHistory" class="secondary" type="button">
-            Clear history
-          </button>
-          <button id="logoutButton" class="secondary" type="button" hidden title="Sign out" aria-label="Sign out">
-            Sign out
-          </button>
           <button id="closeSettings" class="secondary">
             Close
-          </button>
-        </div>
-        <div class="version-row">
-          <span id="version">
-          </span>
-          <button id="update" class="secondary" hidden>
-            Update
           </button>
         </div>
 
@@ -874,13 +1003,17 @@
         // so re-ask before re-enabling the buttons: an entitlement that lapsed or
         // was revoked during the run must not reopen the gate.
         if(mode==='run'||mode==='dry-run')vscode.postMessage({command:'auth-status'});
-        running=true;escapeArmed=false;run.disabled=dry.disabled=true;run.setAttribute('aria-disabled','true');dry.setAttribute('aria-disabled','true');stop.disabled=false;stop.setAttribute('aria-disabled','false');stage.textContent='Starting...';stage.className='task-status running';vscode.postMessage({command:mode,task:task.value})}function setEnterBehavior(value){document.getElementById('enterBehavior').value=value;document.getElementById('enterRun').classList.toggle('selected',value==='enter-run');document.getElementById('enterNewline').classList.toggle('selected',value==='enter-newline');document.getElementById('enterRun').setAttribute('aria-pressed',value==='enter-run'?'true':'false');document.getElementById('enterNewline').setAttribute('aria-pressed',value==='enter-newline'?'true':'false')}document.getElementById('enterRun').onclick=()=>setEnterBehavior('enter-run');document.getElementById('enterNewline').onclick=()=>setEnterBehavior('enter-newline');function fillModels(ids,provider){const defaultProvider=document.getElementById('provider')?.value||'';const targets=[document.getElementById('model')];for(const r of ['plan','work','review','intel']){const roleProvider=document.getElementById(r+'Provider')?.value||'';if((provider||defaultProvider)===(roleProvider||defaultProvider))targets.push(document.getElementById(r+'Model'))}for(const select of targets){const current=select.value;select.innerHTML='<option value="">Use provider default</option>'+ids.map(id=>`<option value="${esc(id)}">${esc(id)}</option>`).join('');if(current){if(![...select.options].some(o=>o.value===current))select.insertAdjacentHTML('beforeend',`<option value="${esc(current)}">${esc(current)}</option>`);select.value=current}}}function showSettings(s){const view=document.getElementById('settingsView');view.hidden=false;view.classList.add('open');document.getElementById('task').dataset.enterBehavior=s.settings.enterBehavior||'enter-run';view.scrollIntoView({behavior:'smooth',block:'start'});for(const k of ['provider','model','evidencePath','enterBehavior'])if(s.settings[k]!==undefined)document.getElementById(k).value=s.settings[k];setEnterBehavior(document.getElementById('enterBehavior').value);const roles=['plan','work','review','intel'];document.getElementById('roleSettings').innerHTML=roles.map(role=>`<label>${role}<select id="${role}Provider" class="setting"><option value="">Use default</option><option value="anthropic">Anthropic</option><option value="openai">OpenAI</option><option value="google">Google Gemini</option><option value="custom">Custom</option></select><select id="${role}Model" class="setting"><option value="">Use provider default</option></select></label>`).join('');for(const role of roles){const p=s.settings[`${role}.provider`];const m=s.settings[`${role}.model`];if(p)document.getElementById(`${role}Provider`).value=p;if(m){const ms=document.getElementById(`${role}Model`);if(![...ms.options].some(o=>o.value===m))ms.insertAdjacentHTML('beforeend',`<option value="${esc(m)}">${esc(m)}</option>`);ms.value=m}document.getElementById(`${role}Provider`).onchange=()=>{const rp=document.getElementById(`${role}Provider`).value;vscode.postMessage({command:'discover-models',provider:rp||document.getElementById('provider').value})}}document.getElementById('customBaseUrlRow').hidden=document.getElementById('provider').value!=='custom';const keySet=s.secrets?.providerApiKeySet||s.settings.providerApiKeySet||{};for(const p of ['anthropic','openai','google','custom']){const badge=document.getElementById(p+'ApiKeyBadge');if(badge){const isSet=keySet[p]===true;badge.hidden=false;badge.textContent=isSet?'Set':'Not set';badge.className='key-badge '+(isSet?'set':'unset');badge.title=isSet?'A key is stored for '+p:'No key stored for '+p}}for(const k of ['showCost','autoApprove','storeTaskText'])if(s.settings[k]!==undefined)document.getElementById(k).checked=Boolean(s.settings[k])}run.onclick=()=>send('run');dry.onclick=()=>send('dry-run');stop.onclick=()=>vscode.postMessage({command:'stop'});document.getElementById('approve').onclick=()=>vscode.postMessage({command:'approve'});document.getElementById('reject').onclick=()=>vscode.postMessage({command:'reject'});let closeSettings=()=>{};const initSettingsClose=()=>{const view=document.getElementById('settingsView');let closed=false;const finish=()=>{if(closed)return;closed=true;view.removeEventListener('transitionend',finish);view.removeEventListener('scrollend',finish);view.hidden=true};view.addEventListener('transitionend',finish,{once:true});view.addEventListener('scrollend',finish,{once:true});view.classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});setTimeout(finish,1400)};closeSettings=initSettingsClose;document.getElementById('update').onclick=()=>vscode.postMessage({command:'update'});const collectSettings=()=>{const settings={};for(const k of ['provider','model','evidencePath','enterBehavior'])settings[k]=document.getElementById(k).value;for(const role of ['plan','work','review','intel']){settings[`${role}.provider`]=document.getElementById(`${role}Provider`).value;settings[`${role}.model`]=document.getElementById(`${role}Model`).value}for(const k of ['showCost','autoApprove','storeTaskText'])settings[k]=document.getElementById(k).checked;const secrets={providerApiKeys:{}};for(const p of ['anthropic','openai','google','custom']){const v=(document.getElementById(p+'ApiKey')?.value||'').trim();if(v)secrets.providerApiKeys[p]=v}if(document.getElementById('customBaseUrl').value)secrets.customBaseUrl=document.getElementById('customBaseUrl').value;return{settings,secrets}};
+        running=true;escapeArmed=false;run.disabled=dry.disabled=true;run.setAttribute('aria-disabled','true');dry.setAttribute('aria-disabled','true');stop.disabled=false;stop.setAttribute('aria-disabled','false');stage.textContent='Starting...';stage.className='task-status running';vscode.postMessage({command:mode,task:task.value})}function setEnterBehavior(value){document.getElementById('enterBehavior').value=value;document.getElementById('enterRun').classList.toggle('selected',value==='enter-run');document.getElementById('enterNewline').classList.toggle('selected',value==='enter-newline');document.getElementById('enterRun').setAttribute('aria-pressed',value==='enter-run'?'true':'false');document.getElementById('enterNewline').setAttribute('aria-pressed',value==='enter-newline'?'true':'false')}document.getElementById('enterRun').onclick=()=>setEnterBehavior('enter-run');document.getElementById('enterNewline').onclick=()=>setEnterBehavior('enter-newline');function fillModels(ids,provider){const defaultProvider=document.getElementById('provider')?.value||'';const targets=[document.getElementById('model')];for(const r of ['plan','work','review','intel']){const roleProvider=document.getElementById(r+'Provider')?.value||'';if((provider||defaultProvider)===(roleProvider||defaultProvider))targets.push(document.getElementById(r+'Model'))}for(const select of targets){const current=select.value;select.innerHTML='<option value="">model</option>'+ids.map(id=>`<option value="${esc(id)}">${esc(id)}</option>`).join('');if(current){if(![...select.options].some(o=>o.value===current))select.insertAdjacentHTML('beforeend',`<option value="${esc(current)}">${esc(current)}</option>`);select.value=current}}}function showSettings(s){const view=document.getElementById('settingsView');view.hidden=false;view.classList.add('open');document.querySelectorAll('.settings-group').forEach((g,i)=>{const s2=g.querySelector('summary');if(s2)s2.setAttribute('aria-expanded',i===0?'true':'false');const b=g.querySelector('.settings-group-body');if(!b)return;if(i===0){g.open=true;b.hidden=false;b.classList.add('open')}else{g.open=false;b.hidden=true;b.classList.remove('open')}});document.getElementById('task').dataset.enterBehavior=s.settings.enterBehavior||'enter-run';view.scrollIntoView({behavior:'smooth',block:'start'});for(const k of ['provider','model','evidencePath','enterBehavior'])if(s.settings[k]!==undefined)document.getElementById(k).value=s.settings[k];setEnterBehavior(document.getElementById('enterBehavior').value);const roles=['plan','work','review','intel'];document.getElementById('roleSettings').innerHTML=roles.map(role=>`<label>${role}<select id="${role}Provider" class="setting"><option value="">provider</option><option value="anthropic">Anthropic</option><option value="openai">OpenAI</option><option value="google">Google Gemini</option><option value="custom">Custom</option></select><select id="${role}Model" class="setting"><option value="">model</option></select></label>`).join('');for(const role of roles){const p=s.settings[`${role}.provider`];const m=s.settings[`${role}.model`];if(p)document.getElementById(`${role}Provider`).value=p;if(m){const ms=document.getElementById(`${role}Model`);if(![...ms.options].some(o=>o.value===m))ms.insertAdjacentHTML('beforeend',`<option value="${esc(m)}">${esc(m)}</option>`);ms.value=m}document.getElementById(`${role}Provider`).onchange=()=>{const rp=document.getElementById(`${role}Provider`).value;vscode.postMessage({command:'discover-models',provider:rp||document.getElementById('provider').value})}}document.getElementById('customBaseUrlRow').hidden=document.getElementById('provider').value!=='custom';const keySet=s.secrets?.providerApiKeySet||s.settings.providerApiKeySet||{};for(const p of ['anthropic','openai','google','custom']){const badge=document.getElementById(p+'ApiKeyBadge');if(badge){const isSet=keySet[p]===true;badge.hidden=false;badge.textContent=isSet?'Set':'Not set';badge.className='key-badge '+(isSet?'set':'unset');badge.title=isSet?'A key is stored for '+p:'No key stored for '+p}}for(const k of ['showCost','autoApprove','storeTaskText'])if(s.settings[k]!==undefined)document.getElementById(k).checked=Boolean(s.settings[k])}run.onclick=()=>send('run');dry.onclick=()=>send('dry-run');stop.onclick=()=>vscode.postMessage({command:'stop'});document.getElementById('approve').onclick=()=>vscode.postMessage({command:'approve'});document.getElementById('reject').onclick=()=>vscode.postMessage({command:'reject'});let closeSettings=()=>{};const initSettingsClose=()=>{const view=document.getElementById('settingsView');let closed=false;const finish=()=>{if(closed)return;closed=true;view.removeEventListener('transitionend',finish);view.removeEventListener('scrollend',finish);view.hidden=true};view.addEventListener('transitionend',finish,{once:true});view.addEventListener('scrollend',finish,{once:true});view.classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});setTimeout(finish,1600)};closeSettings=initSettingsClose;
+const openGroup=group=>{const body=group.querySelector('.settings-group-body');if(!body)return;group.open=true;body.hidden=false;body.classList.add('open')};
+const closeGroup=group=>{const body=group.querySelector('.settings-group-body');if(!body)return;let closed=false;const finish=()=>{if(closed)return;closed=true;body.removeEventListener('transitionend',finish);group.open=false;body.hidden=true};body.addEventListener('transitionend',finish,{once:true});body.classList.remove('open');setTimeout(finish,1600)};
+for(const group of document.querySelectorAll('.settings-group')){const summary=group.querySelector('summary');if(!summary)continue;group.open=false;const body=group.querySelector('.settings-group-body');if(body)body.hidden=true;summary.setAttribute('role','button');summary.setAttribute('aria-expanded','false');summary.tabIndex=0;const toggle=()=>{const willOpen=!group.open;summary.setAttribute('aria-expanded',String(willOpen));if(willOpen)openGroup(group);else closeGroup(group)};summary.addEventListener('click',e=>{e.preventDefault();toggle()});summary.addEventListener('keydown',e=>{if(e.key!==' '&&e.key!=='Enter')return;e.preventDefault();toggle()})}
+document.getElementById('update').onclick=()=>vscode.postMessage({command:'update'});const collectSettings=()=>{const settings={};for(const k of ['provider','model','evidencePath','enterBehavior'])settings[k]=document.getElementById(k).value;for(const role of ['plan','work','review','intel']){settings[`${role}.provider`]=document.getElementById(`${role}Provider`).value;settings[`${role}.model`]=document.getElementById(`${role}Model`).value}for(const k of ['showCost','autoApprove','storeTaskText'])settings[k]=document.getElementById(k).checked;const secrets={providerApiKeys:{}};for(const p of ['anthropic','openai','google','custom']){const v=(document.getElementById(p+'ApiKey')?.value||'').trim();if(v)secrets.providerApiKeys[p]=v}if(document.getElementById('customBaseUrl').value)secrets.customBaseUrl=document.getElementById('customBaseUrl').value;return{settings,secrets}};
 document.getElementById('saveSettings').onclick=()=>{const{settings,secrets}=collectSettings();vscode.postMessage({command:'save-settings',settings,secrets});closeSettings();};
 // Validate buttons check the key already stored in SecretStorage (the
 // extension validates stored secrets, not unsubmitted form text). If a new key
 // is typed in but not saved, save it first so the check runs against it.
 const setKeyStatus=(p,state,msg)=>{const el=document.querySelector(`[data-key-status="${p}"]`);if(!el)return;el.hidden=false;el.classList.remove('ok','err');el.classList.add(state);el.textContent=msg;el.title=msg};
-for(const b of document.querySelectorAll('.validate-key'))b.onclick=()=>{const p=b.dataset.provider;const unsaved=(document.getElementById(p+'ApiKey')?.value||'').trim();setKeyStatus(p,'',unsaved?'Saving…':'Validating…');if(unsaved){const{settings,secrets}=collectSettings();vscode.postMessage({command:'save-settings',settings,secrets})}vscode.postMessage({command:'validate-key',provider:p})};document.getElementById('clearHistory').onclick=()=>{vscode.postMessage({command:'clear-history'})};document.getElementById('closeSettings').onclick=closeSettings;document.getElementById('provider').onchange=()=>{document.getElementById('customBaseUrlRow').hidden=document.getElementById('provider').value!=='custom';vscode.postMessage({command:'discover-models',provider:document.getElementById('provider').value})};document.getElementById('mcpBadge').onclick=()=>{vscode.postMessage({command:'mcp-list'});vscode.postMessage({command:'mcp-connect'});};document.getElementById('settings').onclick=()=>{const view=document.getElementById('settingsView');if(!view.hidden){closeSettings();return}vscode.postMessage({command:'settings'})};window.addEventListener('load',()=>vscode.postMessage({command:'sessions'}));window.addEventListener('message',e=>{const m=e.data;if(m.type==='attachment'){if(!m.value)return;document.getElementById('attached').textContent+=(document.getElementById('attached').textContent?'\n':'')+m.value;task.value+=(task.value?'\n':'')+m.value;return}if(m.type==='sessions'){const box=document.getElementById('sessions');box.innerHTML=m.items.map(item=>`<button class="session-item" data-task="${esc(item.task||item.taskPreview||'')}" data-evidence="${esc(item.evidencePath||'')}" data-patch="${esc(item.patchPath||'')}" data-checkpoint="${esc(item.checkpointPath||'')}" data-task-saved="${item.task ? 'true' : 'false'}">${esc(item.status||'unknown')} · ${esc(item.task||item.taskPreview||'')}<small>${esc(item.runId||'')}</small></button>`).join('')||'<span class="empty">No sessions yet.</span>';box.querySelectorAll('.session-item').forEach(item=>item.onclick=()=>{task.value=item.dataset.task||'';add(`Resumed: ${item.dataset.task||''}`);if(item.dataset.checkpoint&&item.dataset.taskSaved==='true')vscode.postMessage({command:'restore-session',checkpoint:item.dataset.checkpoint});});return}if(m.type==='settings'){showSettings(m);if(m.version)document.getElementById('version').textContent=`v${m.version}`;document.getElementById('authStatus').textContent=(m.secrets?.providerApiKeySet?.[m.settings?.provider||''])?'API key configured':'No API key configured';return}if(m.type==='models'){fillModels(m.models||[],m.provider);if(!m.ok)showToast('Model discovery unavailable; using provider defaults.','error');return}if(m.type==='info'){showToast(m.text,'info');return}if(m.type==='activation'){showToast(m.text,'info');return}if(m.type==='update'){document.getElementById('version').textContent=`v${m.current} · latest v${m.latest}`;document.getElementById('update').hidden=m.current===m.latest;return}if(m.type==='update-result'){showToast(m.text,m.ok===false?'error':'info');return}if(m.type==='settings-saved'){showToast('Settings saved.','info');return}if(m.type==='key-validation'){const p=m.provider||'';if(m.ok)setKeyStatus(p,'ok','Valid');else setKeyStatus(p,'err','Invalid: '+(m.reason||'check failed'));return}if(m.type==='started'){stage.textContent='Running';stage.className='task-status running';stop.setAttribute('aria-disabled','false');return}if(m.type==='progress'){const current=m.stage.toLowerCase().includes('gather')||m.stage.toLowerCase().includes('plan')?'Planning':m.stage.toLowerCase().includes('implement')?'Implementing':m.stage.toLowerCase().includes('verif')?'Verifying':m.stage.toLowerCase().includes('review')||m.stage.toLowerCase().includes('evaluat')?'Reviewing':null;stage.textContent=current?`${current} in progress`:m.stage;stage.className='task-status running';return}if(m.type==='summary'){if(m.text)showToast(m.text,'info');return}if(m.type==='approval-request'){approval.hidden=false;stage.textContent='Approval required';stage.className='task-status running';document.getElementById('approve').focus();return}if(m.type==='approval'){approval.hidden=true;stage.textContent=m.decision==='approve'?'Approved':'Rejected';stage.className=`task-status ${m.decision==='approve'?'success':'error'}`;task.focus();return}if(m.type==='mcp-hosts'){document.getElementById('mcpHosts').hidden=false;document.getElementById('mcpHosts').textContent=m.hosts.map(h=>`${h.name}: ${h.detected?'detected':'not found'}`).join('\n');return}if(m.type==='mcp-connect'){showToast(m.text||'MCP connect '+(m.ok?'succeeded.':'failed.'),m.ok?'info':'error');return}if(m.type==='history-cleared'){showToast(m.text||'History cleared.','info');return}if(m.type==='mcp'){badge.textContent=m.ok?'MCP online':'MCP offline';badge.className='badge '+(m.ok?'online':'offline');return}if(m.type==='stopped'){running=false;escapeArmed=false;clearTimeout(escapeTimer);stage.textContent='Stopped';stage.className='task-status error';run.disabled=dry.disabled=!entitledNow;run.setAttribute('aria-disabled',String(!entitledNow));dry.setAttribute('aria-disabled',String(!entitledNow));stop.disabled=true;stop.setAttribute('aria-disabled','true');task.focus();return}if(m.type==='result'){running=false;escapeArmed=false;clearTimeout(escapeTimer);run.disabled=dry.disabled=!entitledNow;run.setAttribute('aria-disabled',String(!entitledNow));dry.setAttribute('aria-disabled',String(!entitledNow));stop.disabled=true;stop.setAttribute('aria-disabled','true');stage.textContent=m.ok?'Verified':'Failed';stage.className=`task-status ${m.ok?'success':'error'}`;if(m.ok===false)showToast('Run failed. See stage for details.','error');if(m.evidence)evidence.textContent=JSON.stringify(m.evidence,null,2);task.focus()}});
+for(const b of document.querySelectorAll('.validate-key'))b.onclick=()=>{const p=b.dataset.provider;const unsaved=(document.getElementById(p+'ApiKey')?.value||'').trim();setKeyStatus(p,'',unsaved?'Saving…':'Validating…');if(unsaved){const{settings,secrets}=collectSettings();vscode.postMessage({command:'save-settings',settings,secrets})}vscode.postMessage({command:'validate-key',provider:p})};document.getElementById('clearHistory').onclick=()=>{vscode.postMessage({command:'clear-history'})};document.getElementById('closeSettings').onclick=closeSettings;document.getElementById('provider').onchange=()=>{document.getElementById('customBaseUrlRow').hidden=document.getElementById('provider').value!=='custom';vscode.postMessage({command:'discover-models',provider:document.getElementById('provider').value})};document.getElementById('mcpBadge').onclick=()=>{vscode.postMessage({command:'mcp-list'});vscode.postMessage({command:'mcp-connect'});};document.getElementById('settings').onclick=()=>{const view=document.getElementById('settingsView');if(!view.hidden){closeSettings();return}vscode.postMessage({command:'settings'})};window.addEventListener('load',()=>vscode.postMessage({command:'sessions'}));window.addEventListener('message',e=>{const m=e.data;if(m.type==='attachment'){if(!m.value)return;document.getElementById('attached').textContent+=(document.getElementById('attached').textContent?'\n':'')+m.value;task.value+=(task.value?'\n':'')+m.value;return}if(m.type==='sessions'){const box=document.getElementById('sessions');box.innerHTML=m.items.map(item=>`<button class="session-item" data-task="${esc(item.task||item.taskPreview||'')}" data-evidence="${esc(item.evidencePath||'')}" data-patch="${esc(item.patchPath||'')}" data-checkpoint="${esc(item.checkpointPath||'')}" data-task-saved="${item.task ? 'true' : 'false'}">${esc(item.status||'unknown')} · ${esc(item.task||item.taskPreview||'')}<small>${esc(item.runId||'')}</small></button>`).join('')||'<span class="empty">No sessions yet.</span>';box.querySelectorAll('.session-item').forEach(item=>item.onclick=()=>{task.value=item.dataset.task||'';add(`Resumed: ${item.dataset.task||''}`);if(item.dataset.checkpoint&&item.dataset.taskSaved==='true')vscode.postMessage({command:'restore-session',checkpoint:item.dataset.checkpoint});});return}if(m.type==='settings'){showSettings(m);if(m.version)document.getElementById('version').textContent=`v${m.version}`;document.getElementById('authStatus').textContent=(m.secrets?.providerApiKeySet?.[m.settings?.provider||''])?'API key configured':'No API key configured';return}if(m.type==='models'){fillModels(m.models||[],m.provider);if(!m.ok)showToast('No models available. Add an API key in Settings to load the live model list.','error');return}if(m.type==='info'){showToast(m.text,'info');return}if(m.type==='activation'){showToast(m.text,'info');return}if(m.type==='update'){document.getElementById('version').textContent=m.latest?`v${m.current} · latest v${m.latest}`:`v${m.current}`;document.getElementById('update').hidden=!m.latest||m.current===m.latest;return}if(m.type==='update-result'){showToast(m.text,m.ok===false?'error':'info');return}if(m.type==='settings-saved'){showToast('Settings saved.','info');return}if(m.type==='key-validation'){const p=m.provider||'';if(m.ok)setKeyStatus(p,'ok','Valid');else setKeyStatus(p,'err','Invalid: '+(m.reason||'check failed'));return}if(m.type==='started'){stage.textContent='Running';stage.className='task-status running';stop.setAttribute('aria-disabled','false');return}if(m.type==='progress'){const current=m.stage.toLowerCase().includes('gather')||m.stage.toLowerCase().includes('plan')?'Planning':m.stage.toLowerCase().includes('implement')?'Implementing':m.stage.toLowerCase().includes('verif')?'Verifying':m.stage.toLowerCase().includes('review')||m.stage.toLowerCase().includes('evaluat')?'Reviewing':null;stage.textContent=current?`${current} in progress`:m.stage;stage.className='task-status running';return}if(m.type==='summary'){if(m.text)showToast(m.text,'info');return}if(m.type==='approval-request'){approval.hidden=false;stage.textContent='Approval required';stage.className='task-status running';document.getElementById('approve').focus();return}if(m.type==='approval'){approval.hidden=true;stage.textContent=m.decision==='approve'?'Approved':'Rejected';stage.className=`task-status ${m.decision==='approve'?'success':'error'}`;task.focus();return}if(m.type==='mcp-hosts'){document.getElementById('mcpHosts').hidden=false;document.getElementById('mcpHosts').textContent=m.hosts.map(h=>`${h.name}: ${h.detected?'detected':'not found'}`).join('\n');return}if(m.type==='mcp-connect'){showToast(m.text||'MCP connect '+(m.ok?'succeeded.':'failed.'),m.ok?'info':'error');return}if(m.type==='history-cleared'){showToast(m.text||'History cleared.','info');return}if(m.type==='mcp'){badge.textContent=m.ok?'MCP online':'MCP offline';badge.className='badge '+(m.ok?'online':'offline');return}if(m.type==='stopped'){running=false;escapeArmed=false;clearTimeout(escapeTimer);stage.textContent='Stopped';stage.className='task-status error';run.disabled=dry.disabled=!entitledNow;run.setAttribute('aria-disabled',String(!entitledNow));dry.setAttribute('aria-disabled',String(!entitledNow));stop.disabled=true;stop.setAttribute('aria-disabled','true');task.focus();return}if(m.type==='result'){running=false;escapeArmed=false;clearTimeout(escapeTimer);run.disabled=dry.disabled=!entitledNow;run.setAttribute('aria-disabled',String(!entitledNow));dry.setAttribute('aria-disabled',String(!entitledNow));stop.disabled=true;stop.setAttribute('aria-disabled','true');stage.textContent=m.ok?'Verified':'Failed';stage.className=`task-status ${m.ok?'success':'error'}`;if(m.ok===false)showToast('Run failed. See stage for details.','error');if(m.evidence)evidence.textContent=JSON.stringify(m.evidence,null,2);task.focus()}});
       </script>
     </main>
     <script nonce="{{nonce}}">
