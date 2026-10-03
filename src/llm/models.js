@@ -120,6 +120,31 @@ async function fetchOpenAIModels(baseUrl, apiKey, auth, providerName = "openai")
   } catch { return []; }
 }
 
+/** Fetch model IDs from Anthropic /v1/models (paginated, newest first) */
+async function fetchAnthropicModels(baseUrl, apiKey, auth) {
+  const { fetchWithTimeout } = require("./provider");
+  try {
+    const resolved = await authManager.resolve("anthropic", { api_key: apiKey, ...(auth ? { auth } : {}) });
+    const headers = { ...(resolved.headers || {}) };
+    if (!Object.keys(headers).some(h => h.toLowerCase() === "anthropic-version")) headers["anthropic-version"] = "2023-06-01";
+    if (resolved.token && !Object.keys(headers).some(h => h.toLowerCase() === "x-api-key")) headers["x-api-key"] = resolved.token;
+    const base = String(baseUrl || "https://api.anthropic.com").replace(/\/+$/, "");
+    const ids = [];
+    let after = "";
+    // Paginate up to 10 pages (1000 models) to stay bounded.
+    for (let page = 0; page < 10; page++) {
+      const url = `${base}/v1/models?limit=100${after ? `&after_id=${encodeURIComponent(after)}` : ""}`;
+      const res = await fetchWithTimeout(url, { headers }, 10000);
+      if (!res.ok) break;
+      const data = await res.json();
+      for (const m of Array.isArray(data.data) ? data.data : []) if (m && typeof m.id === "string") ids.push(m.id);
+      if (!data.has_more || !data.last_id) break;
+      after = data.last_id;
+    }
+    return [...new Set(ids)].sort();
+  } catch { return []; }
+}
+
 /** Fetch model IDs from Google /v1beta/models */
 async function fetchGoogleModels(baseUrl, apiKey, auth, providerName = "google") {
   const { fetchWithTimeout } = require("./provider");
@@ -158,9 +183,16 @@ async function discoverModels(providers) {
     result.unknown.push(...liveIds.filter(id => !catIds.has(id)));
   }
 
-  // Anthropic has no models list API
-  result.live.anthropic = CATALOG.filter(m => m.provider === "anthropic").map(m => m.id);
-
+  // Anthropic List Models API: GET /v1/models (newest first). No catalog
+  // fallback — the model list is live-only.
+  if (await authManager.isAvailable("anthropic", providers.anthropic || {})) {
+    const cfg = providers.anthropic || {};
+    const base = cfg.endpoint || "https://api.anthropic.com";
+    const liveIds = await fetchAnthropicModels(base, cfg.api_key, cfg.auth);
+    result.live.anthropic = liveIds;
+    const catIds = new Set(CATALOG.filter(m => m.provider === "anthropic").map(m => m.id));
+    result.unknown.push(...liveIds.filter(id => !catIds.has(id) && !result.unknown.includes(id)));
+  }
 
   // Custom providers (user-defined models + live discovery)
   for (const [name, cfg] of Object.entries(providers)) {
@@ -209,4 +241,4 @@ function formatModel(m) {
   return `  ${m.id.padEnd(32)} ${m.display.padEnd(24)} [${ctx} in, ${out} out]${reasoning}`;
 }
 
-module.exports = { CATALOG, listModels, findModel, findModelsByTier, findEscalationModel, fetchOpenAIModels, fetchGoogleModels, discoverModels, formatModel, ensureFreshCatalog: catalogUpdater.ensureFreshCatalog, catalogUpdater };
+module.exports = { CATALOG, listModels, findModel, findModelsByTier, findEscalationModel, fetchOpenAIModels, fetchAnthropicModels, fetchGoogleModels, discoverModels, formatModel, ensureFreshCatalog: catalogUpdater.ensureFreshCatalog, catalogUpdater };
