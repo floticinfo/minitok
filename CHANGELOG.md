@@ -2,13 +2,21 @@
 
 ## Unreleased
 
+### Added
+
+- Anthropic models are now discovered from the live List Models API (`GET /v1/models`, cursor-paginated) instead of the static catalog, which could lag behind new releases. The model list is live-only: with no credential the provider is omitted rather than backfilled from the catalog.
+
+### Changed
+
+- BREAKING: the sidebar model list is populated from live provider APIs only; the static catalog is no longer merged in as a fallback.
+
 ### Fixed
 
 - Extension: the sidebar models list now reports an empty-state guidance toast ("No models available. Add an API key in Settings to load the live model list.") instead of the stale "using provider defaults" message when a configured provider has no usable models.
 
 ### Removed
 
-- Removed the unused Camelstream OpenAI-compatible preset, its supervised live-smoke script and evidence path, and the `camelstream:live-smoke` script together with the loader, provider, and model-discovery branches that special-cased it.
+- BREAKING: removed the unused Camelstream OpenAI-compatible preset, its supervised live-smoke script and evidence path, and the `camelstream:live-smoke` script together with the loader, provider, and model-discovery branches that special-cased it. The preset was only a fixed-endpoint OpenAI-compatible provider; configure an ordinary custom provider instead.
 
 ## 1.4.20 - 2026-10-01
 
