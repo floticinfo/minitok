@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Removed
+
+- Removed the unused Camelstream OpenAI-compatible preset, its supervised live-smoke script and evidence path, and the `camelstream:live-smoke` script together with the loader, provider, and model-discovery branches that special-cased it.
+
 ## 1.4.20 - 2026-10-01
 
 ### Fixed

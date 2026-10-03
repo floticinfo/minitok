@@ -109,11 +109,6 @@
           "sha256": "e78aeb93c445b39fd940dde2b20349d740f85230410537a2ea48a110bdb1409e"
         },
         {
-          "path": "scripts/camelstream-live-smoke.mjs",
-          "size": 1468,
-          "sha256": "c977d951e46d863c0339a89d5c9c460d8c1eea28b0f9ad9807544b8790fa85a2"
-        },
-        {
           "path": "scripts/goal-benchmark.mjs",
           "size": 14285,
           "sha256": "22c39ee5711ff8c219290bcb76732fd48d986a23c7c797ec488696ee89cba9fe"
@@ -707,16 +702,6 @@
           "path": "src/index.js",
           "size": 517,
           "sha256": "ce6a9343fe558ef2dc3d110cbf688cd8eb931491f1ca32215eb8a62afbc1e6dc"
-        },
-        {
-          "path": "src/llm/camelstream.js",
-          "size": 1428,
-          "sha256": "a1baf1233b05236a4c0fdf447639567d6301a99dbc6d04ed8189d9702bc1328c"
-        },
-        {
-          "path": "src/llm/live_provider.js",
-          "size": 7845,
-          "sha256": "0ab870ccdce6a5ad8f92ffc74296d60a8ab063d9c4b5eb31e5f3fa83d6b4ddae"
         },
         {
           "path": "src/llm/models.js",

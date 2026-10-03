@@ -77,7 +77,6 @@ describe("Regression: doctor success message reflects actual check results", () 
       ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
       OPENAI_API_KEY: process.env.OPENAI_API_KEY,
       GOOGLE_API_KEY: process.env.GOOGLE_API_KEY,
-      CAMEL_STREAM_API_KEY: process.env.CAMEL_STREAM_API_KEY,
     };
     for (const name of Object.keys(originalEnv)) delete process.env[name];
     const originalHome = process.env.USERPROFILE;

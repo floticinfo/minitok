@@ -39,14 +39,9 @@ function collectFiles() {
       "general_execution.js",
       "replanner.js",
     ].map(file => path.join(sourceRoot, "goal", file)),
-    ...[
-      "camelstream.js",
-      "live_provider.js",
-    ].map(file => path.join(sourceRoot, "llm", file)),
-    ...[
-      "tool_registry.js",
-    ].map(file => path.join(sourceRoot, "goal", file)),
-  ];  const files = new Set();
+    ...["tool_registry.js"].map(file => path.join(sourceRoot, "goal", file)),
+  ];
+  const files = new Set();
   while (pending.length) {
     const file = pending.pop();
     const relative = path.relative(sourceRoot, file).replaceAll(path.sep, "/");

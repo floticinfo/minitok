@@ -136,13 +136,14 @@ describe("EscalationEngine: model escalation on repeated failure", () => {
   });
 
   it("returns null model when no catalog match (loop enables reasoning instead)", () => {
-    // camel-stream has no catalog entry → resolver yields null on the reasoning tier
+    // This test asserts the catalog has no entry for an unknown provider name,
+    // so the resolver yields null on the reasoning tier.
     const engine = new EscalationEngine({
       failureThreshold: 2,
       tokenHardLimit: 2_000_000,
       tokenStopRatio: 1,
       modelResolver: (tier) => {
-        const m = findEscalationModel("camel-stream", tier);
+        const m = findEscalationModel("not-a-catalog-provider", tier);
         return m ? m.id : null;
       },
     });

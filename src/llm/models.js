@@ -1,7 +1,6 @@
 "use strict";
 
 const { authManager } = require("../auth");
-const { CAMELSTREAM_PROVIDER, CAMELSTREAM_BASE_URL, CAMELSTREAM_MODEL } = require("./camelstream");
 const catalogUpdater = require("./catalog-update");
 
 /**
@@ -162,13 +161,9 @@ async function discoverModels(providers) {
   // Anthropic has no models list API
   result.live.anthropic = CATALOG.filter(m => m.provider === "anthropic").map(m => m.id);
 
-  // Camelstream uses a documented static model allowlist; discovery is disabled here
-  // so listing models never spends a live canary request.
-  if (providers[CAMELSTREAM_PROVIDER]) result.custom.push({ provider: CAMELSTREAM_PROVIDER, base_url: CAMELSTREAM_BASE_URL, models: [{ id: CAMELSTREAM_MODEL, display: "camelStream Auto", context_window: 260000, max_output: null }] });
 
   // Custom providers (user-defined models + live discovery)
   for (const [name, cfg] of Object.entries(providers)) {
-    if (name === CAMELSTREAM_PROVIDER) continue;
     if (cfg.base_url || cfg.models) {
       const customModels = [];
       // User-defined models from config

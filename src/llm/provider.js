@@ -10,7 +10,6 @@ const { authManager } = require("../auth");
 const { normalizeProvider } = require("../auth/aliases");
 const { Agent } = require("undici");
 const { getProxyDispatcher, shouldBypassProxy } = require("../core/http");
-const { CAMELSTREAM_PROVIDER, camelstreamPreset } = require("./camelstream");
 
 function providerError(name, status, detail = "") {
   return new Error(`${name} API request failed (${status})${detail ? `: ${detail}` : ""}`);
@@ -569,21 +568,18 @@ function _countTokens(u) {
  */
 class CustomProvider extends LLMProvider {
   constructor(config = {}) {
-    const isCamelstream = config._name === CAMELSTREAM_PROVIDER;
-    if (isCamelstream && config.api_key !== undefined) throw new Error("Camelstream accepts credential handles only; use CAMEL_API_KEY");
-    const effective = isCamelstream ? camelstreamPreset(config) : config;
-    super(effective._name || "custom", effective);
-    this.apiKey = effective.api_key || "";
-    this.baseUrl = effective.base_url ? validateCustomEndpoint(effective.base_url, { allowInsecureLocalEndpoint: effective.allow_insecure_local_endpoint === true || effective._name && effective._name !== "custom" }) : "";
-    this.models = effective.models || [];
-    this.responseApi = effective.response_api || "chat_completions";
+    super(config._name || "custom", config);
+    this.apiKey = config.api_key || "";
+    this.baseUrl = config.base_url ? validateCustomEndpoint(config.base_url, { allowInsecureLocalEndpoint: config.allow_insecure_local_endpoint === true || config._name && config._name !== "custom" }) : "";
+    this.models = config.models || [];
+    this.responseApi = config.response_api || "chat_completions";
   }
   // A custom provider is reachable as soon as a base_url is configured: local
   // servers (e.g. Ollama) legitimately need no credentials, and complete()
   // sends an unauthenticated request in that case. Requiring an auth block here
   // would hide self-hosted providers — see tests/test-providers-tiers.js
   // "isAvailable with base_url" and "detects custom provider".
-  async isAvailable() { return this.name === CAMELSTREAM_PROVIDER ? Boolean(this.apiKey || process.env.CAMEL_API_KEY) : Boolean(this.baseUrl); }
+  async isAvailable() { return Boolean(this.baseUrl); }
   async complete(messages, options = {}) {
     if (!this.baseUrl) throw new Error(`${this.name}: base_url not configured`);
     const endpointTransport = await resolvePublicCustomEndpoint(this.baseUrl);
@@ -649,7 +645,6 @@ function validateProviderModel(providerName, model, config = {}) {
 
 function createProvider(name, config = {}) {
   const n = name.toLowerCase();
-  if (n === CAMELSTREAM_PROVIDER) return new CustomProvider(camelstreamPreset({ ...config, _name: CAMELSTREAM_PROVIDER }));
   // Tier 1: Direct providers
   switch (n) {
     case "anthropic": case "claude": return new AnthropicProvider(config);

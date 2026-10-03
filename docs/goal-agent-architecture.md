@@ -73,25 +73,25 @@ runtime parity는 기능을 production에 연결했다는 뜻이 아니다. 현�
 
 계약 adapter에는 injected `read_after_write_executor`가 필요하며 descriptor/public response에서는 executor를 제거한다. ledger, fingerprint, operation status만 redacted audit로 남기고 raw adapter result와 secret-like 값은 저장하지 않는다. P2 테스트는 deterministic mock/local adapter만 사용하며 live endpoint, production credential, external service를 호출하지 않는다.
 
-### P3-P5 Camelstream live boundary
+### P3-P5 Supervised live-provider boundary
 
-Camelstream은 별도 임의 endpoint가 아니라 공식 OpenAI-compatible preset으로만 연결한다.
+Live provider 검증은 별도 임의 endpoint가 아니라 공식 OpenAI-compatible provider 설정으로만 연결한다.
 
 ```yaml
 providers:
-  camelstream:
-    base_url: https://stream.camelai.com/v1
-    api_key_env: CAMEL_API_KEY
+  custom:
+    base_url: https://api.example.com/v1
+    api_key_env: PROVIDER_API_KEY
     models:
-      - id: auto
+      - id: example-model
 roles:
   plan:
-    provider: camelstream
-    model: auto
+    provider: custom
+    model: example-model
 ```
 
-raw `api_key`는 설정에서 거부하며 `CAMEL_API_KEY`의 존재 여부만 gate에서 확인한다. 실제 값은 응답, audit, live evidence, 로그에 기록하지 않는다. Camelstream 요청은 `/v1/responses`와 registry-confirmed model `auto`로 제한한다.
+raw `api_key`는 설정에서 거부하며 credential handle(`api_key_env`)의 존재 여부만 gate에서 확인한다. 실제 값은 응답, audit, live evidence, 로그에 기록하지 않는다. supervised live 요청은 `/v1/responses`와 registry-confirmed model allowlist로 제한한다.
 
-실제 호출은 `supervised_live` mode, `--confirm-live`, `--allow-network`, `--allow-camelstream`, `CAMEL_API_KEY`가 모두 있어야 한다. 기본 canary budget은 요청 1회, 출력 1024 tokens, timeout 30초다. `npm run camelstream:live-smoke`는 이러한 gate가 없으면 네트워크 전에 blocked evidence만 기록한다.
+실제 호출은 `supervised_live` mode, `--confirm-live`, `--allow-network`, endpoint opt-in, credential handle이 모두 있어야 한다. 기본 canary budget은 요청 1회, 출력 1024 tokens, timeout 30초다. 전용 live-smoke runner는 이러한 gate가 없으면 네트워크 전에 blocked evidence만 기록한다.
 
 live evidence는 deterministic P1/P2 artifact와 별도 schema인 `supervised_live_provider_smoke`를 사용하며 항상 `publishable_claim: false`다. 통과 결과도 production readiness, 품질, availability 또는 product superiority를 주장하지 않는다.

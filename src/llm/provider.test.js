@@ -8,8 +8,8 @@ const dns = require("dns").promises;
 
 describe("generic custom provider", () => {
   it("normalizes custom models endpoints without duplicating /v1", () => {
-    assert.equal(customModelsEndpoint("https://stream.camelai.com/v1/"), "https://stream.camelai.com/v1/models");
-    assert.equal(customModelsEndpoint("https://stream.camelai.com"), "https://stream.camelai.com/v1/models");
+    assert.equal(customModelsEndpoint("https://api.example.com/v1/"), "https://api.example.com/v1/models");
+    assert.equal(customModelsEndpoint("https://api.example.com"), "https://api.example.com/v1/models");
   });
 
   it("probes custom providers at the normalized models endpoint", async () => {
