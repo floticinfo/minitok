@@ -23,6 +23,7 @@ function resolveApiBase(serverUrl) {
  * @param {string} key - activation key
  * @param {object} [opts]
  * @param {string} [opts.serverUrl] - override server URL
+ * @param {string} [opts.entitlementDir] - override entitlement dir for installation record lookup
  * @returns {Promise<{ ok: boolean, status: number, body: object }>}
  */
 async function activate(key, opts = {}) {
