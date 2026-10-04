@@ -1,6 +1,6 @@
 ROLE: CANONICAL
 PACKAGE: @flotic/minitok
-VERSION: 1.5.0 (merge candidate: v1.4.15 release line merged into canonical; version subject to release promotion)
+VERSION: 1.5.1 (merge candidate: v1.4.15 release line merged into canonical; version subject to release promotion)
 SOURCE: current release worktree
 ALLOWED_USE: current client implementation, tests, lint, typecheck, packaging preparation
 FORBIDDEN_USE: calling this an immutable published or deployed artifact while the worktree is dirty
