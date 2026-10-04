@@ -15,7 +15,13 @@
 
 const { EntitlementCache } = require("../../entitlement/cache");
 const client = require("../../entitlement/client");
+const { postJson } = require("../../core/http");
 const { resolveServerUrl } = require("./server-config");
+
+/** Shared request helper (same implementation as activation-key). */
+function _httpPost(urlString, body, headers) {
+  return postJson(urlString, body, 30000, headers);
+}
 
 async function cmdActivate(key, opts) {
   const envName = opts?.keyEnv;
@@ -72,4 +78,4 @@ async function cmdActivate(key, opts) {
   return 0;
 }
 
-module.exports = { cmdActivate };
+module.exports = { cmdActivate, _httpPost };
