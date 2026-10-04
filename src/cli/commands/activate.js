@@ -39,7 +39,7 @@ async function cmdActivate(key, opts) {
   }
 
   if (!result.ok) {
-    const errMsg = result.body?.error || result.statusText || "Activation failed";
+    const errMsg = result.body?.error || `Activation failed (HTTP ${result.status})`;
     console.error(`Error: ${errMsg}`);
     return 1;
   }
