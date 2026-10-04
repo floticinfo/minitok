@@ -9,6 +9,7 @@
  */
 
 const { postJson, fetchWithTimeout } = require("../core/http");
+const { loadInstallationRecord } = require("./online");
 
 const DEFAULT_LOCAL_SERVER = "http://localhost:3000";
 
@@ -26,7 +27,12 @@ function resolveApiBase(serverUrl) {
  */
 async function activate(key, opts = {}) {
   const url = `${resolveApiBase(opts.serverUrl)}/api/entitlement/activate`;
-  return postJson(url, { key }, 30000);
+  // Send installation_id when known so the server can bind the entitlement to
+  // this machine (matches the /v1/activate contract expected by stage2-parity).
+  const body = { key };
+  const record = opts.entitlementDir ? loadInstallationRecord(opts.entitlementDir) : loadInstallationRecord();
+  if (record && typeof record.installation_id === "string") body.installation_id = record.installation_id;
+  return postJson(url, body, 30000);
 }
 
 /**

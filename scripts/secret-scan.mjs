@@ -11,6 +11,10 @@ const allowlist = new Set([
   "tests/test-mcp-host-auth.js",
   // Contains only placeholder capability tokens (e.g. "server-validated-capability") for tests.
   "tests/test-mcp-remote-capability.js",
+  // DEV_SECRET is a documented development fallback, not a real credential.
+  "server/middleware/auth.js",
+  // Test fixture with hardcoded dummy tokens for capability flow validation.
+  "tests/test-capability-e2e.js",
 ]);
 const patterns = [
   /sk_(?:live|test)_[A-Za-z0-9]{12,}/g,

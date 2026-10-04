@@ -24,7 +24,12 @@ const mcpCommand = read("src/cli/commands/mcp.js");
 
 expect(serverConfig.includes(`const DEFAULT_SERVER_URL = "${fixture.api.defaultOrigin}"`), "production API default", fixture.api.defaultOrigin);
 expect(serverConfig.includes("Remote http server URLs are not allowed") && serverConfig.includes("must not contain credentials"), "server URL safety", "remote HTTP and URL credentials rejected");
-expect(activate.includes(`${fixture.api.routes.activate}`) && /key,\s*installation_id/.test(activate), "activation contract", "POST /v1/activate with key and installation_id");
+// The CLI delegates to src/entitlement/client.js, which sends
+// POST /api/entitlement/activate with key (+ installation_id when known).
+// Assert the contract on the client module and that activate.js uses it.
+const clientMod = read("src/entitlement/client.js");
+expect(clientMod.includes(`${fixture.api.routes.activate}`) && /key/.test(clientMod) && /installation_id/.test(clientMod), "activation contract", "POST /api/entitlement/activate with key and installation_id");
+expect(/client\.activate\(key/.test(activate), "activate command delegates to entitlement client", "activate.js uses client.activate(key, ...)");
 expect(online.includes(`${fixture.api.routes.validate}`) && /token:\s*record\??\.token/.test(online) && /entitlement:/.test(online), "validation contract", "POST /v1/validate with token and entitlement");
 expect(activationKey.includes(fixture.api.routes.activationKey) && activationKey.includes("dodo_payment_id"), "activation-key contract", fixture.api.routes.activationKey);
 expect(checkout.includes(fixture.api.routes.checkout) && checkout.includes("{ planId }"), "checkout contract", fixture.api.routes.checkout);

@@ -19,6 +19,10 @@ const os = require("node:os");
 const path = require("node:path");
 const crypto = require("node:crypto");
 
+// The dev key "test" is gated behind an explicit opt-in so production never
+// accepts it. The E2E suite runs against the in-memory store, so enable it.
+if (!process.env.MINITOK_ACCEPTED_KEYS) process.env.MINITOK_ALLOW_TEST_KEY = "true";
+
 const { createApp } = require("../server/index");
 const client = require("../src/entitlement/client");
 const { EntitlementCache } = require("../src/entitlement/cache");
