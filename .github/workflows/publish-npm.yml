@@ -83,6 +83,11 @@ jobs:
           npm run lint
           npm run typecheck
           npm run docs:check
+          # extension/artifacts/ is git-ignored, so the readiness gate that
+          # inspects the embedded-CLI version has nothing to read unless we
+          # build the vsix in CI first (needs the extension's npm deps).
+          npm --prefix extension ci
+          node scripts/package-extension.mjs
           node scripts/secret-scan.mjs
           npm run stage2:parity
 
