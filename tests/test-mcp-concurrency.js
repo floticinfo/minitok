@@ -91,6 +91,7 @@ test("a run reservation is released when entitlement denies the call", async () 
   try {
     const { runtime, replies, respond } = harness(root, {
       maxConcurrentRuns: 1,
+      entitlementToken: "concurrency-entitlement",
       services: { entitlement: { status: async () => ({ allowed: false, state: "EXPIRED", message: "Paid entitlement required" }) } },
     });
     await runtime._handleMessage(initMessage(), respond);

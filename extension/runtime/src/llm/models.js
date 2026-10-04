@@ -163,6 +163,8 @@ async function fetchGoogleModels(baseUrl, apiKey, auth, providerName = "google")
 async function discoverModels(providers) {
   const result = { catalog: listModels(), catalog_updated_at: catalogUpdater.getCatalog(CATALOG).updated_at, live: {}, unknown: [], custom: [] };
 
+  // Built-in providers: live fetch when a key is available, otherwise fall back
+  // to the (daily-refreshed) catalog so the picker is never empty.
   if (await authManager.isAvailable("openai", providers.openai || {})) {
     const cfg = providers.openai || {};
     const base = cfg.endpoint || "https://api.openai.com";
@@ -170,6 +172,8 @@ async function discoverModels(providers) {
     result.live.openai = liveIds;
     const catIds = new Set(CATALOG.filter(m => m.provider === "openai").map(m => m.id));
     result.unknown.push(...liveIds.filter(id => !catIds.has(id)));
+  } else {
+    result.live.openai = listModels("openai").map(m => m.id);
   }
 
   const googleProvider = providers.google || providers.gemini || {};
@@ -181,10 +185,12 @@ async function discoverModels(providers) {
     result.live.google = liveIds;
     const catIds = new Set(CATALOG.filter(m => m.provider === "google").map(m => m.id));
     result.unknown.push(...liveIds.filter(id => !catIds.has(id)));
+  } else {
+    result.live.google = listModels("google").map(m => m.id);
   }
 
-  // Anthropic List Models API: GET /v1/models (newest first). No catalog
-  // fallback — the model list is live-only.
+  // Anthropic List Models API: GET /v1/models (newest first). Catalog fallback
+  // when no key is configured.
   if (await authManager.isAvailable("anthropic", providers.anthropic || {})) {
     const cfg = providers.anthropic || {};
     const base = cfg.endpoint || "https://api.anthropic.com";
@@ -192,6 +198,8 @@ async function discoverModels(providers) {
     result.live.anthropic = liveIds;
     const catIds = new Set(CATALOG.filter(m => m.provider === "anthropic").map(m => m.id));
     result.unknown.push(...liveIds.filter(id => !catIds.has(id) && !result.unknown.includes(id)));
+  } else {
+    result.live.anthropic = listModels("anthropic").map(m => m.id);
   }
 
   // Custom providers (user-defined models + live discovery)
@@ -207,13 +215,20 @@ async function discoverModels(providers) {
       // Live discovery from endpoint
       try {
         const { CustomProvider } = require("./provider");
-        const live = await CustomProvider.fetchModels(cfg.base_url, cfg.api_key, cfg.auth, name);
+        // Env-materialized providers (extension named custom) carry api_key_env
+        // instead of api_key; pass it through so fetchModels can resolve the key.
+        const apiKey = cfg.api_key || (typeof cfg.api_key_env === "string" && cfg.api_key_env.trim() ? (process.env[cfg.api_key_env.trim()] || "") : "");
+        const live = await CustomProvider.fetchModels(cfg.base_url, apiKey, cfg.auth, name);
         for (const l of live) {
           if (!customModels.find(m => m.id === l.id)) customModels.push(l);
         }
       } catch {}
       if (customModels.length > 0) {
         result.custom.push({ provider: name, base_url: cfg.base_url, models: customModels });
+        // Surface named custom model IDs under live[name] too: the extension's
+        // validate-key and discover-models read data.live[provider], and named
+        // custom providers otherwise never appear there.
+        result.live[name] = customModels.map(m => m.id);
       }
     }
   }

@@ -19,7 +19,10 @@ async function request(runtime, message) {
 }
 
 function runtime() {
-  return new RuntimeStdio({ authToken, entitlementRequired: false });
+  // Phase 4: the in-process service keeps entitlementRequired disabled (the
+  // per-request policy gate is covered elsewhere) and supplies the handshake
+  // credential so the compatibility contract stays about protocol shape.
+  return new RuntimeStdio({ authToken, entitlementToken: "compat-entitlement", entitlementRequired: false });
 }
 
 test("MCP compatibility contract", async () => {

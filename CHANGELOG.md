@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Entitlement system (Phases 1–6):
+  - Entitlement server (`server/`): Express API for activation, status, refresh, and revocation with JWT sessions (24 h access tokens), plus an admin API (`/api/admin/*`) and a license management page served at `/` for listing and releasing bound devices.
+  - CLI: `minitok activate <key>` / `--key-env` stores the server-issued session in `~/.minitok/entitlement/session.json`; `minitok status` reports plan/expiry; run gating via `src/entitlement/gate.js` with signed local artifacts, installation binding, clock-rollback detection, and a 7-day offline grace window.
+  - Extension: Activate License command, plan/expiry shown in the sidebar, SecretStorage-backed session cache with `exp`-claim offline fallback, and denial surfaces (expired/revoked) that never get overridden by a stale cache.
+  - MCP runtime: entitlement credential required at the stdio handshake (`MINITOK_ENTITLEMENT` env, or `entitlementToken` in initialize params); missing/blank credentials are rejected with `-32003` `LICENSE_REQUIRED` and recovery guidance, before any tool is exposed.
+  - Tests: end-to-end flow (`tests/test-entitlement-flow.js`), extension unit tests (`extension/test/entitlement.test.js`), and MCP handshake integration (`tests/test-mcp-entitlement.js`).
+  - Docs: user guide (`docs/entitlement.md`) and server deployment guide (`server/README.md`).
+- Extension: named custom providers — add multiple OpenAI-compatible endpoints (e.g. `custom-plan`, `custom-work`), each with its own endpoint URL and API key, and assign them per role (plan/work/review/intel). Endpoint and key are configured together in one card under Settings → Providers.
+
 ## 1.4.21 - 2026-10-02
 
 ### Added

@@ -1,6 +1,6 @@
 {
   "name": "@flotic/minitok",
-  "version": "1.4.21",
+  "version": "1.5.0",
   "mcpName": "dev.minitok/minitok",
   "description": "Verified coding workflows for the terminal",
   "main": "src/index.js",

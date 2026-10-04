@@ -53,6 +53,10 @@ class RuntimeServer {
       authToken: this._runtimeToken,
       authExpiresAt: 0,
       authTokenFile: null,
+      // The HTTP transport wraps stdio sessions; the per-request policy gate
+      // (services.entitlement.status) remains the license authority there, and
+      // Phase 4's env-credential handshake check applies to direct stdio hosts.
+      entitlementToken: options.entitlementToken !== undefined ? options.entitlementToken : false,
     };
     this._mcpSessions = new Map();
     this._mcpSocketSessions = new WeakMap();

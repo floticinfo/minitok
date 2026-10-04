@@ -6,47 +6,64 @@ const { detectAvailableProviders } = require("../../llm/provider");
 const { minitokVersion } = require("../../core/version");
 const git = require("../../git/operations");
 const path = require("path");
-const { authorizeEntitlement } = require("../../entitlement/policy");
+const { EntitlementCache } = require("../../entitlement/cache");
+const client = require("../../entitlement/client");
 const { resolveServerUrl } = require("./server-config");
-const { EvolutionOptIn } = require("../../evolution/optin");
+
+
+/**
+ * Resolve entitlement state from the server (or offline cache fallback).
+ * Returns { active, plan, expires_at, source } where source is "server"|"cache"|"none".
+ */
+async function _resolveEntitlement(options = {}) {
+  const serverUrl = resolveServerUrl({ cliServer: options.server });
+  const cache = new EntitlementCache();
+  const cached = cache.load({ allowStale: true });
+
+  if (!cached || !cached.token) {
+    return { active: false, plan: null, expires_at: null, source: "none", serverUrl };
+  }
+
+  // Try the server first.
+  try {
+    const result = await client.status(cached.token, { serverUrl });
+    if (result.ok && result.body) {
+      return { active: result.body.active === true, plan: result.body.plan || null, expires_at: result.body.expires_at || null, source: "server", serverUrl };
+    }
+    if (result.status === 401 || result.status === 403) {
+      // Token invalid/revoked — clear the cache so we stop trying.
+      cache.clear();
+      return { active: false, plan: null, expires_at: null, source: "server", serverUrl };
+    }
+  } catch {
+    // Server unreachable — fall through to cache.
+  }
+
+  // Offline fallback: use the cached payload if not expired.
+  if (cached.payload && cached.payload.exp) {
+    const expired = Date.now() >= cached.payload.exp * 1000;
+    if (!expired) {
+      return { active: true, plan: cached.payload.plan || null, expires_at: cached.expires_at || null, source: "cache", serverUrl, stale: cached.stale };
+    }
+  }
+  return { active: false, plan: null, expires_at: null, source: "cache", serverUrl };
+}
 
 async function cmdStatusHuman(options = {}) {
   console.log(`minitok ${minitokVersion}\n`);
 
   // --- Entitlement section ---
   try {
-    const gate = await authorizeEntitlement({ serverUrl: resolveServerUrl({ cliServer: options.server }) });
-    console.log(`Entitlement: ${gate.state}`);
-    // checkEntitlement returns the verified payload directly on gate.entitlement.
-    const payload = gate.entitlement && gate.entitlement.payload ? gate.entitlement.payload : gate.entitlement;
-    if (payload) {
-      if (payload.plan_id) console.log(`  Plan:       ${payload.plan_id}`);
-      if (payload.expires_at) console.log(`  Expires:    ${payload.expires_at}`);
-      if (payload.max_devices) console.log(`  Max Devices: ${payload.max_devices}`);
-      if (payload.plan_id === "trial") {
-        console.log(`  Trial:       ${Math.max(0, (payload.run_quota || 0) - (payload.runs_used || 0))} run(s) remaining`);
-        console.log(`  Telemetry:   OFF (trial policy)`);
-      }
+    const ent = await _resolveEntitlement(options);
+    if (ent.active) {
+      console.log("Entitlement: ACTIVE");
+    } else {
+      console.log("Entitlement: INACTIVE");
     }
-    if (gate.graceDaysRemaining) {
-      console.log(`  Grace:      ${gate.graceDaysRemaining} day(s) remaining`);
-    }
-    console.log(`  Server:     ${resolveServerUrl({ cliServer: options.server })}`);
-    // M11: Evolution upload status
-    try {
-      const evoOptIn = new EvolutionOptIn();
-      const evoEnabled = evoOptIn.isEnabled();
-      const hasFeature = gate.entitlement?.features?.includes("evolution_upload") || false;
-      if (evoEnabled && hasFeature) {
-        console.log(`  Evolution:  upload ENABLED`);
-      } else if (evoEnabled && !hasFeature) {
-        console.log(`  Evolution:  opt-in ON but feature unavailable`);
-      } else {
-        console.log(`  Evolution:  upload OFF (local evolution active)`);
-      }
-    } catch {
-      console.log(`  Evolution:  upload OFF`);
-    }
+    if (ent.plan) console.log(`  Plan:       ${ent.plan}`);
+    if (ent.expires_at) console.log(`  Expires:    ${ent.expires_at}`);
+    if (ent.source === "cache") console.log(`  Source:     local cache (server unreachable)`);
+    console.log(`  Server:     ${ent.serverUrl}`);
     console.log("");
   } catch {
     console.log("Entitlement: UNKNOWN (error reading entitlement)\n");
@@ -135,11 +152,11 @@ async function cmdStatus(options = {}) {
     } catch (error) {
       workspaceError = error.message;
     }
-    let gate;
+    let ent;
     try {
-      gate = await authorizeEntitlement({ serverUrl: resolveServerUrl({ cliServer: options.server }) });
+      ent = await _resolveEntitlement(options);
     } catch (error) {
-      gate = { state: "UNKNOWN", allowed: false, entitlement: null, error: error.message };
+      ent = { active: false, plan: null, expires_at: null, source: "error", serverUrl: resolveServerUrl({ cliServer: options.server }), error: error.message };
     }
     let config = null;
     let configError = null;
@@ -148,8 +165,7 @@ async function cmdStatus(options = {}) {
       try { config = loadConfig(configPath); } catch (error) { configError = error.message; }
     }
     const providers = config ? await detectAvailableProviders(config) : [];
-    const payload = gate.entitlement?.payload || gate.entitlement;
-    return { version: minitokVersion, server: resolveServerUrl({ cliServer: options.server }), entitlement: { state: gate.state, allowed: gate.allowed === true, plan: payload?.plan_id || null, expires_at: payload?.expires_at || null, ...(gate.error ? { error: gate.error } : {}) }, workspace, ...(workspaceError ? { workspace_error: workspaceError } : {}), ...(configError ? { config_error: { path: configPath, message: configError } } : {}), providers, roles: config ? Object.fromEntries(Object.entries(config.roles).map(([role, roleConfig]) => [role, { provider: resolveProviderName(config, role) || null, model: roleConfig.model || config.model || null }])) : {} };
+    return { version: minitokVersion, server: ent.serverUrl, entitlement: { state: ent.active ? "ACTIVE" : "INACTIVE", allowed: ent.active, plan: ent.plan || null, expires_at: ent.expires_at || null, source: ent.source, ...(ent.error ? { error: ent.error } : {}) }, workspace, ...(workspaceError ? { workspace_error: workspaceError } : {}), ...(configError ? { config_error: { path: configPath, message: configError } } : {}), providers, roles: config ? Object.fromEntries(Object.entries(config.roles).map(([role, roleConfig]) => [role, { provider: resolveProviderName(config, role) || null, model: roleConfig.model || config.model || null }])) : {} };
   }
   return cmdStatusHuman(options);
 }

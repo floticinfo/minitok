@@ -17,7 +17,14 @@ const { EXECUTION_CAPABILITIES, GENERAL_CAPABILITIES, isAlwaysBlockedCapability 
 const ENV_ALLOWLIST = new Set([
   "minitok_offline", "minitok_default_provider", "minitok_model", "minitok_server_url",
   // Extension custom-provider contract. The legacy name remains accepted so
-  // existing installations do not silently lose their endpoint.
+  // existing installations do not silently lose their endpoint. Named custom
+  // providers (one endpoint + key per name, managed in the Extension settings
+  // UI) travel as MINITOK_CUSTOM_PROVIDERS_JSON plus per-provider
+  // MINITOK_CUSTOM_BASE_URL_<NAME> / MINITOK_CUSTOM_API_KEY_<NAME> pairs. The
+  // JSON manifest and the per-provider endpoint/key variables are consumed by
+  // direct process.env reads (not the minitok_ allowlist below), so they need
+  // no allowlist entry; the allowlist only gates minitok_* role/provider/model
+  // overrides.
   "minitok_custom_base_url", "minitok_openai_compatible_base_url",
   "minitok_plan_provider", "minitok_plan_model", "minitok_review_provider", "minitok_review_model",
   "minitok_work_provider", "minitok_work_model", "minitok_intel_provider", "minitok_intel_model",
@@ -93,6 +100,20 @@ function deepMerge(base, override) {
  * Safely coerce a string value to its native type.
  * Handles null/undefined/empty to prevent TypeError.
  */
+function customProviderKeyEnvName(name) {
+  const suffix = String(name || "").toUpperCase().replace(/[^A-Z0-9]/g, "_").replace(/^_+|_+$/g, "") || "CUSTOM";
+  return `MINITOK_CUSTOM_API_KEY_${suffix}`;
+}
+
+function parseCustomProvidersJson(raw) {
+  if (raw === undefined || raw === null || String(raw).trim() === "") return {};
+  let parsed;
+  try { parsed = JSON.parse(String(raw)); }
+  catch { throw new ConfigError("MINITOK_CUSTOM_PROVIDERS_JSON must be a JSON object of provider name to base_url"); }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new ConfigError("MINITOK_CUSTOM_PROVIDERS_JSON must be a JSON object of provider name to base_url");
+  return parsed;
+}
+
 function coerceValue(value) {
   if (value == null || value === "") return null;
   const s = String(value);
@@ -182,6 +203,37 @@ function loadEnvVars() {
   // the endpoint through the child-process environment. Materialize a normal
   // provider entry here so every CLI/core entry point resolves the same config;
   // the key itself remains outside config and is read from OPENAI_API_KEY.
+  // Named custom providers: the Extension settings UI manages one entry per
+  // name so each role (plan/work/review/intel) can point at a different
+  // OpenAI-compatible endpoint with its own credential.
+  //   MINITOK_CUSTOM_PROVIDERS_JSON = JSON { "<name>": "<base_url>" }
+  //   MINITOK_CUSTOM_BASE_URL_<NAME> = "<base_url>"  (NAME = upper-cased name,
+  //     every non [A-Z0-9] mapped to "_")
+  // Each materialized entry points at MINITOK_CUSTOM_API_KEY_<NAME>, so roles
+  // never share one key variable. Explicit file config wins over env entries.
+  // The legacy single MINITOK_CUSTOM_BASE_URL / OPENAI_API_KEY contract below
+  // is preserved untouched.
+  const namedCustomProviders = parseCustomProvidersJson(process.env.MINITOK_CUSTOM_PROVIDERS_JSON);
+  for (const [rawName, rawUrl] of Object.entries(namedCustomProviders)) {
+    const name = String(rawName || "").trim().toLowerCase();
+    assertSafeProviderName(rawName, "MINITOK_CUSTOM_PROVIDERS_JSON provider name");
+    if (!name) throw new ConfigError("MINITOK_CUSTOM_PROVIDERS_JSON provider name must be a non-empty string");
+    if (typeof rawUrl !== "string" || !rawUrl.trim()) throw new ConfigError(`MINITOK_CUSTOM_PROVIDERS_JSON["${rawName}"] must be a base_url string`);
+    result.providers = { ...(result.providers || {}) };
+    if (result.providers[name] && typeof result.providers[name] === "object") continue;
+    result.providers[name] = { base_url: rawUrl.trim(), api_key_env: customProviderKeyEnvName(name) };
+  }
+  for (const [key, value] of Object.entries(process.env)) {
+    const match = /^MINITOK_CUSTOM_BASE_URL_([A-Z0-9_]+)$/.exec(key);
+    if (!match || typeof value !== "string" || !value.trim()) continue;
+    const name = match[1].toLowerCase().replace(/_+/g, "-").replace(/^-+|-+$/g, "");
+    if (!name) continue;
+    try { assertSafeProviderName(name, "MINITOK_CUSTOM_BASE_URL_* provider name"); }
+    catch { continue; }
+    result.providers = { ...(result.providers || {}) };
+    if (result.providers[name] && typeof result.providers[name] === "object") continue;
+    result.providers[name] = { base_url: value.trim(), api_key_env: customProviderKeyEnvName(name) };
+  }
   const customBaseUrl = process.env.MINITOK_CUSTOM_BASE_URL || process.env.MINITOK_OPENAI_COMPATIBLE_BASE_URL;
   if (typeof customBaseUrl === "string" && customBaseUrl.trim()) {
     result.providers = {

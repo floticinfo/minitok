@@ -592,10 +592,12 @@ class CustomProvider extends LLMProvider {
     if (apiKey && !this.config.auth && headers["x-api-key"]) {
       delete headers["x-api-key"];
     }
-    if (apiKey && !headers.Authorization && !headers["x-api-key"]) {
+    // Custom providers default to Authorization: Bearer (OpenAI-compatible).
+    // Some custom providers ignore x-api-key and require Bearer.
+    if (apiKey && !headers.Authorization) {
       const scheme = this.config.auth?.scheme || "Bearer";
-      const header = this.config.auth?.header || "Authorization";
-      headers[header] = scheme === "raw" ? apiKey : `${scheme} ${apiKey}`;
+      headers["Authorization"] = scheme === "raw" ? apiKey : `${scheme} ${apiKey}`;
+      if (headers["x-api-key"] === apiKey) delete headers["x-api-key"];
     }
     const apiPath = isResponses ? "/responses" : "/chat/completions";
     const requestHeaders = { ...headers, ...endpointTransport.headers };
@@ -621,10 +623,13 @@ class CustomProvider extends LLMProvider {
       const resolvedAuth = await authManager.resolve(providerName, { api_key: apiKey, ...(Object.keys(auth).length > 0 ? { auth } : {}) });
       const headers = { ...(resolvedAuth.headers || {}) };
       const token = resolvedAuth.token || apiKey;
-      if (token && !Object.keys(headers).some(header => header.toLowerCase() === "authorization" || header.toLowerCase() === "x-api-key")) {
+      // Custom providers default to Authorization: Bearer (OpenAI-compatible).
+      // Some custom providers (e.g., profundoai) ignore x-api-key and require Bearer.
+      if (token && !Object.keys(headers).some(header => header.toLowerCase() === "authorization")) {
         const scheme = auth.scheme || "Bearer";
-        const header = auth.header || "Authorization";
-        headers[header] = scheme === "raw" ? token : `${scheme} ${token}`;
+        headers["Authorization"] = scheme === "raw" ? token : `${scheme} ${token}`;
+        // Remove x-api-key if auth manager set it — Bearer takes precedence for custom providers
+        if (headers["x-api-key"] === token) delete headers["x-api-key"];
       }
       const requestHeaders = { ...headers, ...endpointTransport.headers };
       const modelsPath = endpoint.endsWith("/v1") ? "/models" : "/v1/models";

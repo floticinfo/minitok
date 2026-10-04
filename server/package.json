@@ -1,0 +1,19 @@
+{
+  "name": "@flotic/minitok-entitlement-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Entitlement server for minitok — license key activation and JWT session management",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node index.js"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "jsonwebtoken": "^9.0.2"
+  }
+}

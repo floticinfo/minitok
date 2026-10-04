@@ -39,14 +39,21 @@ test("unrestricted MCP scope is explicit and remains separate from autonomous au
 /** Environment for a host that can only pass the credential through env. */
 function hostEnvironment(token) {
   const env = { ...process.env };
-  for (const key of Object.keys(env)) if (key.startsWith("MINITOK_MCP_")) delete env[key];
+  for (const key of Object.keys(env)) if (key.startsWith("MINITOK_MCP_") || key === "MINITOK_ENTITLEMENT") delete env[key];
   env.MINITOK_MCP_AUTH_TOKEN = token;
   env.MINITOK_MCP_SCOPES = "read";
   return env;
 }
 
-function spawnHost() {
-  const child = spawn(process.execPath, [entry], { stdio: ["pipe", "pipe", "pipe"], env: hostEnvironment(TOKEN) });
+/**
+ * Spawn the packaged stdio entry point the way a host would. Phase 4: the
+ * entitlement credential rides in the spawn environment (MINITOK_ENTITLEMENT),
+ * mirroring the auth token — a stdio host has no headers and no params.
+ */
+function spawnHost(entitlement) {
+  const env = hostEnvironment(TOKEN);
+  if (entitlement !== undefined) env.MINITOK_ENTITLEMENT = entitlement;
+  const child = spawn(process.execPath, [entry], { stdio: ["pipe", "pipe", "pipe"], env });
   let buffer = "";
   const pending = [];
   const waiters = [];
@@ -108,7 +115,9 @@ function runtimeFixture(runPipeline, options = {}) {
 }
 
 test("an env-only MCP host can call tools without echoing the token in params", async () => {
-  const host = spawnHost();
+  // Phase 4: the env credential must satisfy the handshake entitlement check,
+  // exactly like MINITOK_MCP_AUTH_TOKEN satisfies the auth check.
+  const host = spawnHost("entitlement-token-for-this-installation");
   try {
     const init = await host.request(1, "initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "env-only-host" } });
     assert.equal(init.error, undefined, `initialize must succeed: ${JSON.stringify(init.error)}`);

@@ -204,7 +204,7 @@ providers:
 
 A provider name without an endpoint is refused with `Unknown LLM provider: <name>. Set base_url for custom providers.`, and `api_key_env` must name an environment variable rather than hold a literal key, so a typo is reported instead of leaving the provider without credentials.
 
-The VS Code Extension's custom-provider settings use the child-process contract `MINITOK_CUSTOM_BASE_URL` plus `OPENAI_API_KEY`; the older `MINITOK_OPENAI_COMPATIBLE_BASE_URL` name remains accepted for compatibility. The CLI materializes this into `providers.custom` without writing the endpoint key or credential into workspace config. Both `https://host` and `https://host/v1` endpoint forms are supported for model discovery.
+The VS Code Extension's custom-provider settings use the child-process contract `MINITOK_CUSTOM_BASE_URL` plus `OPENAI_API_KEY`; the older `MINITOK_OPENAI_COMPATIBLE_BASE_URL` name remains accepted for compatibility. The CLI materializes this into `providers.custom` without writing the endpoint key or credential into workspace config. Named custom providers (one endpoint + key per name, e.g. `custom-plan` for the plan role and `custom-work` for the work role) are managed in the Extension settings UI and travel as `MINITOK_CUSTOM_PROVIDERS_JSON` plus per-provider `MINITOK_CUSTOM_BASE_URL_<NAME>` / `MINITOK_CUSTOM_API_KEY_<NAME>` pairs, materialized into `providers.<name>` with `api_key_env` pointing at the per-name key variable. Both `https://host` and `https://host/v1` endpoint forms are supported for model discovery.
 
 After purchasing, run `minitok activate <activation-key>` once. The key is bound to the current installation; use `minitok doctor` to diagnose missing, expired, or server-rejected entitlements.
 

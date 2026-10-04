@@ -30,7 +30,7 @@ test("disposable capability E2E covers import, status, Local MCP, and cleanup", 
     assert.equal(imported.success, true);
     assert.equal(readCapabilityRecord({ filePath: f.file }).profile, "full_test");
 
-    const runtime = new RuntimeStdio({ authToken: "runtime-test-token", capabilityFile: f.file, entitlementRequired: false });
+    const runtime = new RuntimeStdio({ authToken: "runtime-test-token", capabilityFile: f.file, entitlementToken: "capability-e2e-entitlement", entitlementRequired: false });
     const initialize = await requestRuntime(runtime, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05" } });
     assert.equal(initialize.result.protocolVersion, "2024-11-05");
     const tools = await requestRuntime(runtime, { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} });

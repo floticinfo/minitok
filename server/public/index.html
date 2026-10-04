@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MiniTok License Manager</title>
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, sans-serif; margin: 0; background: #f5f6f8; color: #1b1f24; }
+    main { max-width: 720px; margin: 48px auto; padding: 0 16px; }
+    h1 { font-size: 1.5rem; margin-bottom: 8px; }
+    .card { background: #fff; border: 1px solid #e1e4e8; border-radius: 8px; padding: 20px; margin-bottom: 16px; }
+    label { display: block; font-size: 0.9rem; margin-bottom: 6px; }
+    input { width: 100%; padding: 8px 10px; border: 1px solid #c9ced6; border-radius: 6px; font-size: 0.95rem; }
+    button { margin-top: 12px; padding: 8px 16px; border: 0; border-radius: 6px; background: #2563eb; color: #fff; font-size: 0.95rem; cursor: pointer; }
+    button.secondary { background: #6b7280; }
+    button.danger { background: #dc2626; }
+    .error { color: #b91c1c; margin-top: 8px; font-size: 0.9rem; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 0.9rem; }
+    th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #e5e7eb; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 0.75rem; }
+    .badge.on { background: #dcfce7; color: #166534; }
+    .badge.off { background: #fee2e2; color: #991b1b; }
+    .hidden { display: none; }
+    code { background: #f1f5f9; padding: 1px 4px; border-radius: 4px; font-size: 0.8rem; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>MiniTok License Manager</h1>
+    <p>Manage the devices activated on your license key.</p>
+
+    <section id="signin-card" class="card">
+      <label for="key-input">License key</label>
+      <input id="key-input" type="password" placeholder="Enter your activation key" autocomplete="off" />
+      <button id="signin-btn">Sign in</button>
+      <div id="signin-error" class="error"></div>
+    </section>
+
+    <section id="devices-card" class="card hidden">
+      <h2 style="margin-top:0">Activated devices</h2>
+      <table>
+        <thead><tr><th>Installation</th><th>Plan</th><th>Status</th><th>Activated</th><th>Expires</th><th></th></tr></thead>
+        <tbody id="device-rows"></tbody>
+      </table>
+      <div id="list-status" class="error"></div>
+      <button id="signout-btn" class="secondary">Sign out</button>
+    </section>
+  </main>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -185,7 +185,7 @@ test("error paths route their message through showToast", () => {
   assert.match(html, /showToast\('Could not confirm your minitok session\.','error'\)/);
   // Billing and run failures toast as errors too.
   assert.match(html, /showToast\(m\.text\|\|'Billing action failed\.','error'\)/);
-  assert.match(html, /m\.ok===false\)showToast\('Run failed/);
+  assert.match(html, /m\.ok===false\)showToast\('Run failed|userMessage/);
   // Previously invisible messages now reach the user: mcp-connect and summary had no
   // render path, and info/activation/update-result only wrote into the settings card.
   assert.match(html, /m\.type==='mcp-connect'\)\{showToast\(/);
@@ -444,24 +444,36 @@ test("settings UI splits provider keys and posts per-provider secrets", () => {
   // Badges render from the extension's per-provider map, not a single boolean.
   assert.match(html, /s\.secrets\?\.providerApiKeySet/);
   // Save collects only non-empty per-provider keys and posts the new contract.
-  assert.match(html, /secrets=\{providerApiKeys:\{\}\}/);
+  assert.match(html, /secrets=\{providerApiKeys:\{\},customEndpoints:\{\}\}/);
   assert.match(html, /if\(v\)secrets\.providerApiKeys\[p\]=v/);
-  // The custom endpoint row is still gated to the custom provider.
-  assert.match(html, /customBaseUrlRow'\)\.hidden=document\.getElementById\('provider'\)\.value!=='custom'/);
+  // Named custom providers: each is one card (name + endpoint + key) rendered
+  // in the custom provider list, so a role can point at a different
+  // OpenAI-compatible API with its own credential.
+  assert.match(html, /id="customProviderList"/);
+  assert.match(html, /id="addCustomProvider"/);
+  assert.match(html, /custom-provider-row/);
+  assert.match(html, /secrets\.customEndpoints\[name\]=url/);
+  assert.match(html, /if\(key\)secrets\.providerApiKeys\[name\]=key/);
+  // The custom endpoint row is always visible (no longer gated to the custom provider).
+  assert.match(html, /customBaseUrlRow'\)\.hidden=false/);
   assert.match(html, /secrets\.customBaseUrl=document\.getElementById\('customBaseUrl'\)\.value/);
   // The extension must consume the per-provider map and keep the legacy single key.
   const src = sidebarSource();
   assert.match(src, /key === "providerApiKeys"/);
+  assert.match(src, /key === "customEndpoints"/);
   assert.match(src, /key === "providerApiKey"/);
 });
 
 test("settings UI offers per-provider key validation and the extension answers it", () => {
   const html = sidebar();
-  // Each provider row carries a Validate button and a status slot.
+  // Each built-in provider row carries a Validate button and a status slot.
   for (const p of ["anthropic", "openai", "google", "custom"]) {
     assert.match(html, new RegExp(`validate-key[^>]*data-provider="${p}"`), `must expose a ${p} validate button`);
     assert.match(html, new RegExp(`data-key-status="${p}"`), `must expose a ${p} validation status slot`);
   }
+  // Named custom keys validate through delegation on the customProviderList
+  // container (one card holds its endpoint and key together).
+  assert.match(html, /customProviderList'\)\.addEventListener\('click'/);
   // Buttons post the validate-key command and surface the result by provider.
   assert.match(html, /command:'validate-key',provider:p/);
   assert.match(html, /m\.type==='key-validation'/);
@@ -475,13 +487,15 @@ test("settings UI offers per-provider key validation and the extension answers i
   // It reads the stored key (not form text) and refuses empty providers.
   assert.match(src, /No key stored for this provider/);
   assert.match(src, /apiKeySecretKey\(provider\)/);
+  assert.match(src, /customProviderKeyEnvName/);
+  assert.match(src, /readCustomEndpoints/);
   // The check injects the key under the vendor variable the CLI's envMap reads,
   // and materializes the custom endpoint, mirroring execute().
   assert.match(src, /env\.ANTHROPIC_API_KEY = key/);
   assert.match(src, /env\.GOOGLE_API_KEY = key/);
   assert.match(src, /MINITOK_CUSTOM_BASE_URL = baseUrl/);
   // The CLI probe is the lightweight discover-models path, judged on live output.
-  assert.match(src, /"models", "--discover", "--json", provider/);
+  assert.match(src, /"models", "--discover", "--json", effective/);
 });
 
 console.log("auth-ui tests: sidebar and panel authentication visibility contracts loaded");

@@ -44,6 +44,31 @@ function runtimeBinding(options, authToken) {
   return authToken ? crypto.createHash("sha256").update(authToken).digest("hex") : null;
 }
 
+/**
+ * Entitlement middleware (Phase 4): validate the entitlement credential at the
+ * MCP handshake instead of only at the first tool call.
+ *
+ * stdio transports have no headers, so the credential travels in the child
+ * environment (MINITOK_ENTITLEMENT) or, for in-process clients, in the
+ * initialize params. The token is a server-issued entitlement JWT, but the
+ * signed local artifact (~/.minitok/entitlement/entitlement.json) is equally
+ * acceptable here because the per-request policy gate in _handleMessage
+ * re-validates the full entitlement (online, when configured) before any tool
+ * runs — the handshake check exists to reject the no-license connection early
+ * with a "License required" error.
+ */
+function loadEntitlementToken(options) {
+  const explicit = options.entitlementToken || process.env.MINITOK_ENTITLEMENT || null;
+  if (typeof explicit === "string" && explicit.trim()) return explicit.trim();
+  return null;
+}
+
+function entitlementValue(params) {
+  const value = params.entitlementToken || params.entitlement_token || params.entitlement;
+  if (typeof value !== "string") return null;
+  return value.trim() || null;
+}
+
 function safeRunRecord(record, binding, migrate = false) {
   if (!record || typeof record !== "object" || typeof record.run_id !== "string" || !record.run_id) return null;
   const recordBinding = typeof record.binding_id === "string" ? record.binding_id : null;
@@ -208,6 +233,13 @@ class RuntimeStdio {
     this._permissions = new Set([...explicitPermissions, ...capability.permissions]);
     this._authRequired = true;
     this._entitlementRequired = true;
+    // Phase 4: the entitlement credential for the MCP handshake. `false`
+    // (explicitly disabled) keeps existing embedders and tests that stub the
+    // per-request gate working; anything falsy-and-not-`false` fails closed.
+    const entitlementToken = loadEntitlementToken(options);
+    this._handshakeEntitlementRequired = options.entitlementToken === false || options.entitlementRequired === false ? false : true;
+    this._handshakeEntitlementToken = entitlementToken;
+    this._sessionEntitlement = null;
     // Which file the startup credential came from, when that file is the rotating
     // runtime token. Every host configuration passes MINITOK_MCP_AUTH_TOKEN_FILE
     // and nothing else, so this file is the only durable source of the record's
@@ -532,6 +564,23 @@ class RuntimeStdio {
       if (this._authRequired && suppliedToken && !this._authValid(suppliedToken)) {
         const recovery = this._authRecovery();
         return this._error(id, MCP_ERROR_CODES.AUTH_REQUIRED, `Authentication required. ${recovery.action}`, "AUTH_REQUIRED", correlationId, { recovery: { reason: recovery.reason || null, action: recovery.action || null } }, reply);
+      }
+      // Entitlement middleware: the handshake carries a license credential, and
+      // a connection without one never sees a tool list. 403 semantics per the
+      // Phase 4 contract: "License required".
+      if (this._handshakeEntitlementRequired) {
+        const entitlement = entitlementValue(params) || this._handshakeEntitlementToken;
+        if (!entitlement) {
+          // An in-process embedder that already supplied an entitlement service
+          // (the production path resolves it from the local signed artifact)
+          // answers the license question here; a bare token is not required.
+          let servicePolicy = null;
+          try { servicePolicy = await this._services.entitlement?.status?.(); } catch {}
+          if (!servicePolicy?.allowed) {
+          return this._error(id, MCP_ERROR_CODES.PERMISSION_DENIED, "License required: connect the minitok MCP server with an active entitlement (MINITOK_ENTITLEMENT).", "LICENSE_REQUIRED", correlationId, { recovery: { reason: "No entitlement token was provided at the handshake.", action: "Run: minitok activate <key> and reconnect the MCP host." } }, reply);
+          }
+        }
+        if (entitlement) this._sessionEntitlement = entitlement;
       }
        this._clientInfo = params.clientInfo && typeof params.clientInfo === "object" ? { name: String(params.clientInfo.name || "unknown").slice(0, 128), version: String(params.clientInfo.version || "").slice(0, 64) } : null;
        const requestToken = this._authValue(params);

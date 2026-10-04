@@ -34,6 +34,8 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.minitokSidebar = void 0;
+exports.customProviderKeyEnvName = customProviderKeyEnvName;
+exports.customProviderBaseUrlEnvName = customProviderBaseUrlEnvName;
 const vscode = __importStar(require("vscode"));
 const fs = __importStar(require("node:fs"));
 const path = __importStar(require("node:path"));
@@ -51,12 +53,65 @@ function cliRelease(context) {
     return { packageName: typeof release?.cliPackage === "string" ? release.cliPackage : "@flotic/minitok", version: typeof release?.cliVersion === "string" ? release.cliVersion : "0.0.0" };
 }
 const redactTaskText = redaction_1.redactSensitiveText;
-// Providers with their own SecretStorage key. `custom` has no conventional
-// vendor variable of its own — the CLI materializes it with
-// api_key_env: OPENAI_API_KEY (see src/config/loader.js).
+// Named custom providers managed in the settings UI: one OpenAI-compatible
+// endpoint plus one key per name (e.g. custom-plan, custom-work). Names are
+// stored lower-cased; the env suffix is the upper-cased name with every
+// non [A-Z0-9] mapped to "_", mirroring src/config/loader.js.
+function customProviderKeyEnvName(name) {
+    const suffix = String(name || "").toUpperCase().replace(/[^A-Z0-9]/g, "_").replace(/^_+|_+$/g, "") || "CUSTOM";
+    return `MINITOK_CUSTOM_API_KEY_${suffix}`;
+}
+function customProviderBaseUrlEnvName(name) {
+    const suffix = String(name || "").toUpperCase().replace(/[^A-Z0-9]/g, "_").replace(/^_+|_+$/g, "") || "CUSTOM";
+    return `MINITOK_CUSTOM_BASE_URL_${suffix}`;
+}
+function normalizeCustomProviderName(value) {
+    return String(value || "").trim().toLowerCase();
+}
+function isValidCustomProviderName(name) {
+    if (!name || name.length > 64)
+        return false;
+    if (!/^[a-z0-9][a-z0-9._-]*$/.test(name))
+        return false;
+    if (name.includes(".."))
+        return false;
+    if (["anthropic", "openai", "google", "custom"].includes(name))
+        return false;
+    return true;
+}
+async function readCustomEndpoints(secrets) {
+    const raw = await secrets.get("minitok.secret.customEndpoints");
+    if (!raw)
+        return {};
+    try {
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+            return {};
+        const out = {};
+        for (const [key, value] of Object.entries(parsed)) {
+            const name = normalizeCustomProviderName(key);
+            if (!isValidCustomProviderName(name))
+                continue;
+            if (typeof value !== "string" || !value.trim())
+                continue;
+            out[name] = value.trim();
+        }
+        return out;
+    }
+    catch {
+        return {};
+    }
+}
 const API_KEY_PROVIDERS = ["anthropic", "openai", "google", "custom"];
 const apiKeySecretKey = (provider) => `minitok.secret.apiKey.${provider}`;
 const isApiKeyProvider = (provider) => API_KEY_PROVIDERS.includes(provider);
+// A named custom endpoint (custom-plan, ...) keeps its key under its own name
+// so every role can use a different credential. Anything outside the built-in
+// slots is treated as a named custom key.
+const isNamedCustomKeyProvider = (provider) => {
+    const name = normalizeCustomProviderName(provider);
+    return Boolean(name) && isValidCustomProviderName(name);
+};
 /**
  * The pre-split store held one key for whichever provider was saved last. Move
  * it to the current provider's slot (the best available attribution), never
@@ -82,6 +137,29 @@ function taskRecord(task) {
     return record;
 }
 const redactOutputText = redaction_1.redactSensitiveText;
+/** Map raw CLI/runtime errors to short, actionable user-facing messages. */
+function toUserFriendlyError(raw) {
+    const text = raw.toLowerCase();
+    if (text.includes("entitlement") || text.includes("license")) {
+        return "License required: activate with `minitok activate <license-key>` in the terminal, then retry.";
+    }
+    if (text.includes("enoent") || text.includes("not found") || text.includes("cannot find")) {
+        return "minitok CLI not found: install it globally with `npm install -g @flotic/minitok`, then reload this window.";
+    }
+    if (text.includes("econnrefused") || text.includes("enotfound") || text.includes("eai_again") || text.includes("timeout")) {
+        return "Network error: check your internet connection and any proxy/firewall, then retry.";
+    }
+    if (text.includes("401") || text.includes("unauthorized") || text.includes("invalid api key")) {
+        return "Authentication failed: check your API key in Settings → Providers.";
+    }
+    if (text.includes("403") || text.includes("forbidden")) {
+        return "Access denied: your API key may lack permission for this provider.";
+    }
+    if (text.includes("429") || text.includes("rate limit")) {
+        return "Rate limited: wait a moment and retry.";
+    }
+    return raw.split("\n")[0].slice(0, 200);
+}
 function redactTaskArgs(args, task) {
     if (!task)
         return args;
@@ -205,6 +283,12 @@ class minitokSidebar {
         }
         await migrateLegacyProviderApiKey(this.context.secrets, provider);
         const customBaseUrl = await this.context.secrets.get("minitok.secret.customBaseUrl");
+        const customEndpoints = await readCustomEndpoints(this.context.secrets);
+        // Migrate a legacy single custom endpoint into the named map so an
+        // existing installation keeps working and becomes per-role editable.
+        if (customBaseUrl && customBaseUrl.trim() && Object.keys(customEndpoints).length === 0) {
+            customEndpoints["custom"] = customBaseUrl.trim();
+        }
         if (model)
             for (const role of roles)
                 if (!roleEnv[`minitok_${role}_model`])
@@ -212,13 +296,34 @@ class minitokSidebar {
         const env = { ...roleEnv, ...(provider ? { minitok_default_provider: provider } : {}) };
         // Inject every stored provider key, not just the selected provider's: roles
         // (minitok_<role>_provider) may name a different provider than the default.
-        // Variable names match the CLI contract (src/auth/index.js envMap, and the
-        // custom provider materialized with api_key_env: OPENAI_API_KEY).
+        // Variable names match the CLI contract (src/auth/index.js envMap, the
+        // legacy custom provider materialized with api_key_env: OPENAI_API_KEY,
+        // and named custom providers materialized with per-name
+        // MINITOK_CUSTOM_API_KEY_<NAME> entries in src/config/loader.js).
         const keys = {};
         for (const p of API_KEY_PROVIDERS) {
             const key = await this.context.secrets.get(apiKeySecretKey(p));
             if (key)
                 keys[p] = key;
+        }
+        // Named custom keys live under their own SecretStorage name. roleEnv holds
+        // minitok_<role>_provider values plus minitok_*_model values, so only
+        // provider entries (not model names or URLs) are candidates here.
+        const roleProviderNames = roles
+            .map(role => roleEnv[`minitok_${role}_provider`])
+            .filter((value) => Boolean(value));
+        const namedKeyNames = new Set([
+            ...Object.keys(customEndpoints),
+            provider,
+            ...roleProviderNames,
+        ]);
+        for (const raw of namedKeyNames) {
+            const name = normalizeCustomProviderName(raw);
+            if (!isNamedCustomKeyProvider(name) || keys[name])
+                continue;
+            const key = await this.context.secrets.get(apiKeySecretKey(name));
+            if (key)
+                keys[name] = key;
         }
         if (keys.anthropic)
             env.ANTHROPIC_API_KEY = keys.anthropic;
@@ -228,9 +333,23 @@ class minitokSidebar {
             env.GOOGLE_API_KEY = keys.google;
         if (keys.custom)
             env.OPENAI_API_KEY = keys.custom;
+        for (const [name, key] of Object.entries(keys)) {
+            if (!isNamedCustomKeyProvider(name) || API_KEY_PROVIDERS.includes(name))
+                continue;
+            env[customProviderKeyEnvName(name)] = key;
+        }
         // Keep the endpoint outside workspace config/CLI args. The core loader
-        // materializes this into providers.custom and retains the legacy variable as
-        // a compatibility fallback for older installations.
+        // materializes named entries into providers.<name> (plus the legacy
+        // providers.custom fallback below for older installations).
+        const manifest = {};
+        for (const [name, url] of Object.entries(customEndpoints)) {
+            if (name === "custom")
+                continue;
+            manifest[name] = url;
+            env[customProviderBaseUrlEnvName(name)] = url;
+        }
+        if (Object.keys(manifest).length)
+            env.MINITOK_CUSTOM_PROVIDERS_JSON = JSON.stringify(manifest);
         if (customBaseUrl && provider === "custom") {
             env.MINITOK_CUSTOM_BASE_URL = customBaseUrl;
             env.MINITOK_OPENAI_COMPATIBLE_BASE_URL = customBaseUrl;
@@ -602,10 +721,11 @@ class minitokSidebar {
         }
         catch (error) {
             const history = this.context.workspaceState.get("minitok.history", []);
-            const safeError = redactOutputText(String(error));
+            const rawError = String(error);
+            const safeError = redactOutputText(rawError);
             if (this.activeRunId)
                 await this.context.workspaceState.update("minitok.history", [...history.slice(-19), { runId: this.activeRunId, ...taskRecord(message.task || ""), startedAt: this.activeRunStartedAt, completedAt: new Date().toISOString(), status: "failed", success: false, error: safeError }]);
-            this.view?.webview.postMessage({ type: "result", ok: false, text: safeError, runId: this.activeRunId });
+            this.view?.webview.postMessage({ type: "result", ok: false, text: safeError, runId: this.activeRunId, errorDetail: safeError, userMessage: toUserFriendlyError(safeError) });
         }
         finally {
             this.activeRunId = undefined;
@@ -690,9 +810,9 @@ class minitokSidebar {
             args.splice(2, 0, provider);
         // The extension owns SecretStorage, so the CLI cannot see stored keys —
         // inject the requested provider's key, mirroring validateApiKey().
-        const wanted = (provider || "").toLowerCase();
+        const wanted = normalizeCustomProviderName(provider || "");
         const env = {};
-        if (isApiKeyProvider(wanted)) {
+        if (isApiKeyProvider(wanted) || isNamedCustomKeyProvider(wanted)) {
             const key = await this.context.secrets.get(apiKeySecretKey(wanted));
             if (key) {
                 env.minitok_default_provider = wanted;
@@ -702,13 +822,23 @@ class minitokSidebar {
                     env.OPENAI_API_KEY = key;
                 else if (wanted === "google")
                     env.GOOGLE_API_KEY = key;
+                else if (wanted === "custom")
+                    env.OPENAI_API_KEY = key;
                 else
-                    env.OPENAI_API_KEY = key; // custom
+                    env[customProviderKeyEnvName(wanted)] = key;
                 if (wanted === "custom") {
                     const baseUrl = await this.context.secrets.get("minitok.secret.customBaseUrl");
                     if (baseUrl) {
                         env.MINITOK_CUSTOM_BASE_URL = baseUrl;
                         env.MINITOK_OPENAI_COMPATIBLE_BASE_URL = baseUrl;
+                    }
+                }
+                else if (isNamedCustomKeyProvider(wanted)) {
+                    const endpoints = await readCustomEndpoints(this.context.secrets);
+                    const baseUrl = endpoints[wanted];
+                    if (baseUrl) {
+                        env[customProviderBaseUrlEnvName(wanted)] = baseUrl;
+                        env.MINITOK_CUSTOM_PROVIDERS_JSON = JSON.stringify({ [wanted]: baseUrl });
                     }
                 }
             }
@@ -770,32 +900,40 @@ class minitokSidebar {
      * live discovery returned models for it. The extension owns SecretStorage, so
      * the CLI alone cannot see the key — it must be injected here, mirroring the
      * materialization contract in execute(): custom maps to OPENAI_API_KEY plus
-     * the endpoint variables. `validate-key` is sent right after save-settings,
+     * the endpoint variables, named custom providers map to per-name
+     * MINITOK_CUSTOM_API_KEY_<NAME> plus endpoint variables. `validate-key` is
+     * sent right after save-settings,
      * so the key being checked is already stored.
      */
     async validateApiKey(message) {
-        const provider = typeof message?.provider === "string" ? (0, workspace_1.normalizeProviderName)(message.provider) : "";
-        if (!isApiKeyProvider(provider)) {
+        const rawName = normalizeCustomProviderName(typeof message?.provider === "string" ? message.provider : "");
+        const provider = (0, workspace_1.normalizeProviderName)(message?.provider || "");
+        const named = isNamedCustomKeyProvider(rawName) ? rawName : "";
+        if (!isApiKeyProvider(provider) && !named) {
             this.view?.webview.postMessage({ type: "key-validation", provider: message?.provider, ok: false, reason: "Unknown provider" });
             return;
         }
-        const key = await this.context.secrets.get(apiKeySecretKey(provider));
+        const effective = named || provider;
+        const key = await this.context.secrets.get(apiKeySecretKey(effective));
         if (!key) {
-            this.view?.webview.postMessage({ type: "key-validation", provider, ok: false, reason: "No key stored for this provider" });
+            this.view?.webview.postMessage({ type: "key-validation", provider: effective, ok: false, reason: "No key stored for this provider" });
             return;
         }
         // Inject the key under the vendor variable the CLI's envMap reads. For
         // custom, api_key_env is OPENAI_API_KEY (src/config/loader.js) and the
-        // endpoint travels in MINITOK_CUSTOM_BASE_URL.
-        const env = { minitok_default_provider: provider };
+        // endpoint travels in MINITOK_CUSTOM_BASE_URL; named providers use their
+        // per-name key/endpoint variables.
+        const env = { minitok_default_provider: effective };
         if (provider === "anthropic")
             env.ANTHROPIC_API_KEY = key;
         else if (provider === "openai")
             env.OPENAI_API_KEY = key;
         else if (provider === "google")
             env.GOOGLE_API_KEY = key;
-        else
+        else if (!named)
             env.OPENAI_API_KEY = key; // custom
+        else
+            env[customProviderKeyEnvName(named)] = key;
         if (provider === "custom") {
             const baseUrl = await this.context.secrets.get("minitok.secret.customBaseUrl");
             if (baseUrl) {
@@ -803,9 +941,17 @@ class minitokSidebar {
                 env.MINITOK_OPENAI_COMPATIBLE_BASE_URL = baseUrl;
             }
         }
+        else if (named) {
+            const endpoints = await readCustomEndpoints(this.context.secrets);
+            const baseUrl = endpoints[named];
+            if (baseUrl) {
+                env[customProviderBaseUrlEnvName(named)] = baseUrl;
+                env.MINITOK_CUSTOM_PROVIDERS_JSON = JSON.stringify({ [named]: baseUrl });
+            }
+        }
         const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
         try {
-            const processSpec = (0, workspace_1.spawnSpec)((0, workspace_1.cliPath)(), ["models", "--discover", "--json", provider]);
+            const processSpec = (0, workspace_1.spawnSpec)((0, workspace_1.cliPath)(), ["models", "--discover", "--json", effective]);
             const result = await (0, run_process_1.runProcess)(processSpec.command, processSpec.args, {
                 spawnOptions: (0, workspace_1.spawnOptionsFor)(processSpec, { cwd, env }),
                 timeoutMs: 25000,
@@ -818,15 +964,21 @@ class minitokSidebar {
             catch {
                 payload = null;
             }
-            const discovered = payload?.live?.[provider] || payload?.models?.[provider] || [];
+            // Named custom providers are reported by the CLI in the `custom` array
+            // (one { provider, models } entry per endpoint), not under `live[name]`,
+            // so validate must read both shapes or every named custom check fails.
+            const customEntry = Array.isArray(payload?.custom)
+                ? payload.custom.find((c) => c && normalizeCustomProviderName(String(c.provider)) === effective)
+                : null;
+            const discovered = payload?.live?.[effective] || payload?.models?.[effective] || customEntry?.models || [];
             const models = (Array.isArray(discovered) ? discovered : [])
                 .map((m) => (typeof m === "string" ? m : m?.id || m?.name))
                 .filter((m) => typeof m === "string" && /^[A-Za-z0-9._\-/]+$/.test(m));
             const ok = models.length > 0;
-            this.view?.webview.postMessage({ type: "key-validation", provider, ok, reason: ok ? undefined : (redactOutputText(text.slice(0, 300)) || "No models returned") });
+            this.view?.webview.postMessage({ type: "key-validation", provider: effective, ok, reason: ok ? undefined : (redactOutputText(text.slice(0, 300)) || "No models returned") });
         }
         catch (error) {
-            this.view?.webview.postMessage({ type: "key-validation", provider, ok: false, reason: redactOutputText(String(error).slice(0, 300)) });
+            this.view?.webview.postMessage({ type: "key-validation", provider: effective, ok: false, reason: redactOutputText(String(error).slice(0, 300)) });
         }
     }
     async readInfo(cwd) {
@@ -1149,10 +1301,28 @@ class minitokSidebar {
                     // Per-provider keys from the settings form. Each maps to its own
                     // SecretStorage slot; absent providers keep whatever was stored.
                     for (const [p, secret] of Object.entries(value)) {
-                        if (isApiKeyProvider(p) && typeof secret === "string" && secret) {
-                            await this.context.secrets.store(apiKeySecretKey(p), secret);
+                        if (typeof secret !== "string" || !secret)
+                            continue;
+                        if (isApiKeyProvider(p) || isNamedCustomKeyProvider(p)) {
+                            await this.context.secrets.store(apiKeySecretKey(normalizeCustomProviderName(p) || p), secret);
                         }
                     }
+                }
+                else if (key === "customEndpoints" && value && typeof value === "object" && !Array.isArray(value)) {
+                    // Named custom endpoints from the settings form: { "<name>": "<url>" }.
+                    // Empty URLs delete the entry (and its key mapping stays until a new
+                    // key is saved). Names are validated so they always survive the
+                    // MINITOK_CUSTOM_BASE_URL_<NAME> env round-trip in execute().
+                    const next = {};
+                    for (const [rawName, rawUrl] of Object.entries(value)) {
+                        const name = normalizeCustomProviderName(rawName);
+                        if (!isValidCustomProviderName(name))
+                            continue;
+                        if (typeof rawUrl !== "string" || !rawUrl.trim())
+                            continue;
+                        next[name] = rawUrl.trim();
+                    }
+                    await this.context.secrets.store("minitok.secret.customEndpoints", JSON.stringify(next));
                 }
                 else if (key === "providerApiKey" && typeof value === "string") {
                     // Legacy single-key message from an older webview: it always belongs to
@@ -1183,7 +1353,15 @@ class minitokSidebar {
         const providerApiKeySet = { anthropic: false, openai: false, google: false, custom: false };
         for (const p of API_KEY_PROVIDERS)
             providerApiKeySet[p] = Boolean(await this.context.secrets.get(apiKeySecretKey(p)));
-        const secrets = { providerApiKeySet, customBaseUrlSet: Boolean(await this.context.secrets.get("minitok.secret.customBaseUrl")) };
+        const customEndpoints = await readCustomEndpoints(this.context.secrets);
+        // Surface named custom keys under their own badge so the UI can render one
+        // row per endpoint. Secret values never leave SecretStorage.
+        for (const name of Object.keys(customEndpoints)) {
+            if (providerApiKeySet[name] === undefined)
+                providerApiKeySet[name] = Boolean(await this.context.secrets.get(apiKeySecretKey(name)));
+        }
+        const legacyCustomBaseUrl = await this.context.secrets.get("minitok.secret.customBaseUrl");
+        const secrets = { providerApiKeySet, customBaseUrlSet: Boolean(legacyCustomBaseUrl), customEndpoints };
         this.view?.webview.postMessage({ type: "settings", settings, secrets, version: cliRelease(this.context).version });
     }
     // The sidebar brand mark must render the same Harlekin 'm' glyph the Activity

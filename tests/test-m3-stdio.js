@@ -9,6 +9,17 @@ const { version } = require("../package.json");
 const SCRIPT = path.join(__dirname, "..", "src", "runtime", "stdio-entry.js");
 const TO = 8000;
 
+/**
+ * Phase 4: the MCP handshake requires an entitlement credential. The spawn
+ * environment strips MINITOK_MCP_AUTH* like every other case here; a plain
+ * spawn without MINITOK_ENTITLEMENT must be refused with LICENSE_REQUIRED
+ * (covered by the "initialize" test below), while these in-band tests supply
+ * the credential in the environment the way a licensed host does.
+ */
+function testEnv(extra = {}) {
+  return { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MINITOK_MCP_AUTH") && key !== "MINITOK_ENTITLEMENT")), MINITOK_ENTITLEMENT: "m3-entitlement-token", ...extra };
+}
+
 function send(p, msg, t) {
   t = t || TO;
   return new Promise((ok, no) => {
@@ -33,7 +44,7 @@ if (!fs2.existsSync(SCRIPT)) fs2.writeFileSync(SCRIPT, "require(\"./stdio.js\").
 
 describe("M3 stdio MCP integration", () => {
   it("starts without MODULE_NOT_FOUND", async () => {
-    const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MINITOK_MCP_AUTH"))) } });
+    const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: testEnv() });
     let stderr = ""; p.stderr.on("data", d => { stderr += d.toString(); });
     await new Promise(r => setTimeout(r, 500));
     assert.ok(p.exitCode === null, "Process alive. stderr: " + stderr);
@@ -42,7 +53,7 @@ describe("M3 stdio MCP integration", () => {
   });
 
   it("initialize returns valid response", async () => {
-    const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MINITOK_MCP_AUTH"))) } });
+    const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: testEnv() });
     try {
       const r = await send(p, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "test" } } });
       assert.equal(r.result.protocolVersion, "2024-11-05");
@@ -52,7 +63,7 @@ describe("M3 stdio MCP integration", () => {
   });
 
   it("resources and prompts are rejected before authentication", async () => {
-    const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: { ...Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith("MINITOK_MCP_AUTH"))) } });
+    const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: testEnv() });
     try {
       const init = await send(p, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "test" } } });
       assert.deepEqual(init.result.capabilities.resources, { subscribe: false, listChanged: false });
@@ -115,6 +126,20 @@ describe("M3 stdio MCP integration", () => {
       p.stdin.write("not valid json {{{\n");
       await new Promise(r => setTimeout(r, 500));
       assert.equal(p.exitCode, null, "Process alive after malformed input");
+    } finally { p.kill(); await wait(p); }
+  });
+
+  // Phase 4: MCP connections must carry an entitlement credential. A spawn
+  // without MINITOK_ENTITLEMENT is refused at the handshake with a
+  // "License required" error instead of succeeding and failing later calls.
+  it("initialize without an entitlement is refused with License required", async () => {
+    const p = spawn(process.execPath, [SCRIPT], { cwd: path.dirname(SCRIPT), stdio: ["pipe","pipe","pipe"], env: testEnv({ MINITOK_ENTITLEMENT: "" }) });
+    try {
+      const r = await send(p, { jsonrpc: "2.0", id: 1, method: "initialize", params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "test" } } });
+      assert.equal(r.id, 1);
+      assert.equal(r.error.code, -32003);
+      assert.equal(r.error.data.type, "LICENSE_REQUIRED");
+      assert.match(r.error.message, /License required/);
     } finally { p.kill(); await wait(p); }
   });
 });

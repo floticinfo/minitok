@@ -170,6 +170,26 @@ describe("Provider selection by role", () => {
     }
   });
 
+  it("materializes named custom providers with one key variable per name", () => {
+    const { loadConfig } = require("../src/config/loader");
+    const saved = {};
+    for (const key of ["MINITOK_CUSTOM_PROVIDERS_JSON", "MINITOK_CUSTOM_BASE_URL_CUSTOM_PLAN", "MINITOK_CUSTOM_BASE_URL_CUSTOM_WORK"]) {
+      saved[key] = process.env[key];
+      delete process.env[key];
+    }
+    process.env.MINITOK_CUSTOM_PROVIDERS_JSON = JSON.stringify({ "custom-plan": "https://a.example/v1" });
+    process.env.MINITOK_CUSTOM_BASE_URL_CUSTOM_WORK = "https://b.example/v1";
+    try {
+      const config = loadConfig("/definitely-missing-minitok.yml");
+      assert.deepEqual(config.providers["custom-plan"], { base_url: "https://a.example/v1", api_key_env: "MINITOK_CUSTOM_API_KEY_CUSTOM_PLAN" });
+      assert.deepEqual(config.providers["custom-work"], { base_url: "https://b.example/v1", api_key_env: "MINITOK_CUSTOM_API_KEY_CUSTOM_WORK" });
+    } finally {
+      for (const [key, value] of Object.entries(saved)) {
+        if (value === undefined) delete process.env[key]; else process.env[key] = value;
+      }
+    }
+  });
+
   it("uses a CLI override for every role", () => {
     const { resolveProviderName } = require("../src/config/loader");
     const config = { default_provider: "default", roles: { plan: { provider: "plan" } } };

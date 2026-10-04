@@ -225,7 +225,19 @@ const CLI_EXPLICIT_ENV = new Set([
     "MINITOK_RUN_DELEGATION",
 ]);
 function isAllowedCliEnv(key) {
-    return CLI_ENV_ALLOWLIST.includes(key) || CLI_EXPLICIT_ENV.has(key) || /^minitok_(?:default_provider|model|server_url|plan_|work_|review_|intel_)/.test(key);
+    if (CLI_ENV_ALLOWLIST.includes(key) || CLI_EXPLICIT_ENV.has(key))
+        return true;
+    if (/^minitok_(?:default_provider|model|server_url|plan_|work_|review_|intel_)/.test(key))
+        return true;
+    // Named custom providers managed in the settings UI: one endpoint pair plus
+    // the JSON manifest per run, and one key variable per provider name.
+    if (key === "MINITOK_CUSTOM_PROVIDERS_JSON")
+        return true;
+    if (/^MINITOK_CUSTOM_BASE_URL_[A-Z0-9_]+$/.test(key))
+        return true;
+    if (/^MINITOK_CUSTOM_API_KEY_[A-Z0-9_]+$/.test(key))
+        return true;
+    return false;
 }
 /** Environment shared by every Extension-owned CLI subprocess. */
 function extensionCliEnvironment(extra = {}) {
@@ -289,12 +301,20 @@ const MCP_ENV_ALLOWLIST = [
     // Non-secret provider configuration used by the extension custom-provider
     // contract. Credentials are added per provider by the caller, never inherited.
     "MINITOK_CUSTOM_BASE_URL", "MINITOK_OPENAI_COMPATIBLE_BASE_URL",
+    "MINITOK_CUSTOM_PROVIDERS_JSON",
 ];
+const MCP_ENV_PATTERN_ALLOWLIST = [/^MINITOK_CUSTOM_BASE_URL_[A-Z0-9_]+$/];
 function inheritedMcpEnvironment() {
     const env = {};
     for (const key of MCP_ENV_ALLOWLIST)
         if (process.env[key] !== undefined)
             env[key] = process.env[key];
+    for (const [key, value] of Object.entries(process.env)) {
+        if (value === undefined)
+            continue;
+        if (MCP_ENV_PATTERN_ALLOWLIST.some(pattern => pattern.test(key)) && env[key] === undefined)
+            env[key] = value;
+    }
     return env;
 }
 function mcpEnvironment() {

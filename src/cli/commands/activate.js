@@ -3,26 +3,19 @@
 /**
  * minitok activate <key> — Client-side activation flow.
  *
- * Calls POST /v1/activate on the minitok server, stores the returned
- * entitlement + installation_token locally, enabling the entitlement gate.
+ * Calls POST /api/entitlement/activate on the minitok server, stores the
+ * returned JWT session token locally, and updates the entitlement cache.
  *
  * Flow:
- *   1. Resolve server URL
- *   2. Generate installation_id (UUID)
- *   3. POST /v1/activate { key, installation_id }
- *   4. Store entitlement artifact in ~/.minitok/entitlement/
- *   5. Store installation token in ~/.minitok/entitlement/installation-token.json
- *   6. Update gate-state.json for offline grace baseline
+ *   1. Resolve server URL (MINITOK_SERVER_URL env, --server flag, or default)
+ *   2. POST /api/entitlement/activate { key }
+ *   3. Store JWT in ~/.minitok/entitlement/session.json via EntitlementCache
+ *   4. Display success with plan details
  */
 
-const { randomUUID } = require("crypto");
-const { EntitlementStore, DEFAULT_ENTITLEMENT_DIR } = require("../../entitlement/store");
-const { saveGateState } = require("../../entitlement/gate");
+const { EntitlementCache } = require("../../entitlement/cache");
+const client = require("../../entitlement/client");
 const { resolveServerUrl } = require("./server-config");
-const { setOwnerOnlyPermissions } = require("../../utils/file-permissions");
-const { postJson } = require("../../core/http");
-
-const INSTALLATION_TOKEN_FILE = "installation-token.json";
 
 async function cmdActivate(key, opts) {
   const envName = opts?.keyEnv;
@@ -34,18 +27,12 @@ async function cmdActivate(key, opts) {
 
   // 1. Resolve server URL
   const serverUrl = resolveServerUrl({ cliServer: opts?.server });
-
-  // 2. Generate installation identity
-  const installationId = randomUUID();
   console.log(`Activating against ${serverUrl}...`);
 
-  // 3. Call POST /v1/activate
+  // 2. Call POST /api/entitlement/activate
   let result;
   try {
-    result = await _httpPost(`${serverUrl}/v1/activate`, {
-      key,
-      installation_id: installationId,
-    });
+    result = await client.activate(key, { serverUrl });
   } catch (err) {
     console.error(`Error: Cannot connect to server at ${serverUrl}\n${err.message}`);
     return 1;
@@ -57,75 +44,32 @@ async function cmdActivate(key, opts) {
     return 1;
   }
 
-  const { entitlement, installation_token } = result.body;
-  if (!entitlement || !installation_token) {
+  const { token, entitlement } = result.body || {};
+  if (!token || !entitlement) {
     console.error("Error: Server returned incomplete activation response.");
     return 1;
   }
 
-  // 4. Store entitlement artifact
+  // 3. Store JWT in local cache
   try {
-    const store = new EntitlementStore();
-    store.save(entitlement);
+    const cache = new EntitlementCache();
+    // Decode the payload from the JWT (without verifying — the server already did).
+    const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
+    cache.save(token, payload);
   } catch (err) {
-    console.error(`Error: Failed to store entitlement: ${err.message}`);
+    console.error(`Error: Failed to store session token: ${err.message}`);
     return 1;
   }
 
-  // 5. Store installation token
-  try {
-    const tokenDir = DEFAULT_ENTITLEMENT_DIR;
-    const fs = require("fs");
-    const path = require("path");
-    fs.mkdirSync(tokenDir, { recursive: true });
-    const tokenFile = path.join(tokenDir, INSTALLATION_TOKEN_FILE);
-    const record = {
-      token: installation_token,
-      installation_id: installationId,
-      saved_at: new Date().toISOString(),
-    };
-    // flag: "wx" prevents concurrent activation from overwriting in-flight:
-    // two parallel `minitok activate` calls would otherwise race on the
-    // installation-token.json, leaving one caller with a truncated record.
-    const crypto = require("crypto");
-    const tmp = `${tokenFile}.tmp.${process.pid}.${crypto.randomBytes(6).toString("hex")}`;
-    try {
-      fs.writeFileSync(tmp, JSON.stringify(record, null, 2), { encoding: "utf-8", flag: "wx", mode: 0o600 });
-      setOwnerOnlyPermissions(tmp);
-      fs.renameSync(tmp, tokenFile);
-      setOwnerOnlyPermissions(tokenFile);
-    } catch (error) {
-      try { fs.unlinkSync(tmp); } catch {}
-      throw error;
-    }
-  } catch (err) {
-    console.error(`Error: Failed to store installation token: ${err.message}`);
-    return 1;
-  }
-
-  // 6. Initialize gate state baseline
-  try {
-    const now = new Date();
-    saveGateState({
-      latest_observed_at: now.getTime(),
-      last_validated_at: now.toISOString(),
-    });
-  } catch {}
-
-  // 7. Display success
-  const payload = entitlement.payload || {};
+  // 4. Display success
   console.log("\n[ok] Activation successful.\n");
-  console.log(`  Plan:       ${payload.plan_id || "unknown"}`);
-  console.log(`  Expires:    ${payload.expires_at || "unknown"}`);
-  console.log(`  Installation: ${installationId}`);
+  console.log(`  Plan:       ${entitlement.plan || "unknown"}`);
+  console.log(`  Expires:    ${entitlement.expires_at || "unknown"}`);
+  console.log(`  Installation: ${entitlement.installation_id || "unknown"}`);
   console.log(`  Server:     ${serverUrl}`);
   console.log("");
 
   return 0;
 }
 
-function _httpPost(urlString, body) {
-  return postJson(urlString, body, 30000);
-}
-
-module.exports = { cmdActivate, _httpPost };
+module.exports = { cmdActivate };

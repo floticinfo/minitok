@@ -230,7 +230,10 @@ test("sidebar process lifecycle contract", () => {
   assert.match(sidebar, /redactOutputText/);
   assert.match(workspace, /MINITOK_MCP_SCOPES/);
   assert.match(workspace, /MINITOK_CUSTOM_BASE_URL/);
+  assert.match(workspace, /MINITOK_CUSTOM_PROVIDERS_JSON/);
+  assert.match(workspace, /MINITOK_CUSTOM_API_KEY_/);
   assert.match(sidebar, /env\.MINITOK_CUSTOM_BASE_URL = customBaseUrl/);
+  assert.match(sidebar, /MINITOK_CUSTOM_PROVIDERS_JSON = JSON\.stringify\(manifest\)/);
   assert.match(workspace, /env\.MINITOK_UPDATE_CHECK = "0"/);
   assert.match(workspace, /const CLI_ENV_ALLOWLIST/);
   assert.match(workspace, /appendBoundedOutput/);

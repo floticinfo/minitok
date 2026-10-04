@@ -3,10 +3,10 @@
   "displayName": "minitok",
   "description": "Verified coding workflows for the terminal",
   "publisher": "Flotic",
-  "version": "0.3.22",
+  "version": "0.3.24",
   "minitok": {
     "cliPackage": "@flotic/minitok",
-    "cliVersion": "1.4.21"
+    "cliVersion": "1.5.0"
   },
   "author": "Flotic",
   "license": "SEE LICENSE IN LICENSE",
@@ -198,7 +198,7 @@
     "lint": "npm run typecheck && npm run lint:tests",
     "lint:tests": "eslint --config ../eslint.config.js --max-warnings=0 --rule no-useless-escape:off \"test/*.test.js\"",
     "test:host": "npm run compile && node dist/test/run-host.js",
-    "test:unit": "npm run compile && node --test test/process-contract.test.js test/mcp-config.test.js test/version.test.js test/spawn.test.js test/auth-ui.test.js test/device-auth.test.js test/activate.test.js test/truncate.test.js test/theme-contrast.test.js test/boundary-audit.test.js",
+    "test:unit": "npm run compile && node --test test/process-contract.test.js test/mcp-config.test.js test/version.test.js test/spawn.test.js test/auth-ui.test.js test/device-auth.test.js test/activate.test.js test/truncate.test.js test/theme-contrast.test.js test/boundary-audit.test.js test/entitlement.test.js",
     "test": "npm run compile && node --test test/process-contract.test.js test/mcp-config.test.js test/version.test.js test/spawn.test.js test/auth-ui.test.js test/device-auth.test.js test/boundary-audit.test.js && node dist/test/run-host.js"
   },
   "devDependencies": {

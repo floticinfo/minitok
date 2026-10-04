@@ -255,6 +255,64 @@
       .key-status.err {
         color:var(--vscode-testing-iconFailed)
       }
+      .license-status {
+        font-size:10px;
+        letter-spacing:.06em;
+        text-transform:uppercase;
+        padding:1px 5px;
+        border-radius:3px
+      }
+      .license-status.active {
+        color:var(--vscode-testing-iconPassed);
+        border:1px solid currentColor
+      }
+      .license-status.expired {
+        color:var(--vscode-testing-iconFailed);
+        border:1px solid currentColor
+      }
+      .license-status.not-activated,
+      .license-status.activating,
+      .license-status.error {
+        color:var(--vscode-descriptionForeground);
+        border:1px dashed currentColor;
+        opacity:.8
+      }
+      .license-message {
+        font-size:10px;
+        color:var(--vscode-descriptionForeground);
+        margin:2px 0 6px
+      }
+      .license-expiry {
+        font-size:10px;
+        color:var(--vscode-descriptionForeground)
+      }
+      .license-actions {
+        display:flex;
+        gap:6px;
+        margin:4px 0 8px
+      }
+      .license-actions button {
+        font-size:10px;
+        padding:2px 8px
+      }
+      /* One named custom provider: name + endpoint in General, its key rendered
+         as a row in API Keys. The endpoint is echoed read-only there so the key
+         row is self-contained (which API this credential is for). */
+      .custom-provider-row {
+        margin:8px 0;
+        padding:8px;
+        border:1px solid var(--vscode-sideBar-border);
+        border-radius:6px
+      }
+      .custom-provider-row label {
+        margin:4px 0
+      }
+      .custom-provider-row .key-actions {
+        margin:6px 0 0
+      }
+      .endpoint-readonly {
+        color:var(--vscode-descriptionForeground)
+      }
       label {
         display:block;
         font-size:11px;
@@ -446,7 +504,7 @@
         display:flex;
         align-items:center;
         gap:6px;
-        padding:8px 10px;
+        padding:6px 10px 10px;
         cursor:pointer;
         list-style:none;
         font-size:11px;
@@ -484,7 +542,7 @@
         display:flex;
         flex-wrap:wrap;
         gap:6px;
-        margin-top:12px;
+        margin:8px 0
         padding-top:10px;
         border-top:1px solid var(--vscode-input-border)
       }
@@ -501,10 +559,18 @@
         color:var(--vscode-descriptionForeground);
         margin:2px 0 6px
       }
+
+      /* Only at boundaries between different parts (e.g. custom cards ->
+         built-in keys, built-in keys -> legacy custom): pushes the next
+         part away so each block reads as its own section. */
+      .section-break {
+        margin-top:20px
+      }
       .setting {
         display:block;
         width:100%;
-        margin-top:4px;
+        box-sizing:border-box;
+        margin:8px 0;
         padding:6px;
         border:1px solid var(--vscode-input-border);
         border-radius:4px;
@@ -612,7 +678,7 @@
         display:grid;
         grid-template-columns:repeat(4,1fr);
         gap:4px;
-        margin-top:10px
+        margin:2px 0 6px
       }
       .step {
         font-size:10px;
@@ -819,57 +885,11 @@
           Settings
         </div>
         <details class="settings-group" data-settings-group="general">
-          <summary>Provider &amp; Model</summary>
-          <div class="settings-group-body">
-        <label>
-          Default provider
-          <select id="provider" class="setting">
-            <option value="anthropic">
-              Anthropic
-            </option>
-            <option value="openai">
-              OpenAI
-            </option>
-            <option value="google">
-              Google Gemini
-            </option>
-            <option value="custom">
-              Custom
-            </option>
-          </select>
-        </label>
-        <label>
-          Default model
-          <select id="model" class="setting">
-            <option value="">
-              Provider default
-            </option>
-          </select>
-        </label>
-        <label id="customBaseUrlRow" hidden>
-          OpenAI-compatible endpoint
-          <input id="customBaseUrl" class="setting" placeholder="https://api.example.com/v1">
-        </label>
-        <div class="general-actions">
-          <button id="clearHistory" class="secondary" type="button">
-            Clear history
-          </button>
-          <button id="logoutButton" class="secondary" type="button" hidden title="Sign out" aria-label="Sign out">
-            Sign out
-          </button>
-        </div>
-          </div>
-        </details>
-
-        <details class="settings-group" data-settings-group="shortcuts">
-          <summary>Shortcuts</summary>
+          <summary>General</summary>
           <div class="settings-group-body">
         <div class="settings-hint">
-          Choose which key submits the task textarea.
+          Enter key behavior
         </div>
-        <label>
-          Enter key
-        </label>
         <div class="toggle-actions">
           <button id="enterRun" class="toggle-choice" type="button" aria-pressed="true">
             Enter runs
@@ -879,12 +899,9 @@
           </button>
         </div>
         <input id="enterBehavior" type="hidden" value="enter-run">
-          </div>
-        </details>
-
-        <details class="settings-group" data-settings-group="run">
-          <summary>Run Behavior</summary>
-          <div class="settings-group-body">
+        <div class="settings-hint section-break">
+          Run behavior
+        </div>
         <label class="check">
           <input id="showCost" type="checkbox" checked>
           Show token and cost summary
@@ -901,21 +918,68 @@
           Evidence path
           <input id="evidencePath" class="setting" value=".minitok/evidence/runs/latest.json">
         </label>
-          </div>
-        </details>
-
-        <details class="settings-group" data-settings-group="roles">
-          <summary>Roles</summary>
-          <div class="settings-group-body">
-            <div id="roleSettings">
-            </div>
-          </div>
-        </details>
-
-        <details class="settings-group" data-settings-group="keys">
-          <summary>Account &amp; API Keys</summary>
-          <div class="settings-group-body">
+        <div class="settings-hint section-break">
+          Account
+        </div>
+        <div class="settings-hint">
+          License
+        </div>
         <div class="key-row">
+          <span id="licenseStatus" class="license-status not-activated">NOT_ACTIVATED</span>
+          <span id="licensePlan" class="license-expiry"></span>
+        </div>
+        <div id="licenseMessage" class="license-message">
+          Activate a license key to enable minitok runs.
+        </div>
+        <div id="licenseExpiry" class="license-expiry" hidden>
+        </div>
+        <label>
+          License key
+          <input id="licenseKey" class="setting" type="password" autocomplete="off" spellcheck="false" placeholder="MINITOK-XXXX-XXXX-XXXX">
+        </label>
+        <div class="license-actions">
+          <button id="licenseActivate" class="primary" type="button">Activate</button>
+          <button id="licenseRefresh" class="secondary" type="button" hidden>Refresh</button>
+          <button id="licenseDeactivate" class="secondary" type="button" hidden>Deactivate</button>
+        </div>
+        <div id="authStatus" class="empty">
+        </div>
+        <div id="productStatus" class="evidence">
+        </div>
+        <div class="version-row">
+          <span id="version">
+          </span>
+          <button id="update" class="secondary" hidden>
+            Update
+          </button>
+        </div>
+        <div class="general-actions">
+          <button id="clearHistory" class="secondary" type="button">
+            Clear history
+          </button>
+          <button id="logoutButton" class="secondary" type="button" hidden title="Sign out" aria-label="Sign out">
+            Sign out
+          </button>
+        </div>
+          </div>
+        </details>
+
+        <details class="settings-group" data-settings-group="providers">
+          <summary>Providers</summary>
+          <div class="settings-group-body">
+        <div class="settings-hint">
+          Define providers here. Built-in: API key only. Custom: name + endpoint + key.
+          Then assign a provider to each role under Roles. Names are lower-cased;
+          allowed: letters, digits, dot, dash, underscore.
+        </div>
+        <div id="customProviderList">
+        </div>
+        <div class="general-actions">
+          <button id="addCustomProvider" class="secondary" type="button">
+            Add custom provider
+          </button>
+        </div>
+        <div class="key-row section-break">
           <label>
             Anthropic API key <span class="key-badge unset" data-key-provider="anthropic" id="anthropicApiKeyBadge" hidden></span>
             <input id="anthropicApiKey" class="setting" type="password" autocomplete="off" placeholder="Stored securely">
@@ -945,6 +1009,10 @@
             <span class="key-status" data-key-status="google" hidden></span>
           </div>
         </div>
+        <label id="customBaseUrlRow" class="section-break" hidden>
+          Legacy OpenAI-compatible endpoint (use named custom providers above instead)
+          <input id="customBaseUrl" class="setting" placeholder="https://api.example.com/v1">
+        </label>
         <div class="key-row">
           <label>
             Custom provider API key (sent as OPENAI_API_KEY) <span class="key-badge unset" data-key-provider="custom" id="customApiKeyBadge" hidden></span>
@@ -958,22 +1026,10 @@
           </div>
         </details>
 
-        <details class="settings-group" data-settings-group="about">
-          <summary>About</summary>
+        <details class="settings-group" data-settings-group="roles">
+          <summary>Roles</summary>
           <div class="settings-group-body">
-            <div id="authStatus" class="empty">
-            </div>
-            <div class="label">
-              Product status
-            </div>
-            <div id="productStatus" class="evidence">
-            </div>
-            <div class="version-row">
-              <span id="version">
-              </span>
-              <button id="update" class="secondary" hidden>
-                Update
-              </button>
+            <div id="roleSettings">
             </div>
           </div>
         </details>
@@ -1003,17 +1059,42 @@
         // so re-ask before re-enabling the buttons: an entitlement that lapsed or
         // was revoked during the run must not reopen the gate.
         if(mode==='run'||mode==='dry-run')vscode.postMessage({command:'auth-status'});
-        running=true;escapeArmed=false;run.disabled=dry.disabled=true;run.setAttribute('aria-disabled','true');dry.setAttribute('aria-disabled','true');stop.disabled=false;stop.setAttribute('aria-disabled','false');stage.textContent='Starting...';stage.className='task-status running';vscode.postMessage({command:mode,task:task.value})}function setEnterBehavior(value){document.getElementById('enterBehavior').value=value;document.getElementById('enterRun').classList.toggle('selected',value==='enter-run');document.getElementById('enterNewline').classList.toggle('selected',value==='enter-newline');document.getElementById('enterRun').setAttribute('aria-pressed',value==='enter-run'?'true':'false');document.getElementById('enterNewline').setAttribute('aria-pressed',value==='enter-newline'?'true':'false')}document.getElementById('enterRun').onclick=()=>setEnterBehavior('enter-run');document.getElementById('enterNewline').onclick=()=>setEnterBehavior('enter-newline');function fillModels(ids,provider){const defaultProvider=document.getElementById('provider')?.value||'';const targets=[document.getElementById('model')];for(const r of ['plan','work','review','intel']){const roleProvider=document.getElementById(r+'Provider')?.value||'';if((provider||defaultProvider)===(roleProvider||defaultProvider))targets.push(document.getElementById(r+'Model'))}for(const select of targets){const current=select.value;select.innerHTML='<option value="">model</option>'+ids.map(id=>`<option value="${esc(id)}">${esc(id)}</option>`).join('');if(current){if(![...select.options].some(o=>o.value===current))select.insertAdjacentHTML('beforeend',`<option value="${esc(current)}">${esc(current)}</option>`);select.value=current}}}function showSettings(s){const view=document.getElementById('settingsView');view.hidden=false;view.classList.add('open');document.querySelectorAll('.settings-group').forEach((g,i)=>{const s2=g.querySelector('summary');if(s2)s2.setAttribute('aria-expanded',i===0?'true':'false');const b=g.querySelector('.settings-group-body');if(!b)return;if(i===0){g.open=true;b.hidden=false;b.classList.add('open')}else{g.open=false;b.hidden=true;b.classList.remove('open')}});document.getElementById('task').dataset.enterBehavior=s.settings.enterBehavior||'enter-run';view.scrollIntoView({behavior:'smooth',block:'start'});for(const k of ['provider','model','evidencePath','enterBehavior'])if(s.settings[k]!==undefined)document.getElementById(k).value=s.settings[k];setEnterBehavior(document.getElementById('enterBehavior').value);const roles=['plan','work','review','intel'];document.getElementById('roleSettings').innerHTML=roles.map(role=>`<label>${role}<select id="${role}Provider" class="setting"><option value="">provider</option><option value="anthropic">Anthropic</option><option value="openai">OpenAI</option><option value="google">Google Gemini</option><option value="custom">Custom</option></select><select id="${role}Model" class="setting"><option value="">model</option></select></label>`).join('');for(const role of roles){const p=s.settings[`${role}.provider`];const m=s.settings[`${role}.model`];if(p)document.getElementById(`${role}Provider`).value=p;if(m){const ms=document.getElementById(`${role}Model`);if(![...ms.options].some(o=>o.value===m))ms.insertAdjacentHTML('beforeend',`<option value="${esc(m)}">${esc(m)}</option>`);ms.value=m}document.getElementById(`${role}Provider`).onchange=()=>{const rp=document.getElementById(`${role}Provider`).value;vscode.postMessage({command:'discover-models',provider:rp||document.getElementById('provider').value})}}document.getElementById('customBaseUrlRow').hidden=document.getElementById('provider').value!=='custom';const keySet=s.secrets?.providerApiKeySet||s.settings.providerApiKeySet||{};for(const p of ['anthropic','openai','google','custom']){const badge=document.getElementById(p+'ApiKeyBadge');if(badge){const isSet=keySet[p]===true;badge.hidden=false;badge.textContent=isSet?'Set':'Not set';badge.className='key-badge '+(isSet?'set':'unset');badge.title=isSet?'A key is stored for '+p:'No key stored for '+p}}for(const k of ['showCost','autoApprove','storeTaskText'])if(s.settings[k]!==undefined)document.getElementById(k).checked=Boolean(s.settings[k])}run.onclick=()=>send('run');dry.onclick=()=>send('dry-run');stop.onclick=()=>vscode.postMessage({command:'stop'});document.getElementById('approve').onclick=()=>vscode.postMessage({command:'approve'});document.getElementById('reject').onclick=()=>vscode.postMessage({command:'reject'});let closeSettings=()=>{};const initSettingsClose=()=>{const view=document.getElementById('settingsView');let closed=false;const finish=()=>{if(closed)return;closed=true;view.removeEventListener('transitionend',finish);view.removeEventListener('scrollend',finish);view.hidden=true};view.addEventListener('transitionend',finish,{once:true});view.addEventListener('scrollend',finish,{once:true});view.classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});setTimeout(finish,1600)};closeSettings=initSettingsClose;
-const openGroup=group=>{const body=group.querySelector('.settings-group-body');if(!body)return;group.open=true;body.hidden=false;body.classList.add('open')};
+        running=true;escapeArmed=false;run.disabled=dry.disabled=true;run.setAttribute('aria-disabled','true');dry.setAttribute('aria-disabled','true');stop.disabled=false;stop.setAttribute('aria-disabled','false');stage.textContent='Starting...';stage.className='task-status running';vscode.postMessage({command:mode,task:task.value})}function setEnterBehavior(value){document.getElementById('enterBehavior').value=value;document.getElementById('enterRun').classList.toggle('selected',value==='enter-run');document.getElementById('enterNewline').classList.toggle('selected',value==='enter-newline');document.getElementById('enterRun').setAttribute('aria-pressed',value==='enter-run'?'true':'false');document.getElementById('enterNewline').setAttribute('aria-pressed',value==='enter-newline'?'true':'false')}document.getElementById('enterRun').onclick=()=>setEnterBehavior('enter-run');document.getElementById('enterNewline').onclick=()=>setEnterBehavior('enter-newline');function fillModels(ids,provider){const targets=[];for(const r of ['plan','work','review','intel']){const roleProvider=document.getElementById(r+'Provider')?.value||'';if(provider===roleProvider)targets.push(document.getElementById(r+'Model'))}for(const select of targets){const current=select.value;select.innerHTML='<option value="">model</option>'+ids.map(id=>`<option value="${esc(id)}">${esc(id)}</option>`).join('');if(current){if(![...select.options].some(o=>o.value===current))select.insertAdjacentHTML('beforeend',`<option value="${esc(current)}">${esc(current)}</option>`);select.value=current}}}function showSettings(s){const view=document.getElementById('settingsView');view.hidden=false;view.classList.add('open');document.querySelectorAll('.settings-group').forEach((g,i)=>{const s2=g.querySelector('summary');if(s2)s2.setAttribute('aria-expanded',i===0?'true':'false');const b=g.querySelector('.settings-group-body');if(!b)return;if(i===0){g.open=true;b.hidden=false;b.classList.add('open')}else{g.open=false;b.hidden=true;b.classList.remove('open')}});document.getElementById('task').dataset.enterBehavior=s.settings.enterBehavior||'enter-run';view.scrollIntoView({behavior:'smooth',block:'start'});for(const k of ['evidencePath','enterBehavior'])if(s.settings[k]!==undefined)document.getElementById(k).value=s.settings[k];setEnterBehavior(document.getElementById('enterBehavior').value);const roles=['plan','work','review','intel'];const customNames=Object.keys(s.secrets?.customEndpoints||{}).sort();const customOptions=customNames.map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('');document.getElementById('roleSettings').innerHTML=roles.map(role=>`<label>${role}<select id="${role}Provider" class="setting"><option value="">provider</option><option value="anthropic">Anthropic</option><option value="openai">OpenAI</option><option value="google">Google Gemini</option><option value="custom">Custom</option>${customOptions}</select><select id="${role}Model" class="setting"><option value="">model</option></select></label>`).join('');for(const role of roles){const p=s.settings[`${role}.provider`];const m=s.settings[`${role}.model`];if(p){const sel=document.getElementById(`${role}Provider`);if(![...sel.options].some(o=>o.value===p))sel.insertAdjacentHTML('beforeend',`<option value="${esc(p)}">${esc(p)}</option>`);sel.value=p;}if(m){const ms=document.getElementById(`${role}Model`);if(![...ms.options].some(o=>o.value===m))ms.insertAdjacentHTML('beforeend',`<option value="${esc(m)}">${esc(m)}</option>`);ms.value=m}document.getElementById(`${role}Provider`).onchange=()=>{const rp=document.getElementById(`${role}Provider`).value;vscode.postMessage({command:'discover-models',provider:rp})}}document.getElementById('customBaseUrlRow').hidden=false;const keySet=s.secrets?.providerApiKeySet||s.settings.providerApiKeySet||{};for(const p of ['anthropic','openai','google','custom']){const badge=document.getElementById(p+'ApiKeyBadge');if(badge){const isSet=keySet[p]===true;badge.hidden=false;badge.textContent=isSet?'Set':'Not set';badge.className='key-badge '+(isSet?'set':'unset');badge.title=isSet?'A key is stored for '+p:'No key stored for '+p}}for(const k of ['showCost','autoApprove','storeTaskText'])if(s.settings[k]!==undefined)document.getElementById(k).checked=Boolean(s.settings[k]);renderCustomProviders(s.secrets?.customEndpoints||{},s.secrets?.providerApiKeySet||{})}function customRowHtml(name,url,isSet){return `<div class="custom-provider-row" data-name="${esc(name)}"><label>Name<input class="custom-name setting" value="${esc(name)}" placeholder="custom-plan"></label><label>Endpoint<input class="custom-url setting" value="${esc(url||'')}" placeholder="https://api.example.com/v1"></label><label>API key <span class="key-badge ${isSet?'set':'unset'}" data-key-provider="${esc(name)}">${isSet?'Set':'Not set'}</span><input class="custom-key setting" type="password" autocomplete="off" placeholder="Stored securely"></label><div class="key-actions"><button class="secondary custom-validate" type="button" data-name="${esc(name)}">Validate</button><button class="secondary custom-remove" type="button" data-name="${esc(name)}">Remove</button><span class="key-status" data-key-status="${esc(name)}" hidden></span></div></div>`}function renderCustomProviders(endpoints,keySet){const box=document.getElementById('customProviderList');if(!box)return;const names=Object.keys(endpoints||{}).sort();box.innerHTML=names.map(n=>customRowHtml(n,endpoints[n],keySet[n]===true)).join('')}run.onclick=()=>send('run');dry.onclick=()=>send('dry-run');stop.onclick=()=>vscode.postMessage({command:'stop'});document.getElementById('approve').onclick=()=>vscode.postMessage({command:'approve'});document.getElementById('reject').onclick=()=>vscode.postMessage({command:'reject'});let closeSettings=()=>{};const initSettingsClose=()=>{const view=document.getElementById('settingsView');let closed=false;const finish=()=>{if(closed)return;closed=true;view.removeEventListener('transitionend',finish);view.removeEventListener('scrollend',finish);view.hidden=true};view.addEventListener('transitionend',finish,{once:true});view.addEventListener('scrollend',finish,{once:true});view.classList.remove('open');window.scrollTo({top:0,behavior:'smooth'});setTimeout(finish,1600)};closeSettings=initSettingsClose;
+ const openGroup=group=>{const body=group.querySelector('.settings-group-body');if(!body)return;group.open=true;body.hidden=false;body.classList.add('open')};
 const closeGroup=group=>{const body=group.querySelector('.settings-group-body');if(!body)return;let closed=false;const finish=()=>{if(closed)return;closed=true;body.removeEventListener('transitionend',finish);group.open=false;body.hidden=true};body.addEventListener('transitionend',finish,{once:true});body.classList.remove('open');setTimeout(finish,1600)};
 for(const group of document.querySelectorAll('.settings-group')){const summary=group.querySelector('summary');if(!summary)continue;group.open=false;const body=group.querySelector('.settings-group-body');if(body)body.hidden=true;summary.setAttribute('role','button');summary.setAttribute('aria-expanded','false');summary.tabIndex=0;const toggle=()=>{const willOpen=!group.open;summary.setAttribute('aria-expanded',String(willOpen));if(willOpen)openGroup(group);else closeGroup(group)};summary.addEventListener('click',e=>{e.preventDefault();toggle()});summary.addEventListener('keydown',e=>{if(e.key!==' '&&e.key!=='Enter')return;e.preventDefault();toggle()})}
-document.getElementById('update').onclick=()=>vscode.postMessage({command:'update'});const collectSettings=()=>{const settings={};for(const k of ['provider','model','evidencePath','enterBehavior'])settings[k]=document.getElementById(k).value;for(const role of ['plan','work','review','intel']){settings[`${role}.provider`]=document.getElementById(`${role}Provider`).value;settings[`${role}.model`]=document.getElementById(`${role}Model`).value}for(const k of ['showCost','autoApprove','storeTaskText'])settings[k]=document.getElementById(k).checked;const secrets={providerApiKeys:{}};for(const p of ['anthropic','openai','google','custom']){const v=(document.getElementById(p+'ApiKey')?.value||'').trim();if(v)secrets.providerApiKeys[p]=v}if(document.getElementById('customBaseUrl').value)secrets.customBaseUrl=document.getElementById('customBaseUrl').value;return{settings,secrets}};
+document.getElementById('update').onclick=()=>vscode.postMessage({command:'update'});const collectSettings=()=>{const settings={};for(const k of ['evidencePath','enterBehavior'])settings[k]=document.getElementById(k).value;for(const role of ['plan','work','review','intel']){settings[`${role}.provider`]=document.getElementById(`${role}Provider`).value;settings[`${role}.model`]=document.getElementById(`${role}Model`).value}for(const k of ['showCost','autoApprove','storeTaskText'])settings[k]=document.getElementById(k).checked;const secrets={providerApiKeys:{},customEndpoints:{}};for(const p of ['anthropic','openai','google','custom']){const v=(document.getElementById(p+'ApiKey')?.value||'').trim();if(v)secrets.providerApiKeys[p]=v}for(const row of document.querySelectorAll('.custom-provider-row')){const name=(row.querySelector('.custom-name')?.value||'').trim().toLowerCase();const url=(row.querySelector('.custom-url')?.value||'').trim();const key=(row.querySelector('.custom-key')?.value||'').trim();if(!name)continue;if(url)secrets.customEndpoints[name]=url;if(key)secrets.providerApiKeys[name]=key}if(document.getElementById('customBaseUrl').value)secrets.customBaseUrl=document.getElementById('customBaseUrl').value;return{settings,secrets}};
 document.getElementById('saveSettings').onclick=()=>{const{settings,secrets}=collectSettings();vscode.postMessage({command:'save-settings',settings,secrets});closeSettings();};
 // Validate buttons check the key already stored in SecretStorage (the
 // extension validates stored secrets, not unsubmitted form text). If a new key
 // is typed in but not saved, save it first so the check runs against it.
-const setKeyStatus=(p,state,msg)=>{const el=document.querySelector(`[data-key-status="${p}"]`);if(!el)return;el.hidden=false;el.classList.remove('ok','err');el.classList.add(state);el.textContent=msg;el.title=msg};
-for(const b of document.querySelectorAll('.validate-key'))b.onclick=()=>{const p=b.dataset.provider;const unsaved=(document.getElementById(p+'ApiKey')?.value||'').trim();setKeyStatus(p,'',unsaved?'Saving…':'Validating…');if(unsaved){const{settings,secrets}=collectSettings();vscode.postMessage({command:'save-settings',settings,secrets})}vscode.postMessage({command:'validate-key',provider:p})};document.getElementById('clearHistory').onclick=()=>{vscode.postMessage({command:'clear-history'})};document.getElementById('closeSettings').onclick=closeSettings;document.getElementById('provider').onchange=()=>{document.getElementById('customBaseUrlRow').hidden=document.getElementById('provider').value!=='custom';vscode.postMessage({command:'discover-models',provider:document.getElementById('provider').value})};document.getElementById('mcpBadge').onclick=()=>{vscode.postMessage({command:'mcp-list'});vscode.postMessage({command:'mcp-connect'});};document.getElementById('settings').onclick=()=>{const view=document.getElementById('settingsView');if(!view.hidden){closeSettings();return}vscode.postMessage({command:'settings'})};window.addEventListener('load',()=>vscode.postMessage({command:'sessions'}));window.addEventListener('message',e=>{const m=e.data;if(m.type==='attachment'){if(!m.value)return;document.getElementById('attached').textContent+=(document.getElementById('attached').textContent?'\n':'')+m.value;task.value+=(task.value?'\n':'')+m.value;return}if(m.type==='sessions'){const box=document.getElementById('sessions');box.innerHTML=m.items.map(item=>`<button class="session-item" data-task="${esc(item.task||item.taskPreview||'')}" data-evidence="${esc(item.evidencePath||'')}" data-patch="${esc(item.patchPath||'')}" data-checkpoint="${esc(item.checkpointPath||'')}" data-task-saved="${item.task ? 'true' : 'false'}">${esc(item.status||'unknown')} · ${esc(item.task||item.taskPreview||'')}<small>${esc(item.runId||'')}</small></button>`).join('')||'<span class="empty">No sessions yet.</span>';box.querySelectorAll('.session-item').forEach(item=>item.onclick=()=>{task.value=item.dataset.task||'';add(`Resumed: ${item.dataset.task||''}`);if(item.dataset.checkpoint&&item.dataset.taskSaved==='true')vscode.postMessage({command:'restore-session',checkpoint:item.dataset.checkpoint});});return}if(m.type==='settings'){showSettings(m);if(m.version)document.getElementById('version').textContent=`v${m.version}`;document.getElementById('authStatus').textContent=(m.secrets?.providerApiKeySet?.[m.settings?.provider||''])?'API key configured':'No API key configured';return}if(m.type==='models'){fillModels(m.models||[],m.provider);if(!m.ok)showToast('No models available. Add an API key in Settings to load the live model list.','error');return}if(m.type==='info'){showToast(m.text,'info');return}if(m.type==='activation'){showToast(m.text,'info');return}if(m.type==='update'){document.getElementById('version').textContent=m.latest?`v${m.current} · latest v${m.latest}`:`v${m.current}`;document.getElementById('update').hidden=!m.latest||m.current===m.latest;return}if(m.type==='update-result'){showToast(m.text,m.ok===false?'error':'info');return}if(m.type==='settings-saved'){showToast('Settings saved.','info');return}if(m.type==='key-validation'){const p=m.provider||'';if(m.ok)setKeyStatus(p,'ok','Valid');else setKeyStatus(p,'err','Invalid: '+(m.reason||'check failed'));return}if(m.type==='started'){stage.textContent='Running';stage.className='task-status running';stop.setAttribute('aria-disabled','false');return}if(m.type==='progress'){const current=m.stage.toLowerCase().includes('gather')||m.stage.toLowerCase().includes('plan')?'Planning':m.stage.toLowerCase().includes('implement')?'Implementing':m.stage.toLowerCase().includes('verif')?'Verifying':m.stage.toLowerCase().includes('review')||m.stage.toLowerCase().includes('evaluat')?'Reviewing':null;stage.textContent=current?`${current} in progress`:m.stage;stage.className='task-status running';return}if(m.type==='summary'){if(m.text)showToast(m.text,'info');return}if(m.type==='approval-request'){approval.hidden=false;stage.textContent='Approval required';stage.className='task-status running';document.getElementById('approve').focus();return}if(m.type==='approval'){approval.hidden=true;stage.textContent=m.decision==='approve'?'Approved':'Rejected';stage.className=`task-status ${m.decision==='approve'?'success':'error'}`;task.focus();return}if(m.type==='mcp-hosts'){document.getElementById('mcpHosts').hidden=false;document.getElementById('mcpHosts').textContent=m.hosts.map(h=>`${h.name}: ${h.detected?'detected':'not found'}`).join('\n');return}if(m.type==='mcp-connect'){showToast(m.text||'MCP connect '+(m.ok?'succeeded.':'failed.'),m.ok?'info':'error');return}if(m.type==='history-cleared'){showToast(m.text||'History cleared.','info');return}if(m.type==='mcp'){badge.textContent=m.ok?'MCP online':'MCP offline';badge.className='badge '+(m.ok?'online':'offline');return}if(m.type==='stopped'){running=false;escapeArmed=false;clearTimeout(escapeTimer);stage.textContent='Stopped';stage.className='task-status error';run.disabled=dry.disabled=!entitledNow;run.setAttribute('aria-disabled',String(!entitledNow));dry.setAttribute('aria-disabled',String(!entitledNow));stop.disabled=true;stop.setAttribute('aria-disabled','true');task.focus();return}if(m.type==='result'){running=false;escapeArmed=false;clearTimeout(escapeTimer);run.disabled=dry.disabled=!entitledNow;run.setAttribute('aria-disabled',String(!entitledNow));dry.setAttribute('aria-disabled',String(!entitledNow));stop.disabled=true;stop.setAttribute('aria-disabled','true');stage.textContent=m.ok?'Verified':'Failed';stage.className=`task-status ${m.ok?'success':'error'}`;if(m.ok===false)showToast('Run failed. See stage for details.','error');if(m.evidence)evidence.textContent=JSON.stringify(m.evidence,null,2);task.focus()}});
+ const setKeyStatus=(p,state,msg)=>{const el=document.querySelector(`[data-key-status="${p}"]`);if(!el)return;el.hidden=false;el.classList.remove('ok','err');el.classList.add(state);el.textContent=msg;el.title=msg};
+ // Phase 3 License section: render server-validated status and wire buttons.
+ const LICENSE_STATUS_LABELS={active:'ACTIVE',expired:'EXPIRED','not-activated':'NOT_ACTIVATED',activating:'ACTIVATING??,error:'ERROR'};
+ const renderLicense=m=>{
+   const badge=document.getElementById('licenseStatus');
+   const plan=document.getElementById('licensePlan');
+   const message=document.getElementById('licenseMessage');
+   const expiry=document.getElementById('licenseExpiry');
+   const refreshBtn=document.getElementById('licenseRefresh');
+   const deactivateBtn=document.getElementById('licenseDeactivate');
+   if(!badge||!message)return;
+   const status=m.status||'not-activated';
+   badge.className=`license-status ${status}`;
+   badge.textContent=LICENSE_STATUS_LABELS[status]||status.toUpperCase();
+   plan.textContent=m.plan?`(${m.plan})`:'';
+   message.textContent=m.text||'';
+   message.style.display=m.text?'':'none';
+   if(m.expiresAt){expiry.hidden=false;expiry.textContent=`Expires: ${m.expiresAt}`}else{expiry.hidden=true;expiry.textContent=''}
+   const hasSession=status==='active'||status==='expired';
+   if(refreshBtn)refreshBtn.hidden=!hasSession;
+   if(deactivateBtn)deactivateBtn.hidden=!hasSession;
+   if(!m.ok&&m.status==='error'&&!m.text)showToast('License action failed.','error');
+ };
+ document.getElementById('licenseActivate').onclick=()=>{const key=(document.getElementById('licenseKey').value||'').trim();if(!key){showToast('Enter a license key first.','error');return}vscode.postMessage({command:'license-activate',key})};
+ document.getElementById('licenseRefresh').onclick=()=>vscode.postMessage({command:'license-refresh'});
+ document.getElementById('licenseDeactivate').onclick=()=>vscode.postMessage({command:'license-deactivate'});
+for(const b of document.querySelectorAll('.validate-key'))b.onclick=()=>{const p=b.dataset.provider;const unsaved=(document.getElementById(p+'ApiKey')?.value||'').trim();setKeyStatus(p,'',unsaved?'Saving??:'Validating??);if(unsaved){const{settings,secrets}=collectSettings();vscode.postMessage({command:'save-settings',settings,secrets})}vscode.postMessage({command:'validate-key',provider:p})};document.getElementById('addCustomProvider').onclick=()=>{const box=document.getElementById('customProviderList');if(!box)return;const tmp=document.createElement('div');tmp.innerHTML=customRowHtml('');const row=tmp.firstElementChild;if(row)box.appendChild(row)};document.getElementById('customProviderList').addEventListener('click',e=>{const rm=e.target.closest?e.target.closest('.custom-remove'):null;if(rm){const row=rm.closest('.custom-provider-row');if(row){row.remove();return}}const vb=e.target.closest?e.target.closest('.custom-validate'):null;if(!vb)return;const row=vb.closest('.custom-provider-row');const p=((row&&row.querySelector('.custom-name')?.value)||vb.dataset.name||'').trim().toLowerCase();if(!p)return;const unsaved=((row&&row.querySelector('.custom-key')?.value)||'').trim();setKeyStatus(p,'',unsaved?'Saving??:'Validating??);const collected=collectSettings();vscode.postMessage({command:'save-settings',settings:collected.settings,secrets:collected.secrets});vscode.postMessage({command:'validate-key',provider:p})});document.getElementById('clearHistory').onclick=()=>{vscode.postMessage({command:'clear-history'})};document.getElementById('closeSettings').onclick=closeSettings;document.getElementById('mcpBadge').onclick=()=>{vscode.postMessage({command:'mcp-list'});vscode.postMessage({command:'mcp-connect'});};document.getElementById('settings').onclick=()=>{const view=document.getElementById('settingsView');if(!view.hidden){closeSettings();return}vscode.postMessage({command:'settings'});vscode.postMessage({command:'license-status'})};window.addEventListener('load',()=>vscode.postMessage({command:'sessions'}));window.addEventListener('message',e=>{const m=e.data;if(m.type==='attachment'){if(!m.value)return;document.getElementById('attached').textContent+=(document.getElementById('attached').textContent?'\n':'')+m.value;task.value+=(task.value?'\n':'')+m.value;return}if(m.type==='sessions'){const box=document.getElementById('sessions');box.innerHTML=m.items.map(item=>`<button class="session-item" data-task="${esc(item.task||item.taskPreview||'')}" data-evidence="${esc(item.evidencePath||'')}" data-patch="${esc(item.patchPath||'')}" data-checkpoint="${esc(item.checkpointPath||'')}" data-task-saved="${item.task ? 'true' : 'false'}">${esc(item.status||'unknown')} 쨌 ${esc(item.task||item.taskPreview||'')}<small>${esc(item.runId||'')}</small></button>`).join('')||'<span class="empty">No sessions yet.</span>';box.querySelectorAll('.session-item').forEach(item=>item.onclick=()=>{task.value=item.dataset.task||'';add(`Resumed: ${item.dataset.task||''}`);if(item.dataset.checkpoint&&item.dataset.taskSaved==='true')vscode.postMessage({command:'restore-session',checkpoint:item.dataset.checkpoint});});return}if(m.type==='settings'){showSettings(m);if(m.version)document.getElementById('version').textContent=`v${m.version}`;document.getElementById('authStatus').textContent=(m.secrets?.providerApiKeySet?.[m.settings?.provider||''])?'API key configured':'No API key configured';return}if(m.type==='models'){fillModels(m.models||[],m.provider);if(!m.ok)showToast('No models available. Add an API key in Settings to load the live model list.','error');return}if(m.type==='info'){showToast(m.text,'info');return}if(m.type==='activation'){showToast(m.text,'info');return}if(m.type==='update'){document.getElementById('version').textContent=m.latest?`v${m.current} 쨌 latest v${m.latest}`:`v${m.current}`;document.getElementById('update').hidden=!m.latest||m.current===m.latest;return}if(m.type==='update-result'){showToast(m.text,m.ok===false?'error':'info');return}if(m.type==='settings-saved'){showToast('Settings saved.','info');vscode.postMessage({command:'settings'});return}if(m.type==='key-validation'){const p=m.provider||'';if(m.ok)setKeyStatus(p,'ok','Valid');else setKeyStatus(p,'err','Invalid: '+(m.reason||'check failed'));return}if(m.type==='started'){stage.textContent='Running';stage.className='task-status running';stop.setAttribute('aria-disabled','false');return}if(m.type==='progress'){const current=m.stage.toLowerCase().includes('gather')||m.stage.toLowerCase().includes('plan')?'Planning':m.stage.toLowerCase().includes('implement')?'Implementing':m.stage.toLowerCase().includes('verif')?'Verifying':m.stage.toLowerCase().includes('review')||m.stage.toLowerCase().includes('evaluat')?'Reviewing':null;stage.textContent=current?`${current} in progress`:m.stage;stage.className='task-status running';return}if(m.type==='summary'){if(m.text)showToast(m.text,'info');return}if(m.type==='approval-request'){approval.hidden=false;stage.textContent='Approval required';stage.className='task-status running';document.getElementById('approve').focus();return}if(m.type==='approval'){approval.hidden=true;stage.textContent=m.decision==='approve'?'Approved':'Rejected';stage.className=`task-status ${m.decision==='approve'?'success':'error'}`;task.focus();return}if(m.type==='mcp-hosts'){document.getElementById('mcpHosts').hidden=false;document.getElementById('mcpHosts').textContent=m.hosts.map(h=>`${h.name}: ${h.detected?'detected':'not found'}`).join('\n');return}if(m.type==='mcp-connect'){showToast(m.text||'MCP connect '+(m.ok?'succeeded.':'failed.'),m.ok?'info':'error');return}if(m.type==='history-cleared'){showToast(m.text||'History cleared.','info');return}if(m.type==='mcp'){badge.textContent=m.ok?'MCP online':'MCP offline';badge.className='badge '+(m.ok?'online':'offline');return}if(m.type==='stopped'){running=false;escapeArmed=false;clearTimeout(escapeTimer);stage.textContent='Stopped';stage.className='task-status error';run.disabled=dry.disabled=!entitledNow;run.setAttribute('aria-disabled',String(!entitledNow));dry.setAttribute('aria-disabled',String(!entitledNow));stop.disabled=true;stop.setAttribute('aria-disabled','true');task.focus();return}if(m.type==='result'){running=false;escapeArmed=false;clearTimeout(escapeTimer);run.disabled=dry.disabled=!entitledNow;run.setAttribute('aria-disabled',String(!entitledNow));dry.setAttribute('aria-disabled',String(!entitledNow));stop.disabled=true;stop.setAttribute('aria-disabled','true');stage.textContent=m.ok?'Verified':'Failed';stage.className=`task-status ${m.ok?'success':'error'}`;if(m.ok===false){const detail=m.userMessage||m.errorDetail||m.text||'Unknown error';showToast('Run failed: '+detail,'error')}if(m.evidence)evidence.textContent=JSON.stringify(m.evidence,null,2);task.focus()}});
       </script>
     </main>
     <script nonce="{{nonce}}">
@@ -1061,7 +1142,8 @@ for(const b of document.querySelectorAll('.validate-key'))b.onclick=()=>{const p
       // B2: toast exactly once for not-entitled -- a dedicated branch below used
       // to fire a second toast right after the authMsg one.
       const authMsg=authenticated&&!entitled?(`${m.text||'This account is not entitled to run minitok.'} Activate or manage your plan to continue.`):(authenticated?'':(checking?'':(m.text||'')));authError.textContent='';if(authMsg)showToast(authMsg,'error');
-      return}if(m.type==='entitlement'){stage.textContent='Entitlement required';
+       return}if(m.type==='license'){renderLicense(m);
+       return}if(m.type==='entitlement'){stage.textContent='Entitlement required';
       stage.className='task-status error';
       showToast(m.text||'An active paid plan is required.','error');
       return}if(m.type==='billing'){showToast(m.text||'Billing action failed.','error');

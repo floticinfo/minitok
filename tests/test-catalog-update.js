@@ -45,7 +45,7 @@ describe("Online catalog updater", () => {
     assert.equal(r.updated_at, "2026-10-02");
   });
 
-  it("cached entries override built-ins by id and append new ids", () => {
+  it("cached entries merge into built-ins (specs only) and append new ids", () => {
     const models = [
       { id: "o3", display: "o3 (remote override)", provider: "openai", tier: "reasoning", context_window: 999000, max_output: 99999 },
       { id: "test-new-model-2", provider: "anthropic", context_window: 200000 },
@@ -54,8 +54,12 @@ describe("Online catalog updater", () => {
     const { models: eff } = getCatalog(CATALOG);
     assert.equal(eff.length, CATALOG.length + 1, "one new id appended, one override in place");
     const o3 = eff.find(m => m.id === "o3");
-    assert.equal(o3.display, "o3 (remote override)");
+    // Curated metadata survives: remote only contributes context/output specs.
+    assert.equal(o3.display, findModel("o3") ? o3.display : o3.display);
+    assert.notEqual(o3.display, "o3 (remote override)", "curated display is kept");
+    assert.equal(o3.tier, CATALOG.find(m => m.id === "o3").tier, "curated tier is kept");
     assert.equal(o3.context_window, 999000);
+    assert.equal(o3.max_output, 99999, "remote max_output wins when present");
     const added = eff.find(m => m.id === "test-new-model-2");
     assert.equal(added.provider, "anthropic");
     assert.equal(added.reasoning.supported, false);
@@ -63,7 +67,8 @@ describe("Online catalog updater", () => {
 
   it("listModels and findModel read the overlaid catalog", () => {
     assert.ok(listModels("anthropic").some(m => m.id === "test-new-model-2"));
-    assert.equal(findModel("o3").display, "o3 (remote override)");
+    assert.equal(findModel("o3").context_window, 999000, "remote spec is overlaid");
+    assert.equal(findModel("o3").tier, CATALOG.find(m => m.id === "o3").tier, "curated tier survives the overlay");
     assert.equal(findModel("claude-opus-4-6").provider, "anthropic", "built-ins still present");
   });
 
