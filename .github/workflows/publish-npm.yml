@@ -8,8 +8,19 @@ name: Publish CLI to npm and sync website
 #   - push of a release tag (v*): CI publish path
 #   - workflow_dispatch: manual publish of a specific tag
 #
+# Publishing auth:
+#   - npm trusted publishing (OIDC) is used for @flotic/minitok; no long-lived
+#     npm token is stored in this repository.
+#
+# Required npmjs.com configuration for package @flotic/minitok:
+#   - Trusted publisher: GitHub Actions
+#   - Repository owner: floticinfo
+#   - Repository name: minitok
+#   - Workflow filename: publish-npm.yml
+#   - Environment name: release
+#   - Allow npm publish: enabled
+#
 # Required secrets:
-#   - NPM_TOKEN: npm automation/access token for the flotic account (publish)
 #   - WEBSITE_SYNC_TOKEN: token (PAT or GitHub App) with actions:write on the
 #     server repository, used to dispatch sync-website-npm-version.yml
 
@@ -81,9 +92,12 @@ jobs:
       - name: Run packed install smoke test
         run: npm run test:packed-install
 
+      - name: Install npm CLI with trusted publishing support
+        run: npm install -g npm@^11.5.1
+
       - name: Publish to npm
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        # No NODE_AUTH_TOKEN: trusted publishing exchanges the GitHub OIDC token
+        # with npm automatically. A legacy token here would bypass OIDC auth.
         run: npm publish --access public
 
       - name: Trigger website version sync

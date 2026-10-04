@@ -1,15 +1,141 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.RUN_DELEGATION_ENV = void 0;
+exports.entitlementServerUrl = entitlementServerUrl;
+exports.activateEntitlementSession = activateEntitlementSession;
+exports.statusEntitlementSession = statusEntitlementSession;
+exports.refreshEntitlementSession = refreshEntitlementSession;
+exports.deactivateEntitlementSession = deactivateEntitlementSession;
+exports.activateWithServer = activateWithServer;
 exports.adminRunDelegationEnv = adminRunDelegationEnv;
 exports.activateEntitlement = activateEntitlement;
 exports.setEntitlementContext = setEntitlementContext;
 exports.invalidateEntitlementCache = invalidateEntitlementCache;
 exports.requireEntitlement = requireEntitlement;
+exports.checkServerEntitlement = checkServerEntitlement;
 exports.checkEntitlement = checkEntitlement;
 const node_child_process_1 = require("node:child_process");
 const workspace_1 = require("./workspace");
 const device_auth_1 = require("./device-auth");
+const entitlement_cache_1 = require("./entitlement-cache");
+// ---------------------------------------------------------------------------
+// Phase 3: Server API client (mirrors src/entitlement/client.js in the CLI)
+// ---------------------------------------------------------------------------
+/** Server base resolution order matches the CLI: env → config → default. */
+const DEFAULT_ENTITLEMENT_SERVER = "http://localhost:3000";
+function entitlementServerUrl() {
+    const fromEnv = process.env.MINITOK_SERVER_URL;
+    if (fromEnv && fromEnv.trim())
+        return fromEnv.trim().replace(/\/+$/, "");
+    return DEFAULT_ENTITLEMENT_SERVER;
+}
+function trimBase(base) { return base.replace(/\/+$/, ""); }
+async function parseJsonBody(res) {
+    try {
+        return JSON.parse(await res.text());
+    }
+    catch {
+        return undefined;
+    }
+}
+/** POST /api/entitlement/activate — validate a key, receive a JWT. */
+async function activateEntitlementSession(key, base = entitlementServerUrl()) {
+    const trimmed = typeof key === "string" ? key.trim() : "";
+    if (!trimmed)
+        return { ok: false, status: 0, error: "An activation key is required." };
+    try {
+        const res = await fetch(`${trimBase(base)}/api/entitlement/activate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ key: trimmed }),
+            signal: AbortSignal.timeout(30_000),
+        });
+        const body = await parseJsonBody(res);
+        const entitlement = body?.entitlement || {};
+        return {
+            ok: res.ok && typeof body?.token === "string",
+            status: res.status,
+            token: typeof body?.token === "string" ? body.token : undefined,
+            plan: typeof entitlement.plan === "string" ? entitlement.plan : undefined,
+            error: typeof body?.error === "string" ? body.error : undefined,
+        };
+    }
+    catch (error) {
+        return { ok: false, status: 0, error: error instanceof Error ? error.message : String(error) };
+    }
+}
+/** GET /api/entitlement/status — validate a JWT, return current state. */
+async function statusEntitlementSession(token, base = entitlementServerUrl()) {
+    try {
+        const res = await fetch(`${trimBase(base)}/api/entitlement/status`, {
+            headers: { Authorization: `Bearer ${token}` },
+            signal: AbortSignal.timeout(15_000),
+        });
+        const body = await parseJsonBody(res);
+        return {
+            ok: res.ok && body?.active === true,
+            status: res.status,
+            active: body?.active === true,
+            plan: typeof body?.plan === "string" ? body.plan : undefined,
+            expiresAt: typeof body?.expires_at === "string" ? body.expires_at : undefined,
+            error: typeof body?.error === "string" ? body.error : undefined,
+        };
+    }
+    catch (error) {
+        return { ok: false, status: 0, error: error instanceof Error ? error.message : String(error) };
+    }
+}
+/** POST /api/entitlement/refresh — renew a (possibly expired) JWT. */
+async function refreshEntitlementSession(token, base = entitlementServerUrl()) {
+    try {
+        const res = await fetch(`${trimBase(base)}/api/entitlement/refresh`, {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}` },
+            signal: AbortSignal.timeout(15_000),
+        });
+        const body = await parseJsonBody(res);
+        return {
+            ok: res.ok && typeof body?.token === "string",
+            status: res.status,
+            token: typeof body?.token === "string" ? body.token : undefined,
+            error: typeof body?.error === "string" ? body.error : undefined,
+        };
+    }
+    catch (error) {
+        return { ok: false, status: 0, error: error instanceof Error ? error.message : String(error) };
+    }
+}
+/** DELETE /api/entitlement — revoke the JWT. */
+async function deactivateEntitlementSession(token, base = entitlementServerUrl()) {
+    try {
+        const res = await fetch(`${trimBase(base)}/api/entitlement`, {
+            method: "DELETE",
+            headers: { Authorization: `Bearer ${token}` },
+            signal: AbortSignal.timeout(15_000),
+        });
+        const body = await parseJsonBody(res);
+        return { ok: res.ok, status: res.status, error: typeof body?.error === "string" ? body.error : undefined };
+    }
+    catch (error) {
+        return { ok: false, status: 0, error: error instanceof Error ? error.message : String(error) };
+    }
+}
+/**
+ * Phase 3 server-validated activation: activate against the server, then
+ * persist the JWT in SecretStorage. Also runs the CLI activation so the
+ * on-disk artifact stays in sync for CLI runs outside the extension.
+ */
+async function activateWithServer(context, key) {
+    const result = await activateEntitlementSession(key);
+    if (!result.ok || !result.token) {
+        return { ok: false, message: result.error || `Activation failed (HTTP ${result.status}).` };
+    }
+    const cache = new entitlement_cache_1.EntitlementCache(context.secrets);
+    await cache.save(result.token);
+    invalidateEntitlementCache();
+    const payload = (0, entitlement_cache_1.decodeJwtPayload)(result.token);
+    return { ok: true, message: "Activation successful.", plan: result.plan || payload?.plan || null };
+}
 /** Environment variable that carries the activation key to the CLI child. */
 const ACTIVATION_KEY_ENV = "MINITOK_ACTIVATION_KEY";
 /** Environment variable that carries the one-time run delegation token. */
@@ -121,10 +247,56 @@ function invalidateEntitlementCache() {
 async function requireEntitlement() {
     if (await isAdminSessionActive())
         return { checked: true, allowed: true, plan: "admin", message: undefined };
+    // Phase 3: prefer the server-validated session stored in SecretStorage.
+    // When the server is unreachable, an unexpired cached `exp` is the fallback.
+    if (extensionContext) {
+        const serverState = await checkServerEntitlement(extensionContext);
+        if (serverState.checked)
+            return serverState;
+    }
     const entitlement = await checkEntitlement();
     if (!entitlement.allowed)
         throw new Error(entitlement.message || "An active paid minitok plan is required.");
     return entitlement;
+}
+/**
+ * Server-validated entitlement check with local cache fallback.
+ *
+ * Returns { checked: true, ... } when the server (or the offline fallback)
+ * produced a decision, and { checked: false } when neither is available so
+ * the caller can fall back to the CLI-based gate.
+ */
+async function checkServerEntitlement(context) {
+    const cache = new entitlement_cache_1.EntitlementCache(context.secrets);
+    const session = await cache.load();
+    if (!session)
+        return { checked: false, allowed: false };
+    const status = await statusEntitlementSession(session.token);
+    if (status.ok) {
+        invalidateEntitlementCache();
+        return { checked: true, allowed: true, plan: status.plan || session.payload.plan || null, message: undefined };
+    }
+    // 401/403: the token is revoked or expired on the server. Try a refresh
+    // before falling back to the local `exp` so a near-expiry session survives.
+    if (status.status === 401 || status.status === 403) {
+        const refreshed = await refreshEntitlementSession(session.token);
+        if (refreshed.ok && refreshed.token) {
+            await cache.save(refreshed.token);
+            invalidateEntitlementCache();
+            const payload = (0, entitlement_cache_1.decodeJwtPayload)(refreshed.token);
+            return { checked: true, allowed: true, plan: payload?.plan || null, message: undefined };
+        }
+        // A definite server-side rejection: do not honor the offline fallback.
+        if (refreshed.status !== 0) {
+            await cache.clear();
+            return { checked: true, allowed: false, plan: null, message: status.error || refreshed.error || "Your minitok plan is no longer active." };
+        }
+    }
+    // Network failure (status 0): offline fallback via the `exp` claim.
+    const offline = await cache.loadValidOffline();
+    if (offline)
+        return { checked: true, allowed: true, plan: offline.payload.plan || null, message: undefined, cached: true };
+    return { checked: false, allowed: false };
 }
 function checkEntitlement() {
     // The admin bypass is async (secret storage read), so it resolves before the

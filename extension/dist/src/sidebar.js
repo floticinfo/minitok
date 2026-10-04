@@ -45,8 +45,10 @@ const os = __importStar(require("node:os"));
 const node_crypto_1 = require("node:crypto");
 const workspace_1 = require("./workspace");
 const entitlement_1 = require("./entitlement");
-const device_auth_1 = require("./device-auth");
 const entitlement_2 = require("./entitlement");
+const entitlement_cache_1 = require("./entitlement-cache");
+const device_auth_1 = require("./device-auth");
+const entitlement_3 = require("./entitlement");
 const redaction_1 = require("./redaction");
 function cliRelease(context) {
     const release = context.extension.packageJSON.minitok;
@@ -250,6 +252,7 @@ class minitokSidebar {
     activeRunStartedAt;
     latestCliVersion;
     deviceLoginCancellation;
+    entitlementCache;
     constructor(extensionUri, context) {
         this.extensionUri = extensionUri;
         this.context = context;
@@ -257,7 +260,9 @@ class minitokSidebar {
     resolveWebviewView(view) {
         this.view = view;
         // The entitlement gate needs the context to consult the admin session.
-        (0, entitlement_2.setEntitlementContext)(this.context);
+        (0, entitlement_3.setEntitlementContext)(this.context);
+        // Phase 3: SecretStorage-backed entitlement session cache (JWT + payload).
+        this.entitlementCache = new entitlement_cache_1.EntitlementCache(this.context.secrets);
         view.webview.options = { enableScripts: true, localResourceRoots: [this.extensionUri] };
         view.webview.html = this.html(view.webview);
         view.webview.onDidReceiveMessage(message => {
@@ -642,6 +647,23 @@ class minitokSidebar {
             await this.openBilling();
             return;
         }
+        // Phase 3: direct license-key management against the entitlement server.
+        if (message.command === "license-activate") {
+            await this.activateLicense(message);
+            return;
+        }
+        if (message.command === "license-status") {
+            await this.postLicenseStatus();
+            return;
+        }
+        if (message.command === "license-refresh") {
+            await this.refreshLicense();
+            return;
+        }
+        if (message.command === "license-deactivate") {
+            await this.deactivateLicense();
+            return;
+        }
         if (message.command === "attach-file") {
             const uri = await vscode.window.showOpenDialog({ canSelectMany: false, openLabel: "Attach file" });
             if (uri?.[0])
@@ -764,6 +786,97 @@ class minitokSidebar {
                 this.view?.webview.postMessage({ type: "billing", ok: false, text: redactOutputText(parseError instanceof Error ? parseError.message : String(parseError)) });
             }
         });
+    }
+    // -------------------------------------------------------------------------
+    // Phase 3: License section handlers (server-validated entitlement)
+    // -------------------------------------------------------------------------
+    /** Activate a license key against the entitlement server and cache the JWT. */
+    async activateLicense(message) {
+        const key = typeof message.key === "string" ? message.key.trim() : "";
+        if (!key) {
+            this.view?.webview.postMessage({ type: "license", ok: false, status: "error", text: "An activation key is required." });
+            return;
+        }
+        this.view?.webview.postMessage({ type: "license", ok: true, status: "activating", text: "Activating license..." });
+        const result = await (0, entitlement_2.activateWithServer)(this.context, key);
+        if (!result.ok) {
+            this.view?.webview.postMessage({ type: "license", ok: false, status: "error", text: redactOutputText(result.message) });
+            return;
+        }
+        (0, entitlement_1.invalidateEntitlementCache)();
+        await this.postLicenseStatus();
+        this.view?.webview.postMessage({ type: "auth-state", state: "authenticated", ok: true, authenticated: true, entitled: true, text: `License activated with ${result.plan || "your"} plan.` });
+    }
+    /** Report the current license status to the Settings license section. */
+    async postLicenseStatus() {
+        if (!this.entitlementCache)
+            this.entitlementCache = new entitlement_cache_1.EntitlementCache(this.context.secrets);
+        const session = await this.entitlementCache.load();
+        if (!session) {
+            this.view?.webview.postMessage({ type: "license", ok: false, status: "not-activated", text: "No license is activated on this device." });
+            return;
+        }
+        const status = await (0, entitlement_2.statusEntitlementSession)(session.token);
+        if (status.ok) {
+            const expiry = status.expiresAt || (typeof session.payload.exp === "number" ? new Date(session.payload.exp * 1000).toISOString().slice(0, 10) : undefined);
+            this.view?.webview.postMessage({ type: "license", ok: true, status: "active", plan: status.plan || session.payload.plan || undefined, expiresAt: expiry, text: "License is active." });
+            return;
+        }
+        if (status.status === 401 || status.status === 403) {
+            // Server rejected the token: try one silent refresh before declaring expiry.
+            const refreshed = await (0, entitlement_2.refreshEntitlementSession)(session.token);
+            if (refreshed.ok && refreshed.token) {
+                await this.entitlementCache.save(refreshed.token);
+                (0, entitlement_1.invalidateEntitlementCache)();
+                await this.postLicenseStatus();
+                return;
+            }
+            this.view?.webview.postMessage({ type: "license", ok: false, status: "expired", text: status.error || "License is expired or revoked." });
+            return;
+        }
+        // Offline: fall back to the cached `exp`.
+        const offline = await this.entitlementCache.loadValidOffline();
+        if (offline) {
+            const expiry = typeof offline.payload.exp === "number" ? new Date(offline.payload.exp * 1000).toISOString().slice(0, 10) : undefined;
+            this.view?.webview.postMessage({ type: "license", ok: true, status: "active", plan: offline.payload.plan || undefined, expiresAt: expiry, text: "License active (offline cache)." });
+        }
+        else {
+            this.view?.webview.postMessage({ type: "license", ok: false, status: "expired", text: "License expired and the server cannot be reached to refresh it." });
+        }
+    }
+    /** Refresh the current license session with the server. */
+    async refreshLicense() {
+        if (!this.entitlementCache)
+            this.entitlementCache = new entitlement_cache_1.EntitlementCache(this.context.secrets);
+        const session = await this.entitlementCache.load();
+        if (!session) {
+            this.view?.webview.postMessage({ type: "license", ok: false, status: "not-activated", text: "No license to refresh." });
+            return;
+        }
+        const refreshed = await (0, entitlement_2.refreshEntitlementSession)(session.token);
+        if (!refreshed.ok || !refreshed.token) {
+            this.view?.webview.postMessage({ type: "license", ok: false, status: "error", text: redactOutputText(refreshed.error || `Refresh failed (HTTP ${refreshed.status}).`) });
+            return;
+        }
+        await this.entitlementCache.save(refreshed.token);
+        (0, entitlement_1.invalidateEntitlementCache)();
+        await this.postLicenseStatus();
+    }
+    /** Deactivate the license locally even if server revocation fails. */
+    async deactivateLicense() {
+        if (!this.entitlementCache)
+            this.entitlementCache = new entitlement_cache_1.EntitlementCache(this.context.secrets);
+        const session = await this.entitlementCache.load();
+        if (!session) {
+            this.view?.webview.postMessage({ type: "license", ok: false, status: "not-activated", text: "No license is activated on this device." });
+            return;
+        }
+        const result = await (0, entitlement_2.deactivateEntitlementSession)(session.token);
+        // The local cache is cleared regardless: a failed revocation must not leave
+        // a ghost session on this device.
+        await this.entitlementCache.clear();
+        (0, entitlement_1.invalidateEntitlementCache)();
+        this.view?.webview.postMessage({ type: "license", ok: true, status: "not-activated", text: result.ok ? "License deactivated." : "Deactivated locally; the server could not be reached to revoke it." });
     }
     async customerLogin(email, password) {
         if (!email?.trim() || !password) {
