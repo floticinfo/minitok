@@ -77,9 +77,10 @@ test("entitlement gates execution controls and explains access state", () => {
   assert.match(html, /id="run"[^>]*disabled/);
   assert.match(html, /run\.disabled=!entitled/);
   assert.match(html, /Signed in, but this account is not entitled/);
-  assert.match(html, /Activate or manage your plan/);
+  assert.match(html, /Link a license key or get a plan/);
   assert.match(html, /const notEntitled=state==='not-entitled'/);
-  assert.match(html, /id="activateButton"[^>]*hidden/);
+  assert.match(html, /id="activateRow" hidden/);
+  assert.match(html, /id="activateButton"/);
   assert.match(html, /command:"activate"/);
 });
 
@@ -346,12 +347,12 @@ test("sidebar run/dry restore after run end still respects not-entitled state (B
 test("sidebar not-entitled auth-state toasts exactly once (B2 regression)", () => {
   // The authMsg branch and a dedicated not-entitled branch both toasted, so a
   // signed-in-but-not-entitled user saw the same message twice.
-  const view = runWebview(sidebar(), [0, 1], ["loading", "authGate", "app", "logoutButton", "loginForm", "authPrompt", "authError", "run", "dry", "mcpBadge", "activateButton"]);
+  const view = runWebview(sidebar(), [0, 1], ["loading", "authGate", "app", "logoutButton", "loginForm", "authPrompt", "authError", "run", "dry", "mcpBadge", "activateButton", "activateRow", "bindPanel", "bindKeyInput"]);
   view.dispatch({ type: "auth-state", authenticated: true, entitled: false });
   assert.equal(view.toasts.length, 1, "not-entitled state must toast exactly once");
   assert.equal(view.toasts[0].kind, "error");
-  assert.match(view.toasts[0].text, /not entitled|Activate or manage your plan/, "the single toast must still explain the not-entitled state");
-  assert.equal(view.els.get("activateButton").hidden, false, "the activate CTA stays visible for not-entitled users");
+  assert.match(view.toasts[0].text, /not entitled|Link a license key or get a plan/, "the single toast must still explain the not-entitled state");
+  assert.equal(view.els.get("activateRow").hidden, false, "the key/billing CTA row stays visible for not-entitled users");
 
   view.toasts.length = 0;
   view.dispatch({ type: "auth-state", authenticated: true, entitled: false, text: "Plan expired" });

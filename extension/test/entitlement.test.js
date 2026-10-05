@@ -68,11 +68,12 @@ test("decodeJwtPayload returns null for malformed tokens", () => {
 // ── plan-id guard ────────────────────────────────────────────────────────────
 
 test("the extension renders server-issued plan ids in the license UI", () => {
-  // The sidebar renders `plan` straight from the server/cache payload, so a
-  // new server plan id shows up without an extension change. The guard here is
-  // that the extension actually reads and forwards that field.
-  const sidebar = fs.readFileSync(path.join(root, "src", "sidebar.ts"), "utf8");
-  assert.match(sidebar, /payload\.plan/, "sidebar must read plan from the cached session payload");
+  // The extension reads `plan` from the server/cache payload, so a new server
+  // plan id shows up without an extension change. The guard here is that the
+  // cache actually stores and forwards that field.
+  const cache = fs.readFileSync(path.join(root, "src", "entitlement-cache.ts"), "utf8");
+  assert.match(cache, /payload:\s*EntitlementSessionPayload/, "cache must store the decoded payload");
+  assert.match(cache, /plan\?:\s*string/, "cache payload must include plan");
   assert.match(entitlement, /entitlement\.plan/, "entitlement.ts must surface plan from the server response");
 });
 
@@ -92,14 +93,12 @@ test("the admin session is labelled distinctly from a paid plan", () => {
 test("the extension keeps working offline via the cached exp claim", () => {
   // The extension's offline story is JWT-expiry based (loadValidOffline), not
   // the CLI's 7-day grace window: when the server is unreachable the cached
-  // session is honored until its `exp`. Both the gate and the sidebar must
-  // implement the fallback so an offline user is neither locked out nor
-  // silently unlicensed.
+  // session is honored until its `exp`. The gate implements the fallback so
+  // an offline user is neither locked out nor silently unlicensed.
   assert.match(entitlement, /loadValidOffline\(\)/, "gate must consult the offline fallback");
   assert.match(entitlement, /Network failure \(status 0\): offline fallback/, "offline fallback must only apply to network failures, not server rejections");
-  const sidebar = fs.readFileSync(path.join(root, "src", "sidebar.ts"), "utf8");
-  assert.match(sidebar, /loadValidOffline\(\)/, "sidebar must render the cached session offline");
-  assert.match(sidebar, /payload\.exp/, "sidebar must surface the expiry from the exp claim");
+  const cache = fs.readFileSync(path.join(root, "src", "entitlement-cache.ts"), "utf8");
+  assert.match(cache, /payload\.exp/, "cache must surface the expiry from the exp claim");
 });
 
 // ── expiry / denial notification ─────────────────────────────────────────────

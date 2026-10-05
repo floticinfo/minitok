@@ -9,6 +9,7 @@ const entitlement = fs.readFileSync(path.join(root, "src", "entitlement.ts"), "u
 const workspace = fs.readFileSync(path.join(root, "src", "workspace.ts"), "utf8");
 const extension = fs.readFileSync(path.join(root, "src", "extension.ts"), "utf8");
 const sidebar = fs.readFileSync(path.join(root, "src", "sidebar.ts"), "utf8");
+const sidebarHtml = fs.readFileSync(path.join(root, "src", "sidebar.html"), "utf8");
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 
 // The activation key is a bearer credential: whoever holds it can spend the
@@ -63,13 +64,26 @@ test("an activation key is never logged, echoed or persisted by the Extension", 
   assert.match(extension, /redactExtensionOutput\(result\.message\)/);
 });
 
-test("the activate CTA still opens billing for users without a key", () => {
-  // The sidebar CTA is a purchase funnel; the palette command redeems a key.
-  // Repointing the CTA at the key prompt would strand a new customer.
-  assert.match(sidebar, /if \(message\.command === "activate"\) \{ await this\.openBilling\(\); return; \}/);
-  // The CTA must still reach the checkout flow, so pin the CLI subcommand itself
+test("the not-entitled state offers both key-binding and billing paths", () => {
+  // A customer holding a pre-OAuth license key links it to their account via the
+  // bind panel; a customer without one goes to checkout. Both affordances must be
+  // present, and neither may shadow the other.
+  // The "activate" CTA opens the key-binding panel, not billing.
+  assert.match(sidebar, /if \(message\.command === "activate"\) \{ this\.view\?\.webview\.postMessage\(\{ type: "bind-panel-toggle" \}\); return; \}/);
+  // Binding posts the key to the /api/entitlement/bind client with the auth token.
+  assert.match(sidebar, /if \(message\.command === "bind-license"\) \{ await this\.bindLicense\(message\.key\); return; \}/);
+  assert.match(sidebar, /bindLicenseToAccount\(trimmed, session\.access_token\)/);
+  // Billing moved to its own command so a user without a key is never stranded.
+  assert.match(sidebar, /if \(message\.command === "open-billing"\) \{ await this\.openBilling\(\); return; \}/);
+  // The CTA still reaches the checkout flow, so pin the CLI subcommand itself
   // rather than the helper's (now parameterless) signature.
   assert.match(sidebar, /const args = \["checkout", "--token-env"/);
   assert.doesNotMatch(sidebar, /manage-plan/);
   assert.doesNotMatch(sidebar, /portal_url/);
+  // The webview exposes both entry points and posts the typed key, never a literal.
+  assert.match(sidebarHtml, /id="activateButton"/);
+  assert.match(sidebarHtml, /id="billingButton"/);
+  assert.match(sidebarHtml, /command:"bind-license",key:document\.getElementById\("bindKeyInput"\)\.value/);
+  // A successful bind re-resolves entitlement so the gate flips without a reload.
+  assert.match(sidebar, /invalidateEntitlementCache\(\);\s*\n\s*this\.view\?\.webview\.postMessage\(\{ type: "bind-result", ok: true/);
 });

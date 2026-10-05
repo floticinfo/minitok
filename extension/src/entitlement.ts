@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { cliPath, workspacePath, spawnSpec, spawnOptionsFor, appendBoundedOutput } from "./workspace";
 import * as vscode from "vscode";
-import { readAdminSession, issueRunDelegation } from "./device-auth";
+import { readAdminSession, readExtensionSession, issueRunDelegation } from "./device-auth";
 import { EntitlementCache, decodeJwtPayload } from "./entitlement-cache";
 
 export type EntitlementState = { checked: boolean; allowed: boolean; plan?: string | null; message?: string; cached?: boolean };
@@ -49,6 +49,57 @@ export async function activateEntitlementSession(key: string, base = entitlement
     return { ok: false, status: 0, error: error instanceof Error ? error.message : String(error) };
   }
 }
+
+/** GET /api/entitlement/me — resolve entitlement from an auth-server JWT. */
+export async function meEntitlementSession(authToken: string, base = entitlementServerUrl()): Promise<{ ok: boolean; status: number; active?: boolean; plan?: string; error?: string }> {
+  try {
+    const res = await fetch(`${trimBase(base)}/api/entitlement/me`, {
+      headers: { Authorization: `Bearer ${authToken}` },
+      signal: AbortSignal.timeout(15_000),
+    });
+    const body = await parseJsonBody(res);
+    return {
+      ok: res.ok && body?.active === true,
+      status: res.status,
+      active: body?.active === true,
+      plan: typeof body?.plan === "string" ? body.plan : undefined,
+      error: typeof body?.error === "string" ? body.error : undefined,
+    };
+  } catch (error) {
+    return { ok: false, status: 0, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
+/**
+ * POST /api/entitlement/bind — link a license key to the signed-in account.
+ *
+ * Migration path for customers holding a key that was activated before the
+ * OAuth entitlement flow: the key authorizes the binding and the verified
+ * auth token supplies the customer_id, so after this succeeds GET /me resolves.
+ */
+export async function bindLicenseToAccount(key: string, authToken: string, base = entitlementServerUrl()): Promise<{ ok: boolean; status: number; plan?: string; error?: string }> {
+  const trimmed = typeof key === "string" ? key.trim() : "";
+  if (!trimmed) return { ok: false, status: 0, error: "An activation key is required." };
+  try {
+    const res = await fetch(`${trimBase(base)}/api/entitlement/bind`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ key: trimmed, auth_token: authToken }),
+      signal: AbortSignal.timeout(15_000),
+    });
+    const body = await parseJsonBody(res);
+    const entitlement = body?.entitlement || {};
+    return {
+      ok: res.ok && body?.bound === true,
+      status: res.status,
+      plan: typeof entitlement.plan === "string" ? entitlement.plan : undefined,
+      error: typeof body?.error === "string" ? body.error : undefined,
+    };
+  } catch (error) {
+    return { ok: false, status: 0, error: error instanceof Error ? error.message : String(error) };
+  }
+}
+
 
 /** GET /api/entitlement/status — validate a JWT, return current state. */
 export async function statusEntitlementSession(token: string, base = entitlementServerUrl()): Promise<{ ok: boolean; status: number; active?: boolean; plan?: string; expiresAt?: string; error?: string }> {
@@ -241,11 +292,30 @@ export async function requireEntitlement(): Promise<EntitlementState> {
 /**
  * Server-validated entitlement check with local cache fallback.
  *
+ * Auth-first: when an OAuth session exists, resolve entitlement via
+ * GET /api/entitlement/me with the auth token. Falls back to the
+ * SecretStorage-cached entitlement JWT, then to the offline `exp` claim.
+ *
  * Returns { checked: true, ... } when the server (or the offline fallback)
  * produced a decision, and { checked: false } when neither is available so
  * the caller can fall back to the CLI-based gate.
  */
 export async function checkServerEntitlement(context: vscode.ExtensionContext): Promise<EntitlementState> {
+  // Auth-first: OAuth session → /api/entitlement/me
+  const authSession = await readExtensionSession(context);
+  if (authSession?.access_token) {
+    const me = await meEntitlementSession(authSession.access_token);
+    if (me.ok) {
+      invalidateEntitlementCache();
+      return { checked: true, allowed: true, plan: me.plan || null, message: undefined };
+    }
+    if (me.status === 404) {
+      return { checked: true, allowed: false, plan: null, message: "No active plan found for this account." };
+    }
+    // 401/403: auth token issue — fall through to cached entitlement token.
+  }
+
+  // Fallback: SecretStorage-cached entitlement JWT (legacy key-based flow).
   const cache = new EntitlementCache(context.secrets);
   const session = await cache.load();
   if (!session) return { checked: false, allowed: false };
