@@ -1218,8 +1218,8 @@ for(const group of document.querySelectorAll('.settings-group')){const summary=g
     li.setAttribute('role','button');
     li.setAttribute('aria-label','Open diff: '+f);
     li.textContent=f;
-    li.onclick=()=>vscode.postMessage({command:'open-diff'});
-    li.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();vscode.postMessage({command:'open-diff'})}};
+    li.onclick=()=>vscode.postMessage({command:'open-diff',file:f});
+    li.onkeydown=e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();vscode.postMessage({command:'open-diff',file:f})}};
     list.appendChild(li);
   }
   if(files.length>50){const li=document.createElement('li');li.tabIndex=-1;li.textContent='… '+(files.length-50)+' more';list.appendChild(li)}

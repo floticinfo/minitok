@@ -380,7 +380,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
     await this.refreshAuth();
   }
 
-  private async handle(message: { command: string; task?: string; email?: string; password?: string; provider?: string; target?: string; checkpoint?: string; key?: string; settings?: Record<string, unknown>; secrets?: Record<string, string>; enterBehavior?: string; resume?: string }) {
+  private async handle(message: { command: string; task?: string; email?: string; password?: string; provider?: string; target?: string; checkpoint?: string; key?: string; settings?: Record<string, unknown>; secrets?: Record<string, string>; enterBehavior?: string; resume?: string; file?: string }) {
     // Every auth-status path below must settle with an auth-state post. A rejection
     // here was caught by the caller and reported as a task result, which the auth
     // gate ignores, so the sidebar stayed on "Loading minitok..." with no way to
@@ -435,7 +435,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
       this.view?.webview.postMessage({ type: "approval", decision: message.command }); return;
     }
     if (message.command === "open-evidence") { if (cwd) await this.openEvidence(cwd); return; }
-    if (message.command === "open-diff") { if (cwd) await this.openDiff(cwd); return; }
+    if (message.command === "open-diff") { if (cwd) await this.openDiff(cwd, message.file); return; }
     if (message.command === "restore-session") { if (cwd && message.checkpoint) await this.restoreCheckpoint(cwd, message.checkpoint); return; }
     if (message.command === "mcp-status") { await this.checkMcpHealth(); return; }
     if (message.command === "mcp-connect") { requireTrustedWorkspace(workspacePath()); await this.connectMcp(message.target); return; }
@@ -929,13 +929,28 @@ private async discoverModels(cwd?: string, provider?: string) {
     this.view?.webview.postMessage({ type: "checkpoint", text: "Checkpoint restored." });
   }
   private readPatch(cwd: string) { try { return fs.readFileSync(path.join(cwd, ".minitok", "last-run.patch"), "utf8").slice(0, 200000); } catch { return null; } }
-  private async openDiff(cwd: string) {
+  private async openDiff(cwd: string, file?: string) {
     const patch = this.readPatch(cwd);
     if (!patch) { vscode.window.showInformationMessage("No minitok patch found. Run a minitok task first to produce one."); return; }
-    const file = path.join(cwd, ".minitok", "last-run.patch");
-    const original = await vscode.workspace.openTextDocument({ content: "", language: "diff" });
-    const modified = await vscode.workspace.openTextDocument({ content: patch, language: "diff" });
-    await vscode.commands.executeCommand("vscode.diff", original.uri, modified.uri, "minitok changes", { preview: false });
+    if (!file) {
+      // No file selected: open the full patch.
+      const original = await vscode.workspace.openTextDocument({ content: "", language: "diff" });
+      const modified = await vscode.workspace.openTextDocument({ content: patch, language: "diff" });
+      await vscode.commands.executeCommand("vscode.diff", original.uri, modified.uri, "minitok changes", { preview: false });
+      return;
+    }
+    // File selected: open checkpoint-vs-current diff for that file.
+    // Use the most recent successful run's checkpoint.
+    const history = this.context.workspaceState.get<Array<Record<string, unknown>>>("minitok.history", []);
+    const lastRun = history.filter(h => h.status === "completed" && h.success === true).pop();
+    const runId = lastRun?.runId as string | undefined;
+    if (!runId) { vscode.window.showInformationMessage("No completed minitok run found. Run a task first."); return; }
+    const checkpointFile = path.join(cwd, ".minitok", "checkpoints", runId, file);
+    const currentFile = path.join(cwd, file);
+    if (!fs.existsSync(checkpointFile)) { vscode.window.showInformationMessage(`No checkpoint found for ${file}.`); return; }
+    const original = await vscode.workspace.openTextDocument(vscode.Uri.file(checkpointFile));
+    const modified = await vscode.workspace.openTextDocument(vscode.Uri.file(currentFile));
+    await vscode.commands.executeCommand("vscode.diff", original.uri, modified.uri, `minitok: ${file}`, { preview: false });
   }
   /**
    * Effective evidence path: the value saved from the Settings UI
