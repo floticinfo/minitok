@@ -45,10 +45,10 @@ const os = __importStar(require("node:os"));
 const node_crypto_1 = require("node:crypto");
 const workspace_1 = require("./workspace");
 const entitlement_1 = require("./entitlement");
-const entitlement_2 = require("./entitlement");
-const entitlement_cache_1 = require("./entitlement-cache");
+// activateWithServer, statusEntitlementSession, refreshEntitlementSession, deactivateEntitlementSession removed: license management is auth-based only.
+// EntitlementCache removed: license management is auth-based only.
 const device_auth_1 = require("./device-auth");
-const entitlement_3 = require("./entitlement");
+const entitlement_2 = require("./entitlement");
 const redaction_1 = require("./redaction");
 function cliRelease(context) {
     const release = context.extension.packageJSON.minitok;
@@ -143,7 +143,7 @@ const redactOutputText = redaction_1.redactSensitiveText;
 function toUserFriendlyError(raw) {
     const text = raw.toLowerCase();
     if (text.includes("entitlement") || text.includes("license")) {
-        return "License required: activate with `minitok activate <license-key>` in the terminal, then retry.";
+        return "License required: enter your license key in Settings → License below, or run `minitok activate <license-key>` in the terminal.";
     }
     if (text.includes("enoent") || text.includes("not found") || text.includes("cannot find")) {
         return "minitok CLI not found: install it globally with `npm install -g @flotic/minitok`, then reload this window.";
@@ -252,7 +252,7 @@ class minitokSidebar {
     activeRunStartedAt;
     latestCliVersion;
     deviceLoginCancellation;
-    entitlementCache;
+    // entitlementCache removed: license management is auth-based only.
     constructor(extensionUri, context) {
         this.extensionUri = extensionUri;
         this.context = context;
@@ -260,9 +260,8 @@ class minitokSidebar {
     resolveWebviewView(view) {
         this.view = view;
         // The entitlement gate needs the context to consult the admin session.
-        (0, entitlement_3.setEntitlementContext)(this.context);
-        // Phase 3: SecretStorage-backed entitlement session cache (JWT + payload).
-        this.entitlementCache = new entitlement_cache_1.EntitlementCache(this.context.secrets);
+        (0, entitlement_2.setEntitlementContext)(this.context);
+        // entitlement cache removed: license management is auth-based only.
         view.webview.options = { enableScripts: true, localResourceRoots: [this.extensionUri] };
         view.webview.html = this.html(view.webview);
         view.webview.onDidReceiveMessage(message => {
@@ -644,26 +643,18 @@ class minitokSidebar {
             return;
         }
         if (message.command === "activate") {
+            this.view?.webview.postMessage({ type: "bind-panel-toggle" });
+            return;
+        }
+        if (message.command === "bind-license") {
+            await this.bindLicense(message.key);
+            return;
+        }
+        if (message.command === "open-billing") {
             await this.openBilling();
             return;
         }
-        // Phase 3: direct license-key management against the entitlement server.
-        if (message.command === "license-activate") {
-            await this.activateLicense(message);
-            return;
-        }
-        if (message.command === "license-status") {
-            await this.postLicenseStatus();
-            return;
-        }
-        if (message.command === "license-refresh") {
-            await this.refreshLicense();
-            return;
-        }
-        if (message.command === "license-deactivate") {
-            await this.deactivateLicense();
-            return;
-        }
+        // License management is now auth-based only; no direct key management.
         if (message.command === "attach-file") {
             const uri = await vscode.window.showOpenDialog({ canSelectMany: false, openLabel: "Attach file" });
             if (uri?.[0])
@@ -682,9 +673,20 @@ class minitokSidebar {
             return;
         }
         if (message.command === "settings") {
-            await this.readSettings();
-            await this.discoverModels(cwd, this.context.workspaceState.get("minitok.setting.provider", ""));
-            await this.checkUpdate();
+            try {
+                await this.readSettings();
+            }
+            catch { /* keep opening Settings even if storage read fails */ }
+            try {
+                await this.discoverModels(cwd, this.context.workspaceState.get("minitok.setting.provider", ""));
+            }
+            catch {
+                this.view?.webview.postMessage({ type: "models", models: [], provider: "", ok: false }); /* model refresh is background; keep Settings open */
+            }
+            try {
+                await this.checkUpdate();
+            }
+            catch { /* update check needs a workspace; ignore if none */ }
             return;
         }
         if (message.command === "save-settings") {
@@ -715,7 +717,7 @@ class minitokSidebar {
             }
             this.activeRunId = runId;
             this.activeRunStartedAt = startedAt;
-            const evidenceSetting = vscode.workspace.getConfiguration("minitok").get("evidencePath", ".minitok/evidence/runs/latest.json").trim() || ".minitok/evidence/runs/latest.json";
+            const evidenceSetting = this.effectiveEvidencePath();
             (0, workspace_1.workspaceRelativePath)(cwd, evidenceSetting, "evidencePath");
             const args = ["run", message.task, "--repo", cwd, "--evidence-path", evidenceSetting, "--run-id", runId];
             if (message.command === "dry-run")
@@ -734,7 +736,7 @@ class minitokSidebar {
             const patch = cwd ? this.readPatch(cwd) : null;
             const history = this.context.workspaceState.get("minitok.history", []);
             const totalTokens = evidence?.tokens ? Number(evidence.tokens.input || 0) + Number(evidence.tokens.output || 0) : null;
-            await this.context.workspaceState.update("minitok.history", [...history.slice(-19), { runId, ...taskRecord(message.task || ""), startedAt, completedAt: new Date().toISOString(), status: "completed", success: true, totalTokens, cost: evidence?.cost ?? null, evidencePath: cwd ? this.evidenceFile(cwd) : null, patchPath: cwd ? path.join(cwd, ".minitok", "last-run.patch") : null, checkpointPath: checkpoint }]);
+            await this.context.workspaceState.update("minitok.history", [...history.slice(-19), { runId, ...taskRecord(message.task || ""), startedAt, completedAt: new Date().toISOString(), status: "completed", success: true, totalTokens, cost: evidence?.cost ?? null, evidencePath: cwd ? this.evidenceFile(cwd) : null, patchPath: cwd ? path.join(cwd, ".minitok", "last-run.patch") : null, checkpointPath: checkpoint, enterBehavior: message.enterBehavior || "enter-run" }]);
             const safeText = redactOutputText(text);
             const safePatch = patch ? redactOutputText(patch) : patch;
             this.view?.webview.postMessage({ type: "result", ok: true, text: safeText, evidence, patch: safePatch });
@@ -746,7 +748,7 @@ class minitokSidebar {
             const rawError = String(error);
             const safeError = redactOutputText(rawError);
             if (this.activeRunId)
-                await this.context.workspaceState.update("minitok.history", [...history.slice(-19), { runId: this.activeRunId, ...taskRecord(message.task || ""), startedAt: this.activeRunStartedAt, completedAt: new Date().toISOString(), status: "failed", success: false, error: safeError }]);
+                await this.context.workspaceState.update("minitok.history", [...history.slice(-19), { runId: this.activeRunId, ...taskRecord(message.task || ""), startedAt: this.activeRunStartedAt, completedAt: new Date().toISOString(), status: "failed", success: false, error: safeError, enterBehavior: message.enterBehavior || "enter-run" }]);
             this.view?.webview.postMessage({ type: "result", ok: false, text: safeError, runId: this.activeRunId, errorDetail: safeError, userMessage: toUserFriendlyError(safeError) });
         }
         finally {
@@ -758,6 +760,37 @@ class minitokSidebar {
     // their plan-management button, so nothing asks for the billing portal and
     // this helper has no second call path. The CLI still ships `minitok portal`
     // as its own public command; the Extension just never spawns it.
+    /**
+     * Link a legacy license key to the signed-in account via /api/entitlement/bind.
+     *
+     * The server verifies the key and the auth token, so a successful bind makes
+     * GET /api/entitlement/me resolve on the next refreshAuth — no separate
+     * entitlement JWT is stored locally.
+     */
+    async bindLicense(key) {
+        const trimmed = typeof key === "string" ? key.trim() : "";
+        if (!trimmed) {
+            this.view?.webview.postMessage({ type: "bind-result", ok: false, text: "Enter your license key." });
+            return;
+        }
+        const session = await (0, device_auth_1.refreshExtensionSession)(this.context);
+        if (!session?.access_token) {
+            this.view?.webview.postMessage({ type: "bind-result", ok: false, text: "Sign in before linking a license key." });
+            return;
+        }
+        const result = await (0, entitlement_1.bindLicenseToAccount)(trimmed, session.access_token);
+        if (!result.ok) {
+            const text = result.status === 0
+                ? `Could not reach the entitlement server: ${result.error || "network error"}`
+                : result.error || "The license key could not be linked.";
+            this.view?.webview.postMessage({ type: "bind-result", ok: false, text: redactOutputText(text) });
+            return;
+        }
+        (0, entitlement_1.invalidateEntitlementCache)();
+        this.view?.webview.postMessage({ type: "bind-result", ok: true, text: `License linked to your account (${result.plan || "plan"}).` });
+        // Re-resolve entitlement so the gate flips to entitled without a reload.
+        await this.refreshAuth();
+    }
     async openBilling() {
         const session = await (0, device_auth_1.refreshExtensionSession)(this.context);
         if (!session?.access_token) {
@@ -788,96 +821,9 @@ class minitokSidebar {
         });
     }
     // -------------------------------------------------------------------------
-    // Phase 3: License section handlers (server-validated entitlement)
+    // Auth-based entitlement: the OAuth session is the only activation path.
     // -------------------------------------------------------------------------
-    /** Activate a license key against the entitlement server and cache the JWT. */
-    async activateLicense(message) {
-        const key = typeof message.key === "string" ? message.key.trim() : "";
-        if (!key) {
-            this.view?.webview.postMessage({ type: "license", ok: false, status: "error", text: "An activation key is required." });
-            return;
-        }
-        this.view?.webview.postMessage({ type: "license", ok: true, status: "activating", text: "Activating license..." });
-        const result = await (0, entitlement_2.activateWithServer)(this.context, key);
-        if (!result.ok) {
-            this.view?.webview.postMessage({ type: "license", ok: false, status: "error", text: redactOutputText(result.message) });
-            return;
-        }
-        (0, entitlement_1.invalidateEntitlementCache)();
-        await this.postLicenseStatus();
-        this.view?.webview.postMessage({ type: "auth-state", state: "authenticated", ok: true, authenticated: true, entitled: true, text: `License activated with ${result.plan || "your"} plan.` });
-    }
-    /** Report the current license status to the Settings license section. */
-    async postLicenseStatus() {
-        if (!this.entitlementCache)
-            this.entitlementCache = new entitlement_cache_1.EntitlementCache(this.context.secrets);
-        const session = await this.entitlementCache.load();
-        if (!session) {
-            this.view?.webview.postMessage({ type: "license", ok: false, status: "not-activated", text: "No license is activated on this device." });
-            return;
-        }
-        const status = await (0, entitlement_2.statusEntitlementSession)(session.token);
-        if (status.ok) {
-            const expiry = status.expiresAt || (typeof session.payload.exp === "number" ? new Date(session.payload.exp * 1000).toISOString().slice(0, 10) : undefined);
-            this.view?.webview.postMessage({ type: "license", ok: true, status: "active", plan: status.plan || session.payload.plan || undefined, expiresAt: expiry, text: "License is active." });
-            return;
-        }
-        if (status.status === 401 || status.status === 403) {
-            // Server rejected the token: try one silent refresh before declaring expiry.
-            const refreshed = await (0, entitlement_2.refreshEntitlementSession)(session.token);
-            if (refreshed.ok && refreshed.token) {
-                await this.entitlementCache.save(refreshed.token);
-                (0, entitlement_1.invalidateEntitlementCache)();
-                await this.postLicenseStatus();
-                return;
-            }
-            this.view?.webview.postMessage({ type: "license", ok: false, status: "expired", text: status.error || "License is expired or revoked." });
-            return;
-        }
-        // Offline: fall back to the cached `exp`.
-        const offline = await this.entitlementCache.loadValidOffline();
-        if (offline) {
-            const expiry = typeof offline.payload.exp === "number" ? new Date(offline.payload.exp * 1000).toISOString().slice(0, 10) : undefined;
-            this.view?.webview.postMessage({ type: "license", ok: true, status: "active", plan: offline.payload.plan || undefined, expiresAt: expiry, text: "License active (offline cache)." });
-        }
-        else {
-            this.view?.webview.postMessage({ type: "license", ok: false, status: "expired", text: "License expired and the server cannot be reached to refresh it." });
-        }
-    }
-    /** Refresh the current license session with the server. */
-    async refreshLicense() {
-        if (!this.entitlementCache)
-            this.entitlementCache = new entitlement_cache_1.EntitlementCache(this.context.secrets);
-        const session = await this.entitlementCache.load();
-        if (!session) {
-            this.view?.webview.postMessage({ type: "license", ok: false, status: "not-activated", text: "No license to refresh." });
-            return;
-        }
-        const refreshed = await (0, entitlement_2.refreshEntitlementSession)(session.token);
-        if (!refreshed.ok || !refreshed.token) {
-            this.view?.webview.postMessage({ type: "license", ok: false, status: "error", text: redactOutputText(refreshed.error || `Refresh failed (HTTP ${refreshed.status}).`) });
-            return;
-        }
-        await this.entitlementCache.save(refreshed.token);
-        (0, entitlement_1.invalidateEntitlementCache)();
-        await this.postLicenseStatus();
-    }
-    /** Deactivate the license locally even if server revocation fails. */
-    async deactivateLicense() {
-        if (!this.entitlementCache)
-            this.entitlementCache = new entitlement_cache_1.EntitlementCache(this.context.secrets);
-        const session = await this.entitlementCache.load();
-        if (!session) {
-            this.view?.webview.postMessage({ type: "license", ok: false, status: "not-activated", text: "No license is activated on this device." });
-            return;
-        }
-        const result = await (0, entitlement_2.deactivateEntitlementSession)(session.token);
-        // The local cache is cleared regardless: a failed revocation must not leave
-        // a ghost session on this device.
-        await this.entitlementCache.clear();
-        (0, entitlement_1.invalidateEntitlementCache)();
-        this.view?.webview.postMessage({ type: "license", ok: true, status: "not-activated", text: result.ok ? "License deactivated." : "Deactivated locally; the server could not be reached to revoke it." });
-    }
+    // License management is auth-based only; direct key management has been removed.
     async customerLogin(email, password) {
         if (!email?.trim() || !password) {
             this.view?.webview.postMessage({ type: "auth-state", ok: false, text: "Email and password are required." });
@@ -914,8 +860,28 @@ class minitokSidebar {
         }
     }
     async discoverModels(cwd, provider) {
-        (0, workspace_1.requireTrustedWorkspace)(cwd);
-        await (0, entitlement_1.requireEntitlement)();
+        // m2: with no workspace (or an untrusted one) the model refresh must not
+        // reject the whole settings command — answer with an empty list instead,
+        // matching the entitlement fallback just below.
+        try {
+            (0, workspace_1.requireTrustedWorkspace)(cwd);
+        }
+        catch {
+            this.view?.webview.postMessage({ type: "models", models: [], provider: provider || "", ok: true });
+            return;
+        }
+        // The Settings sheet must open even when the account is not entitled: an
+        // unauthenticated user still needs to see provider/model configuration and
+        // the sign-in CTA, so a missing entitlement must not reject the whole
+        // settings command. discover-models is still gated; this call is only the
+        // settings sheet's background model refresh after readSettings().
+        try {
+            await (0, entitlement_1.requireEntitlement)();
+        }
+        catch {
+            this.view?.webview.postMessage({ type: "models", models: [], provider: provider || "", ok: true });
+            return;
+        }
         // Always use --discover so the model list comes from live provider APIs,
         // not the static catalog which may lag behind new releases.
         const args = ["models", "--discover", "--json"];
@@ -1340,6 +1306,19 @@ class minitokSidebar {
         const patch = path.join(resolvedCheckpoint, "working-tree.patch");
         if (!fs.existsSync(patch))
             throw new Error("Checkpoint patch not found");
+        const metadataPath = path.join(resolvedCheckpoint, "metadata.json");
+        if (!fs.existsSync(metadataPath))
+            throw new Error("Checkpoint metadata not found");
+        try {
+            const metadata = JSON.parse(fs.readFileSync(metadataPath, "utf8"));
+            if (metadata.repository !== path.resolve(cwd))
+                throw new Error("Checkpoint repository mismatch");
+        }
+        catch (error) {
+            if (error instanceof Error && error.message === "Checkpoint repository mismatch")
+                throw error;
+            throw new Error("Checkpoint metadata is corrupted or invalid");
+        }
         const status = await this.execGit(cwd, ["status", "--porcelain"]);
         const answer = await vscode.window.showWarningMessage("Restore checkpoint? Current working-tree changes will be replaced.", "Restore", "Cancel");
         if (answer !== "Restore")
@@ -1366,8 +1345,20 @@ class minitokSidebar {
         const modified = await vscode.workspace.openTextDocument({ content: patch, language: "diff" });
         await vscode.commands.executeCommand("vscode.diff", original.uri, modified.uri, "minitok changes", { preview: false });
     }
+    /**
+     * Effective evidence path: the value saved from the Settings UI
+     * (workspaceState) wins, falling back to the `minitok.evidencePath`
+     * configuration. Fixes C1 where the UI-saved value was stored but never read.
+     */
+    effectiveEvidencePath() {
+        const stored = this.context.workspaceState.get("minitok.setting.evidencePath", "");
+        const trimmed = typeof stored === "string" ? stored.trim() : "";
+        if (trimmed)
+            return trimmed;
+        return vscode.workspace.getConfiguration("minitok").get("evidencePath", ".minitok/evidence/runs/latest.json").trim() || ".minitok/evidence/runs/latest.json";
+    }
     evidenceFile(cwd) {
-        const configured = vscode.workspace.getConfiguration("minitok").get("evidencePath", ".minitok/evidence/runs/latest.json").trim() || ".minitok/evidence/runs/latest.json";
+        const configured = this.effectiveEvidencePath();
         const file = path.resolve(cwd, configured);
         const root = path.resolve(cwd) + path.sep;
         if (file !== path.resolve(cwd) && !file.startsWith(root))
@@ -1394,61 +1385,68 @@ class minitokSidebar {
     }
     async saveSettings(message) {
         let provider = (0, workspace_1.normalizeProviderName)(this.context.workspaceState.get("minitok.setting.provider", ""));
-        if (message.settings)
-            for (const [key, value] of Object.entries(message.settings)) {
-                if (key === "autoApprove" || key === "storeTaskText") {
-                    await vscode.workspace.getConfiguration("minitok").update(key, Boolean(value), vscode.ConfigurationTarget.Workspace);
+        // M4: the webview waits for this ack before closing the sheet or running a
+        // follow-up validate-key, so the reply must always arrive, success or not.
+        try {
+            if (message.settings)
+                for (const [key, value] of Object.entries(message.settings)) {
+                    if (key === "autoApprove" || key === "storeTaskText") {
+                        await vscode.workspace.getConfiguration("minitok").update(key, Boolean(value), vscode.ConfigurationTarget.Workspace);
+                    }
+                    else if (/^(provider|model|showCost|evidencePath|enterBehavior|(?:plan|work|review|intel)\.(?:provider|model))$/.test(key)) {
+                        await this.context.workspaceState.update(`minitok.setting.${key}`, value);
+                        if (key === "provider")
+                            provider = (0, workspace_1.normalizeProviderName)(String(value));
+                    }
                 }
-                else if (/^(provider|model|showCost|evidencePath|enterBehavior|(?:plan|work|review|intel)\.(?:provider|model))$/.test(key)) {
-                    await this.context.workspaceState.update(`minitok.setting.${key}`, value);
-                    if (key === "provider")
-                        provider = (0, workspace_1.normalizeProviderName)(String(value));
-                }
-            }
-        // Migrate before storing new secrets so an explicit per-provider key in this
-        // message is never overwritten by the legacy single-key migration.
-        await migrateLegacyProviderApiKey(this.context.secrets, provider);
-        if (message.secrets)
-            for (const [key, value] of Object.entries(message.secrets)) {
-                if (key === "providerApiKeys" && value && typeof value === "object" && !Array.isArray(value)) {
-                    // Per-provider keys from the settings form. Each maps to its own
-                    // SecretStorage slot; absent providers keep whatever was stored.
-                    for (const [p, secret] of Object.entries(value)) {
-                        if (typeof secret !== "string" || !secret)
-                            continue;
-                        if (isApiKeyProvider(p) || isNamedCustomKeyProvider(p)) {
-                            await this.context.secrets.store(apiKeySecretKey(normalizeCustomProviderName(p) || p), secret);
+            // Migrate before storing new secrets so an explicit per-provider key in this
+            // message is never overwritten by the legacy single-key migration.
+            await migrateLegacyProviderApiKey(this.context.secrets, provider);
+            if (message.secrets)
+                for (const [key, value] of Object.entries(message.secrets)) {
+                    if (key === "providerApiKeys" && value && typeof value === "object" && !Array.isArray(value)) {
+                        // Per-provider keys from the settings form. Each maps to its own
+                        // SecretStorage slot; absent providers keep whatever was stored.
+                        for (const [p, secret] of Object.entries(value)) {
+                            if (typeof secret !== "string" || !secret)
+                                continue;
+                            if (isApiKeyProvider(p) || isNamedCustomKeyProvider(p)) {
+                                await this.context.secrets.store(apiKeySecretKey(normalizeCustomProviderName(p) || p), secret);
+                            }
                         }
                     }
-                }
-                else if (key === "customEndpoints" && value && typeof value === "object" && !Array.isArray(value)) {
-                    // Named custom endpoints from the settings form: { "<name>": "<url>" }.
-                    // Empty URLs delete the entry (and its key mapping stays until a new
-                    // key is saved). Names are validated so they always survive the
-                    // MINITOK_CUSTOM_BASE_URL_<NAME> env round-trip in execute().
-                    const next = {};
-                    for (const [rawName, rawUrl] of Object.entries(value)) {
-                        const name = normalizeCustomProviderName(rawName);
-                        if (!isValidCustomProviderName(name))
-                            continue;
-                        if (typeof rawUrl !== "string" || !rawUrl.trim())
-                            continue;
-                        next[name] = rawUrl.trim();
+                    else if (key === "customEndpoints" && value && typeof value === "object" && !Array.isArray(value)) {
+                        // Named custom endpoints from the settings form: { "<name>": "<url>" }.
+                        // Empty URLs delete the entry (and its key mapping stays until a new
+                        // key is saved). Names are validated so they always survive the
+                        // MINITOK_CUSTOM_BASE_URL_<NAME> env round-trip in execute().
+                        const next = {};
+                        for (const [rawName, rawUrl] of Object.entries(value)) {
+                            const name = normalizeCustomProviderName(rawName);
+                            if (!isValidCustomProviderName(name))
+                                continue;
+                            if (typeof rawUrl !== "string" || !rawUrl.trim())
+                                continue;
+                            next[name] = rawUrl.trim();
+                        }
+                        await this.context.secrets.store("minitok.secret.customEndpoints", JSON.stringify(next));
                     }
-                    await this.context.secrets.store("minitok.secret.customEndpoints", JSON.stringify(next));
+                    else if (key === "providerApiKey" && typeof value === "string") {
+                        // Legacy single-key message from an older webview: it always belongs to
+                        // the provider chosen in the settings form. Only the four CLI-known
+                        // providers get a slot; anything else has no environment contract.
+                        if (isApiKeyProvider(provider) && value)
+                            await this.context.secrets.store(apiKeySecretKey(provider), value);
+                    }
+                    else if (typeof value === "string") {
+                        await this.context.secrets.store(`minitok.secret.${key}`, value);
+                    }
                 }
-                else if (key === "providerApiKey" && typeof value === "string") {
-                    // Legacy single-key message from an older webview: it always belongs to
-                    // the provider chosen in the settings form. Only the four CLI-known
-                    // providers get a slot; anything else has no environment contract.
-                    if (isApiKeyProvider(provider) && value)
-                        await this.context.secrets.store(apiKeySecretKey(provider), value);
-                }
-                else if (typeof value === "string") {
-                    await this.context.secrets.store(`minitok.secret.${key}`, value);
-                }
-            }
-        this.view?.webview.postMessage({ type: "settings-saved" });
+            this.view?.webview.postMessage({ type: "settings-saved", ok: true });
+        }
+        catch (error) {
+            this.view?.webview.postMessage({ type: "settings-saved", ok: false, text: redactOutputText(String(error).slice(0, 300)) });
+        }
     }
     async checkUpdate() {
         (0, workspace_1.requireTrustedWorkspace)((0, workspace_1.workspacePath)());

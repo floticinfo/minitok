@@ -3,6 +3,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.RUN_DELEGATION_ENV = void 0;
 exports.entitlementServerUrl = entitlementServerUrl;
 exports.activateEntitlementSession = activateEntitlementSession;
+exports.meEntitlementSession = meEntitlementSession;
+exports.bindLicenseToAccount = bindLicenseToAccount;
 exports.statusEntitlementSession = statusEntitlementSession;
 exports.refreshEntitlementSession = refreshEntitlementSession;
 exports.deactivateEntitlementSession = deactivateEntitlementSession;
@@ -56,6 +58,57 @@ async function activateEntitlementSession(key, base = entitlementServerUrl()) {
             ok: res.ok && typeof body?.token === "string",
             status: res.status,
             token: typeof body?.token === "string" ? body.token : undefined,
+            plan: typeof entitlement.plan === "string" ? entitlement.plan : undefined,
+            error: typeof body?.error === "string" ? body.error : undefined,
+        };
+    }
+    catch (error) {
+        return { ok: false, status: 0, error: error instanceof Error ? error.message : String(error) };
+    }
+}
+/** GET /api/entitlement/me — resolve entitlement from an auth-server JWT. */
+async function meEntitlementSession(authToken, base = entitlementServerUrl()) {
+    try {
+        const res = await fetch(`${trimBase(base)}/api/entitlement/me`, {
+            headers: { Authorization: `Bearer ${authToken}` },
+            signal: AbortSignal.timeout(15_000),
+        });
+        const body = await parseJsonBody(res);
+        return {
+            ok: res.ok && body?.active === true,
+            status: res.status,
+            active: body?.active === true,
+            plan: typeof body?.plan === "string" ? body.plan : undefined,
+            error: typeof body?.error === "string" ? body.error : undefined,
+        };
+    }
+    catch (error) {
+        return { ok: false, status: 0, error: error instanceof Error ? error.message : String(error) };
+    }
+}
+/**
+ * POST /api/entitlement/bind — link a license key to the signed-in account.
+ *
+ * Migration path for customers holding a key that was activated before the
+ * OAuth entitlement flow: the key authorizes the binding and the verified
+ * auth token supplies the customer_id, so after this succeeds GET /me resolves.
+ */
+async function bindLicenseToAccount(key, authToken, base = entitlementServerUrl()) {
+    const trimmed = typeof key === "string" ? key.trim() : "";
+    if (!trimmed)
+        return { ok: false, status: 0, error: "An activation key is required." };
+    try {
+        const res = await fetch(`${trimBase(base)}/api/entitlement/bind`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ key: trimmed, auth_token: authToken }),
+            signal: AbortSignal.timeout(15_000),
+        });
+        const body = await parseJsonBody(res);
+        const entitlement = body?.entitlement || {};
+        return {
+            ok: res.ok && body?.bound === true,
+            status: res.status,
             plan: typeof entitlement.plan === "string" ? entitlement.plan : undefined,
             error: typeof body?.error === "string" ? body.error : undefined,
         };
@@ -262,11 +315,29 @@ async function requireEntitlement() {
 /**
  * Server-validated entitlement check with local cache fallback.
  *
+ * Auth-first: when an OAuth session exists, resolve entitlement via
+ * GET /api/entitlement/me with the auth token. Falls back to the
+ * SecretStorage-cached entitlement JWT, then to the offline `exp` claim.
+ *
  * Returns { checked: true, ... } when the server (or the offline fallback)
  * produced a decision, and { checked: false } when neither is available so
  * the caller can fall back to the CLI-based gate.
  */
 async function checkServerEntitlement(context) {
+    // Auth-first: OAuth session → /api/entitlement/me
+    const authSession = await (0, device_auth_1.readExtensionSession)(context);
+    if (authSession?.access_token) {
+        const me = await meEntitlementSession(authSession.access_token);
+        if (me.ok) {
+            invalidateEntitlementCache();
+            return { checked: true, allowed: true, plan: me.plan || null, message: undefined };
+        }
+        if (me.status === 404) {
+            return { checked: true, allowed: false, plan: null, message: "No active plan found for this account." };
+        }
+        // 401/403: auth token issue — fall through to cached entitlement token.
+    }
+    // Fallback: SecretStorage-cached entitlement JWT (legacy key-based flow).
     const cache = new entitlement_cache_1.EntitlementCache(context.secrets);
     const session = await cache.load();
     if (!session)
