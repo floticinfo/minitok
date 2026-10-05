@@ -6,6 +6,13 @@
 # The image runs as a non-root user. All runtime config is via env vars:
 #   PORT               (default 3000)
 #   MINITOK_JWT_SECRET (required in production — no secure default exists)
+#                      Signs the entitlement server's own tokens.
+#   OAUTH_JWT_SECRET   (required for /me and /bind) The shared secret the OAuth
+#                      server signs customer access tokens with. Must equal the
+#                      OAuth server's JWT_SECRET byte-for-byte. Falls back to
+#                      MINITOK_JWT_SECRET when they share one secret.
+#   OAUTH_JWT_ISSUER   (default "minitok-server")
+#   OAUTH_JWT_AUDIENCE (default "minitok:customer")
 
 FROM node:22-alpine AS deps
 WORKDIR /app
@@ -20,6 +27,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY index.js ./
 COPY middleware ./middleware
+COPY services ./services
 COPY models ./models
 COPY routes ./routes
 COPY public ./public
