@@ -189,7 +189,10 @@ test("error paths route their message through showToast", () => {
   assert.match(html, /m\.ok===false\)showToast\('Run failed|userMessage/);
   // Previously invisible messages now reach the user: mcp-connect and summary had no
   // render path, and info/activation/update-result only wrote into the settings card.
-  assert.match(html, /m\.type==='mcp-connect'\)\{showToast\(/);
+  // The single mcp-connect handler lives in the auth listener and owns both the
+  // pending state and the outcome, so the badge reflects a connect in flight.
+  assert.match(html, /m\.type==='mcp-connect'\)\{const badge=document\.getElementById\('mcpBadge'\);if\(m\.pending\)/);
+  assert.match(html, /if\(m\.ok\)showToast\(m\.text\|\|'MCP connected\.','info'\);else showToast\(m\.text\|\|'MCP connection failed\.','error'\)/);
   assert.match(html, /m\.type==='summary'\)\{if\(m\.text\)showToast\(/);
   assert.match(html, /m\.type==='info'\)\{[^}]*showToast\(m\.text,'info'\)/);
   assert.match(html, /m\.type==='activation'\)\{[^}]*showToast\(m\.text,'info'\)/);
@@ -324,8 +327,8 @@ test("sidebar run/dry restore after run end still respects not-entitled state (B
   assert.match(html, /entitledNow=entitled/, "auth-state handler must record the latest entitlement");
   assert.equal(
     (html.match(/run\.disabled=dry\.disabled=!entitledNow/g) || []).length,
-    4,
-    "result, stopped, timeout and new result handlers must all gate the restore on entitledNow"
+    3,
+    "the stopped, timeout and result handlers must all gate the restore on entitledNow"
   );
 
   const view = runWebview(html, [0, 1], ["loading", "authGate", "app", "logoutButton", "loginForm", "authPrompt", "authError", "run", "dry", "mcpBadge", "activateButton", "stop", "stage", "task", "state", "evidence"]);

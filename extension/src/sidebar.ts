@@ -159,6 +159,10 @@ function acquireMcpConfigLock(configPath: string) {
 const APPROVAL_TIMEOUT_MS = 30 * 60 * 1000;
 /** Extra time a run gets after that window before the sidebar kills it. */
 const RUN_TIMEOUT_MARGIN_MS = 5 * 60 * 1000;
+/** Workspace-scoped list of files the user chose to stop being asked about. */
+const ALLOWED_FILES_KEY = "minitok.allowedFiles";
+/** Cap on remembered files, oldest dropped first, so the list cannot grow without bound. */
+const MAX_ALLOWED_FILES = 200;
 
 /**
  * Timeouts for a sidebar run.
@@ -185,6 +189,70 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
   private approvalFile?: string;
   private activeRunId?: string;
   private activeRunStartedAt?: string;
+
+  /** Paths in the pending approval request, kept so "always allow" can record them. */
+  private pendingApprovalFiles: string[] = [];
+
+  /** Normalise a CLI-reported path for comparison against the remembered list. */
+  private static approvalKey(file: string): string {
+    const normalized = String(file || "").replace(/\\/g, "/").replace(/^\.\//, "").trim();
+    return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+  }
+
+  /** Files the user has chosen to stop being asked about, oldest first. */
+  private allowedFiles(): string[] {
+    const stored = this.context.workspaceState.get<string[]>(ALLOWED_FILES_KEY, []);
+    return Array.isArray(stored) ? stored.filter(entry => typeof entry === "string") : [];
+  }
+
+  /** True when every file in the request is already covered by a remembered approval. */
+  private isFullyAllowed(files: string[]): boolean {
+    if (!files.length) return false;
+    const allowed = new Set(this.allowedFiles().map(entry => minitokSidebar.approvalKey(entry)));
+    return files.every(file => allowed.has(minitokSidebar.approvalKey(file)));
+  }
+
+  /** Remember the pending request's files so later runs stop prompting for them. */
+  private async rememberApprovedFiles(): Promise<void> {
+    const incoming = this.pendingApprovalFiles
+      .map(file => minitokSidebar.approvalKey(file))
+      .filter(file => file.length > 0);
+    if (!incoming.length) return;
+    const merged: string[] = [];
+    const seen = new Set<string>();
+    // Newest first so the cap drops the entries added longest ago.
+    for (const file of [...incoming.reverse(), ...this.allowedFiles().map(entry => minitokSidebar.approvalKey(entry))]) {
+      if (seen.has(file)) continue;
+      seen.add(file);
+      merged.push(file);
+      if (merged.length >= MAX_ALLOWED_FILES) break;
+    }
+    await this.context.workspaceState.update(ALLOWED_FILES_KEY, merged);
+    this.view?.webview.postMessage({ type: "approval-trust", count: merged.length });
+  }
+
+  /** Write the approval answer for the pending request. Only "approve" is supported here. */
+  private async respondToApproval(): Promise<void> {
+    const approvalFile = this.approvalFile;
+    if (!approvalFile) return;
+    let request: { nonce?: string; run_id?: string | null } = {};
+    try {
+      request = JSON.parse(fs.readFileSync(approvalFile, "utf8"));
+    } catch {
+      this.view?.webview.postMessage({ type: "result", ok: false, text: "Approval request is unavailable." });
+      return;
+    }
+    const response = `${approvalFile}.response`;
+    const temp = `${response}.tmp-${process.pid}-${randomUUID()}`;
+    try {
+      fs.writeFileSync(temp, `${JSON.stringify({ decision: "approve", nonce: request.nonce, run_id: request.run_id })}\n`, { encoding: "utf8", mode: 0o600, flag: "wx" });
+      fs.renameSync(temp, response);
+    } catch (error) {
+      try { fs.unlinkSync(temp); } catch { }
+      throw error;
+    }
+    this.view?.webview.postMessage({ type: "approval", decision: "approve" });
+  }
   private activeSessionId?: string;
   private latestCliVersion?: string;
   private deviceLoginCancellation?: DeviceLoginCancellation;
@@ -365,7 +433,19 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
       } catch { /* best-effort: malformed context info */ }
     }
     if (line.startsWith("MINITOK_APPROVAL_REQUEST ")) {
-      try { this.view?.webview.postMessage({ type: "approval-request", request: JSON.parse(line.slice("MINITOK_APPROVAL_REQUEST ".length)) }); }
+      try {
+        const request = JSON.parse(line.slice("MINITOK_APPROVAL_REQUEST ".length)) as { files?: Array<{ file?: string }> };
+        const files = (request.files || []).map(entry => String(entry?.file || "")).filter(Boolean);
+        this.pendingApprovalFiles = files;
+        // Every file was already trusted by an earlier "always allow", so answer now
+        // instead of making the operator click through a request they already dismissed.
+        if (this.isFullyAllowed(files)) {
+          this.view?.webview.postMessage({ type: "approval-trust", count: this.allowedFiles().length });
+          void this.respondToApproval();
+          return;
+        }
+        this.view?.webview.postMessage({ type: "approval-request", request });
+      }
       catch { this.view?.webview.postMessage({ type: "log", stream: "stdout", text: "Invalid approval request received from minitok" }); }
     }
     const summary = /Summary:.*?(\d+) cycles,.*?(\d[\d,]*) tokens.*?(?:, ~\$(\d+(?:\.\d+)?))?/.exec(line);
@@ -401,7 +481,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
     await this.refreshAuth();
   }
 
-  private async handle(message: { command: string; task?: string; email?: string; password?: string; provider?: string; target?: string; checkpoint?: string; key?: string; settings?: Record<string, unknown>; secrets?: Record<string, string>; enterBehavior?: string; resume?: string; file?: string }) {
+  private async handle(message: { command: string; task?: string; email?: string; password?: string; provider?: string; target?: string; checkpoint?: string; key?: string; settings?: Record<string, unknown>; secrets?: Record<string, string>; enterBehavior?: string; resume?: string; file?: string; trust?: boolean; query?: boolean }) {
     // Every auth-status path below must settle with an auth-state post. A rejection
     // here was caught by the caller and reported as a task result, which the auth
     // gate ignores, so the sidebar stayed on "Loading minitok..." with no way to
@@ -438,7 +518,17 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
     const cwd = workspacePath();
     if (message.command === "show-output") { this.output.show(true); return; }
     if (message.command === "stop" || message.command === "interrupt") { this.stopProcess(); this.view?.webview.postMessage({ type: "stopped", text: message.command === "stop" ? "Run stopped." : "Run interrupted." }); return; }
+    if (message.command === "forget-approvals") {
+      // `query: true` only reports the remembered count so the panel can label itself on load.
+      if (message.query !== true) await this.context.workspaceState.update(ALLOWED_FILES_KEY, []);
+      this.view?.webview.postMessage({ type: "approval-trust", count: this.allowedFiles().length });
+      return;
+    }
     if (message.command === "approve" || message.command === "reject") {
+      // A rejection says nothing about the files, so forget the pending set rather than
+      // leaving paths around that a later "always allow" could pick up by accident.
+      if (message.command === "reject") this.pendingApprovalFiles = [];
+      if (message.command === "approve" && message.trust === true) await this.rememberApprovedFiles();
       if (this.approvalFile) {
         fs.mkdirSync(path.dirname(this.approvalFile), { recursive: true });
         let request: { nonce?: string; run_id?: string | null } = {};
