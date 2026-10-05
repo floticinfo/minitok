@@ -283,6 +283,8 @@ export async function requireEntitlement(): Promise<EntitlementState> {
   if (extensionContext) {
     const serverState = await checkServerEntitlement(extensionContext);
     if (serverState.checked) return serverState;
+    // Surface server errors so the user knows it is not "no plan".
+    if (serverState.message) throw new Error(serverState.message);
   }
   const entitlement = await checkEntitlement();
   if (!entitlement.allowed) throw new Error(entitlement.message || "An active paid minitok plan is required.");
@@ -301,6 +303,7 @@ export async function requireEntitlement(): Promise<EntitlementState> {
  * the caller can fall back to the CLI-based gate.
  */
 export async function checkServerEntitlement(context: vscode.ExtensionContext): Promise<EntitlementState> {
+  let serverError: string | undefined;
   // Auth-first: OAuth session → /api/entitlement/me
   const authSession = await readExtensionSession(context);
   if (authSession?.access_token) {
@@ -311,6 +314,12 @@ export async function checkServerEntitlement(context: vscode.ExtensionContext): 
     }
     if (me.status === 404) {
       return { checked: true, allowed: false, plan: null, message: "No active plan found for this account." };
+    }
+    // 5xx: server error — surface it distinctly so the user does not confuse
+    // an outage with "no plan". Fall through to the cached token as a degraded
+    // path, but remember the server error for the final message.
+    if (me.status >= 500) {
+      serverError = me.error || `Entitlement server returned ${me.status}.`;
     }
     // 401/403: auth token issue — fall through to cached entitlement token.
   }
@@ -343,7 +352,9 @@ export async function checkServerEntitlement(context: vscode.ExtensionContext): 
   // Network failure (status 0): offline fallback via the `exp` claim.
   const offline = await cache.loadValidOffline();
   if (offline) return { checked: true, allowed: true, plan: offline.payload.plan || null, message: undefined, cached: true };
-  return { checked: false, allowed: false };
+  // Nothing produced a decision. If the server errored, say so — otherwise the
+  // caller treats it as "no plan" which is misleading during an outage.
+  return { checked: false, allowed: false, message: serverError ? `Entitlement server error: ${serverError}` : undefined };
 }
 
 export function checkEntitlement(): Promise<EntitlementState> {
