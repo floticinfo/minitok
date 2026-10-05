@@ -198,6 +198,10 @@
       .offline,.error {
         color:var(--vscode-testing-iconFailed)
       }
+      .badge.busy {
+        opacity:.6;
+        cursor:progress
+      }
       .card {
         border:1px solid var(--vscode-sideBar-border);
         border-radius:8px;
@@ -889,8 +893,8 @@
         </div>
         <div class="header-actions">
 
-          <button id="mcpBadge" class="badge" type="button" title="Connect minitok MCP" aria-label="Connect minitok MCP" aria-live="polite" disabled>
-            MCP
+          <button id="mcpBadge" class="badge offline" type="button" title="Connect minitok MCP" aria-label="Connect minitok MCP" aria-live="polite" disabled>
+            MCP: offline
           </button>
           <div id="mcpHosts" class="empty" hidden>
           </div>
@@ -1198,12 +1202,16 @@ for(const group of document.querySelectorAll('.settings-group')){const summary=g
       run.disabled=!entitled;
       dry.disabled=!entitled;
       document.getElementById('mcpBadge').disabled=!entitled;
+      if(!entitled){const badge=document.getElementById('mcpBadge');badge.className='badge';badge.textContent='MCP';}
       document.getElementById('activateRow').hidden=!authenticated||entitled;
       // B2: toast exactly once for not-entitled -- a dedicated branch below used
       // to fire a second toast right after the authMsg one.
       const authMsg=authenticated&&!entitled?(`${m.text||'This account is not entitled to run minitok.'} Link a license key or get a plan to continue.`):(authenticated?'':(checking?'':(m.text||'')));authError.textContent='';if(authMsg)showToast(authMsg,'error');
        return}if(m.type==='bind-panel-toggle'){const p=document.getElementById('bindPanel');p.hidden=!p.hidden;if(!p.hidden)document.getElementById('bindKeyInput').focus();
       return}if(m.type==='bind-result'){if(m.ok){document.getElementById('bindPanel').hidden=true;document.getElementById('bindKeyInput').value='';showToast(m.text||'License linked.','info');}else{showToast(m.text||'Could not link the license key.','error');}
+      return}if(m.type==='mcp'){const badge=document.getElementById('mcpBadge');badge.className='badge '+(m.ok?'online':'offline');badge.textContent=m.ok?'MCP: online':'MCP: offline';if(m.ok)showToast(m.text||'MCP connected.','info');else if(m.text)showToast(m.text,'error');
+      return}if(m.type==='mcp-connect'){const badge=document.getElementById('mcpBadge');if(m.pending){badge.classList.add('busy');badge.disabled=true;showToast('Connecting MCP...','info');return}badge.classList.remove('busy');badge.disabled=false;if(m.ok)showToast(m.text||'MCP connected.','info');else showToast(m.text||'MCP connection failed.','error');
+      return}if(m.type==='mcp-hosts'){if(m.hosts&&m.hosts.length){const list=m.hosts.map(h=>`${h.name}${h.detected?' ✓':''}`).join(', ');showToast(`Detected MCP hosts: ${list}`,'info');}else{showToast('No MCP hosts detected.','info');}
       return}if(m.type==='license'){return}if(m.type==='entitlement'){stage.textContent='Entitlement required';
       stage.className='task-status error';
       showToast(m.text||'An active paid plan is required.','error');
@@ -1246,6 +1254,12 @@ for(const group of document.querySelectorAll('.settings-group')){const summary=g
       document.getElementById("browserLoginButton")?.addEventListener("click",()=>authVscode.postMessage({command:"device-login"}));
       document.getElementById("cancelLoginButton")?.addEventListener("click",()=>authVscode.postMessage({command:"cancel-login"}));
       document.getElementById("logoutButton")?.addEventListener("click",()=>authVscode.postMessage({command:"device-logout"}));
+      // MCP badge click: check status first, then connect if offline.
+      document.getElementById("mcpBadge")?.addEventListener("click",()=>{
+        const badge=document.getElementById("mcpBadge");
+        if(badge.classList.contains("online")){authVscode.postMessage({command:"mcp-status"});}
+        else{authVscode.postMessage({command:"mcp-connect"});}
+      });
     </script>
   </body>
 </html>
