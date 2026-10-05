@@ -7,6 +7,7 @@ const { PREAUTHORIZED } = require("../../pipeline/authorization");
 const { resolveExecutionPolicy } = require("../../goal/execution_policy");
 const { loadConfig } = require("../../config/loader");
 const path = require("path");
+const fs = require("fs");
 const crypto = require("crypto");
 const { resolveServerUrl } = require("./server-config");
 const { capabilityPermissions, FULL_TEST_PROFILE } = require("../../entitlement/capability");
@@ -70,6 +71,10 @@ async function cmdRun(task, opts = {}) {
   let repoRoot;
   if (opts.repo) {
     repoRoot = path.resolve(opts.repo);
+    if (!fs.existsSync(repoRoot)) {
+      printError(`Repository path does not exist: ${repoRoot}`);
+      return 1;
+    }
   } else {
     try {
       const wm = new WorkspaceManager();
