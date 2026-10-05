@@ -258,6 +258,14 @@ async function cmdRun(task, opts = {}) {
       codingAdapter: opts.codingAdapter,
       researchAdapter: opts.researchAdapter,
       reviewAdapter: opts.reviewAdapter,
+      // The pipeline already reported structured progress through onProgress
+      // (phase/state/cycle/tokens/cost) but nothing consumed it, so the editor
+      // sidebar only ever showed the coarse "Planning/Implementing" stage label.
+      // Emit it on stdout with the same line protocol as approvals so the
+      // Extension needs no new transport.
+      onProgress: (event) => {
+        try { console.log(`MINITOK_PROGRESS ${JSON.stringify(event)}`); } catch { /* best-effort */ }
+      },
     });
 
     // Save results — best-effort, never block pipeline on write errors

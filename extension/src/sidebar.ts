@@ -339,6 +339,14 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
   private progress(line: string) {
     const stage = /Gathering repository intelligence|Planning|Implementing|Running verification|Reviewing|Evaluating goal progress/.exec(line)?.[0];
     if (stage) this.view?.webview.postMessage({ type: "progress", stage });
+    if (line.startsWith("MINITOK_PROGRESS ")) {
+      try {
+        const payload = JSON.parse(line.slice("MINITOK_PROGRESS ".length)) as { phase?: string; state?: string; cycle?: number; passed?: boolean; total_tokens?: { input?: number; output?: number }; total_cost?: number };
+        if (payload && payload.phase && payload.state) {
+          this.view?.webview.postMessage({ type: "phase", event: payload });
+        }
+      } catch { /* best-effort: malformed progress event */ }
+    }
     if (line.startsWith("MINITOK_SESSION_INFO ")) {
       try { const payload = JSON.parse(line.slice("MINITOK_SESSION_INFO ".length)); this.activeSessionId = payload.session_id; }
       catch { /* best-effort: malformed session info */ }

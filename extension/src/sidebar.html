@@ -971,6 +971,7 @@
         <div class="empty" role="alert" aria-live="assertive">
           minitok is waiting for your approval before applying changes.
         </div>
+        <ul id="approvalFiles" class="changed-files" aria-label="Files awaiting approval"></ul>
         <div class="actions">
           <button id="approve" class="success" type="button">
             Approve
@@ -1257,8 +1258,9 @@ window.addEventListener('message',event=>{const m=event.data;
       return}if(m.type==='bind-result'){if(m.ok){document.getElementById('bindPanel').hidden=true;document.getElementById('bindKeyInput').value='';showToast(m.text||'License linked.','info');}else{showToast(m.text||'Could not link the license key.','error');}
       return}if(m.type==='progress'){if(m.text)stage.textContent=m.text;
       return}if(m.type==='summary'){if(m.text)showToast(m.text,'info');
+      return}if(m.type==='phase'){const e=m.event||{};const label={intel:'Gathering repository intelligence',plan:'Planning',work:'Implementing',review:'Reviewing',verify:'Verifying'}[e.phase]||e.phase;const done=e.state==='completed';stage.textContent=done?`${label} ✓`:`${label}…`;stage.className='task-status '+(e.phase==='verify'&&e.state==='completed'&&e.passed===false?'error':'running');if(e.state!=='started'&&e.total_tokens){const tin=Number(e.total_tokens.input||0),tout=Number(e.total_tokens.output||0);const cost=Number(e.total_cost||0);document.getElementById('productStatus').textContent=`${tin+tout} tokens · $${cost.toFixed(4)}`;}
       return}if(m.type==='context-info'){if(m.text){showToast('Attachments: '+m.text,m.ok===false?'error':'info');add('[context] '+m.text);}
-      return}if(m.type==='approval-request'){const ap=document.getElementById('approval');ap.hidden=false;const label=document.getElementById('approvalLabel');if(label&&m.request&&m.request.summary)label.textContent=m.request.summary;document.getElementById('approve').focus();
+      return}if(m.type==='approval-request'){const ap=document.getElementById('approval');ap.hidden=false;const label=document.getElementById('approvalLabel');const req=m.request||{};if(label)label.textContent=req.summary||`Review ${Array.isArray(req.files)?req.files.length:0} change(s)`;const fileList=document.getElementById('approvalFiles');if(fileList){const files=Array.isArray(req.files)?req.files:[];fileList.textContent='';for(const f of files){const li=document.createElement('li');li.textContent=`${f.action?f.action+': ':''}${f.file||''}`;fileList.appendChild(li)}fileList.hidden=files.length===0}document.getElementById('approve').focus();
       return}if(m.type==='result'){document.getElementById('approval').hidden=true;running=false;stop.disabled=true;stop.setAttribute('aria-disabled','true');run.disabled=dry.disabled=!entitledNow;run.setAttribute('aria-disabled',String(!entitledNow));dry.setAttribute('aria-disabled',String(!entitledNow));stage.textContent=m.ok?'Done':'Failed';stage.className='task-status '+(m.ok?'success':'error');const displayText=m.userMessage||m.text;if(displayText)showToast(displayText,m.ok?'info':'error');add((m.ok?'[result] ':'[error] ')+(displayText||''));renderChangedFiles(m.evidence);return
       // Track the conversation so the next input becomes a follow-up turn.
       if(m.sessionId)currentSessionId=m.sessionId;
