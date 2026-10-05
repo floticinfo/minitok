@@ -294,3 +294,20 @@ test("extension commands target the folder that is open in the editor", () => {
   assert.match(extension, /\["run", task, "--repo", cwd/);
   assert.match(extension, /\["status", "--repo", statusCwd\]/);
 });
+
+test("sidebar webview handles run lifecycle and approval messages", () => {
+  // Extension posts these messages during a run; the webview must handle each,
+  // otherwise progress, approval prompts, and summaries never reach the UI.
+  assert.match(sidebarHtml, /if\(m\.type==='progress'\)\{if\(m\.text\)stage\.textContent=m\.text/);
+  assert.match(sidebarHtml, /if\(m\.type==='summary'\)\{if\(m\.text\)showToast\(m\.text,'info'\)/);
+  assert.match(sidebarHtml, /if\(m\.type==='approval-request'\)\{/);
+  // The approval card is revealed on request and hidden once the run settles.
+  assert.match(sidebarHtml, /ap\.hidden=false/);
+  assert.match(sidebarHtml, /getElementById\('approval'\)\.hidden=true/);
+  // Approve/Reject forward a decision command the extension maps to the approval file.
+  assert.match(sidebarHtml, /getElementById\("approve"\)\?\.addEventListener\("click"[\s\S]*?command:"approve"/);
+  assert.match(sidebarHtml, /getElementById\("reject"\)\?\.addEventListener\("click"[\s\S]*?command:"reject"/);
+  // The extension maps the commands onto the approval response file.
+  assert.match(sidebar, /message\.command === "approve" \|\| message\.command === "reject"/);
+});
+

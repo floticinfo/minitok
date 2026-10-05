@@ -324,8 +324,8 @@ test("sidebar run/dry restore after run end still respects not-entitled state (B
   assert.match(html, /entitledNow=entitled/, "auth-state handler must record the latest entitlement");
   assert.equal(
     (html.match(/run\.disabled=dry\.disabled=!entitledNow/g) || []).length,
-    3,
-    "result, stopped and timeout handlers must all gate the restore on entitledNow"
+    4,
+    "result, stopped, timeout and new result handlers must all gate the restore on entitledNow"
   );
 
   const view = runWebview(html, [0, 1], ["loading", "authGate", "app", "logoutButton", "loginForm", "authPrompt", "authError", "run", "dry", "mcpBadge", "activateButton", "stop", "stage", "task", "state", "evidence"]);

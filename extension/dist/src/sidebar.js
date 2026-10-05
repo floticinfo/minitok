@@ -269,6 +269,11 @@ class minitokSidebar {
                 this.view?.webview.postMessage({ type: "result", ok: false, text: redactOutputText(String(error)) });
             });
         });
+        // Probe MCP health once the sidebar is visible so the badge reflects the
+        // real server state without requiring a manual click.
+        void this.checkMcpHealth().catch(() => {
+            // Silently ignore: the badge will show "MCP: offline" via the HTML default.
+        });
     }
     async execute(args, cwd, extraEnv = {}) {
         (0, workspace_1.requireTrustedWorkspace)(cwd);
@@ -1133,6 +1138,9 @@ class minitokSidebar {
         };
     }
     async connectMcp(target) {
+        // Reflect the in-flight state on the badge so a slow connect cannot be
+        // double-triggered by repeated clicks while the dialog/CLI is working.
+        this.view?.webview.postMessage({ type: "mcp-connect", pending: true });
         // Validate local permission configuration before host detection, token refresh,
         // or entitlement checks so a simple settings typo is reported directly.
         (0, workspace_1.configuredMcpScopes)();
@@ -1210,13 +1218,23 @@ class minitokSidebar {
             configLock.release();
         }
         this.view?.webview.postMessage({ type: "mcp-connect", ok: true, text: `Connected to ${host}. ${hasBackup && backup ? `Backup: ${path.basename(backup)}` : "Backup: none (new configuration)."}` });
+        // Connecting can change entitlement surface (MCP is part of the run path),
+        // so re-resolve the gate instead of leaving a stale not-entitled badge.
+        await this.refreshAuth();
     }
     async checkMcpHealth() {
         (0, workspace_1.requireTrustedWorkspace)((0, workspace_1.workspacePath)());
         // Scope errors are local configuration errors; surface them before token
         // rotation, entitlement lookup, or process spawning.
         (0, workspace_1.configuredMcpScopes)();
-        const cli = (0, workspace_1.cliPath)();
+        let cli;
+        try {
+            cli = (0, workspace_1.cliPath)();
+        }
+        catch (error) {
+            this.view?.webview.postMessage({ type: "mcp", ok: false, text: redactOutputText(`minitok CLI not found: ${error instanceof Error ? error.message : String(error)}. Install with: npm install -g @flotic/minitok`) });
+            return;
+        }
         if (this.mcpProcess) {
             this.view?.webview.postMessage({ type: "mcp", ok: false, text: "MCP health check already running" });
             return;

@@ -935,13 +935,13 @@
         <div id="attached" class="empty" role="status" aria-live="polite">
         </div>
         <div class="actions">
-          <button id="run" type="button" disabled>
+          <button id="run" type="button" disabled aria-label="Run task" title="Run task">
             Run
           </button>
-          <button id="dry" class="secondary" type="button" disabled>
+          <button id="dry" class="secondary" type="button" disabled aria-label="Dry run task" title="Dry run task">
             Dry run
           </button>
-          <button id="stop" class="danger" type="button" disabled aria-disabled="true">
+          <button id="stop" class="danger" type="button" disabled aria-label="Stop task (press Escape twice while running)" title="Stop task (press Escape twice while running)">
             Stop
           </button>
         </div>
@@ -980,10 +980,10 @@
           Enter key behavior
         </div>
         <div class="toggle-actions">
-          <button id="enterRun" class="toggle-choice" type="button" aria-pressed="true">
+          <button id="enterRun" class="toggle-choice" type="button" aria-pressed="true" aria-label="Enter runs the task" title="Enter runs the task">
             Enter runs
           </button>
-          <button id="enterNewline" class="toggle-choice" type="button" aria-pressed="false">
+          <button id="enterNewline" class="toggle-choice" type="button" aria-pressed="false" aria-label="Shift+Enter runs the task, Enter adds a newline" title="Shift+Enter runs the task, Enter adds a newline">
             Shift+Enter runs
           </button>
         </div>
@@ -1209,10 +1209,13 @@ for(const group of document.querySelectorAll('.settings-group')){const summary=g
       const authMsg=authenticated&&!entitled?(`${m.text||'This account is not entitled to run minitok.'} Link a license key or get a plan to continue.`):(authenticated?'':(checking?'':(m.text||'')));authError.textContent='';if(authMsg)showToast(authMsg,'error');
        return}if(m.type==='bind-panel-toggle'){const p=document.getElementById('bindPanel');p.hidden=!p.hidden;if(!p.hidden)document.getElementById('bindKeyInput').focus();
       return}if(m.type==='bind-result'){if(m.ok){document.getElementById('bindPanel').hidden=true;document.getElementById('bindKeyInput').value='';showToast(m.text||'License linked.','info');}else{showToast(m.text||'Could not link the license key.','error');}
-      return}if(m.type==='mcp'){const badge=document.getElementById('mcpBadge');badge.className='badge '+(m.ok?'online':'offline');badge.textContent=m.ok?'MCP: online':'MCP: offline';if(m.ok)showToast(m.text||'MCP connected.','info');else if(m.text)showToast(m.text,'error');
+      return}if(m.type==='progress'){if(m.text)stage.textContent=m.text;
+      return}if(m.type==='summary'){if(m.text)showToast(m.text,'info');
+      return}if(m.type==='approval-request'){const ap=document.getElementById('approval');ap.hidden=false;const label=document.getElementById('approvalLabel');if(label&&m.request&&m.request.summary)label.textContent=m.request.summary;document.getElementById('approve').focus();
+      return}if(m.type==='result'){document.getElementById('approval').hidden=true;running=false;stop.disabled=true;stop.setAttribute('aria-disabled','true');run.disabled=dry.disabled=!entitledNow;run.setAttribute('aria-disabled',String(!entitledNow));dry.setAttribute('aria-disabled',String(!entitledNow));stage.textContent=m.ok?'Done':'Failed';stage.className='task-status '+(m.ok?'success':'error');const displayText=m.userMessage||m.text;if(displayText)showToast(displayText,m.ok?'info':'error');add((m.ok?'[result] ':'[error] ')+(displayText||''));return}if(m.type==='mcp'){const badge=document.getElementById('mcpBadge');badge.className='badge '+(m.ok?'online':'offline');badge.textContent=m.ok?'MCP: online':'MCP: offline';if(m.ok)showToast(m.text||'MCP connected.','info');else if(m.text)showToast(m.text,'error');
       return}if(m.type==='mcp-connect'){const badge=document.getElementById('mcpBadge');if(m.pending){badge.classList.add('busy');badge.disabled=true;showToast('Connecting MCP...','info');return}badge.classList.remove('busy');badge.disabled=false;if(m.ok)showToast(m.text||'MCP connected.','info');else showToast(m.text||'MCP connection failed.','error');
       return}if(m.type==='mcp-hosts'){if(m.hosts&&m.hosts.length){const list=m.hosts.map(h=>`${h.name}${h.detected?' ✓':''}`).join(', ');showToast(`Detected MCP hosts: ${list}`,'info');}else{showToast('No MCP hosts detected.','info');}
-      return}if(m.type==='license'){return}if(m.type==='entitlement'){stage.textContent='Entitlement required';
+      return}if(m.type==='license'){return}if(m.type==='entitlement'){stage.textContent=m.text||'Entitlement required';
       stage.className='task-status error';
       showToast(m.text||'An active paid plan is required.','error');
       return}if(m.type==='billing'){showToast(m.text||'Billing action failed.','error');
@@ -1254,6 +1257,8 @@ for(const group of document.querySelectorAll('.settings-group')){const summary=g
       document.getElementById("browserLoginButton")?.addEventListener("click",()=>authVscode.postMessage({command:"device-login"}));
       document.getElementById("cancelLoginButton")?.addEventListener("click",()=>authVscode.postMessage({command:"cancel-login"}));
       document.getElementById("logoutButton")?.addEventListener("click",()=>authVscode.postMessage({command:"device-logout"}));
+      document.getElementById("approve")?.addEventListener("click",()=>{document.getElementById("approval").hidden=true;authVscode.postMessage({command:"approve"})});
+      document.getElementById("reject")?.addEventListener("click",()=>{document.getElementById("approval").hidden=true;authVscode.postMessage({command:"reject"})});
       // MCP badge click: check status first, then connect if offline.
       document.getElementById("mcpBadge")?.addEventListener("click",()=>{
         const badge=document.getElementById("mcpBadge");

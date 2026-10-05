@@ -306,6 +306,9 @@ async function requireEntitlement() {
         const serverState = await checkServerEntitlement(extensionContext);
         if (serverState.checked)
             return serverState;
+        // Surface server errors so the user knows it is not "no plan".
+        if (serverState.message)
+            throw new Error(serverState.message);
     }
     const entitlement = await checkEntitlement();
     if (!entitlement.allowed)
@@ -324,6 +327,7 @@ async function requireEntitlement() {
  * the caller can fall back to the CLI-based gate.
  */
 async function checkServerEntitlement(context) {
+    let serverError;
     // Auth-first: OAuth session → /api/entitlement/me
     const authSession = await (0, device_auth_1.readExtensionSession)(context);
     if (authSession?.access_token) {
@@ -334,6 +338,12 @@ async function checkServerEntitlement(context) {
         }
         if (me.status === 404) {
             return { checked: true, allowed: false, plan: null, message: "No active plan found for this account." };
+        }
+        // 5xx: server error — surface it distinctly so the user does not confuse
+        // an outage with "no plan". Fall through to the cached token as a degraded
+        // path, but remember the server error for the final message.
+        if (me.status >= 500) {
+            serverError = me.error || `Entitlement server returned ${me.status}.`;
         }
         // 401/403: auth token issue — fall through to cached entitlement token.
     }
@@ -367,7 +377,9 @@ async function checkServerEntitlement(context) {
     const offline = await cache.loadValidOffline();
     if (offline)
         return { checked: true, allowed: true, plan: offline.payload.plan || null, message: undefined, cached: true };
-    return { checked: false, allowed: false };
+    // Nothing produced a decision. If the server errored, say so — otherwise the
+    // caller treats it as "no plan" which is misleading during an outage.
+    return { checked: false, allowed: false, message: serverError ? `Entitlement server error: ${serverError}` : undefined };
 }
 function checkEntitlement() {
     // The admin bypass is async (secret storage read), so it resolves before the
