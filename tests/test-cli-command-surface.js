@@ -22,7 +22,14 @@ const EXPECTED_COMMANDS = [
 test("CLI --help lists exactly the expected top-level commands", () => {
   const r = spawnSync(process.execPath, [bin, "--help"], { encoding: "utf8" });
   assert.equal(r.status, 0, `--help failed: ${r.stderr}`);
-  const listed = r.stdout.split(/\r?\n/)
+  // Only parse the commander "Commands:" section so example lines in the
+  // "Getting started" footer (e.g. "  minitok activate ...") are not mistaken
+  // for top-level command entries. The section runs until the next blank line.
+  const section = r.stdout.split(/\r?\n/);
+  const start = section.findIndex(l => /^\s*Commands:/.test(l));
+  const body = section.slice(start < 0 ? 0 : start + 1);
+  const end = body.findIndex(l => l.trim() === "");
+  const listed = body.slice(0, end < 0 ? body.length : end)
     .map(l => l.match(/^ {2}([a-z][a-z0-9|-]+)\s/))
     .filter(Boolean)
     .map(m => m[1]);
