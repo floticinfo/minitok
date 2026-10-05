@@ -11,6 +11,7 @@ const crypto = require("crypto");
 const { resolveServerUrl } = require("./server-config");
 const { capabilityPermissions, FULL_TEST_PROFILE } = require("../../entitlement/capability");
 const { createRunSession, loadRunSession, latestRunSession, appendRunEvent, buildSessionContextBlock } = require("./run-session-store");
+const { expandTaskContext } = require("./task-context");
 
 // Resolve the session this run belongs to and prepend prior-turn context.
 // A corrupt or unknown --resume id falls back to a fresh session rather than
@@ -87,7 +88,11 @@ async function cmdRun(task, opts = {}) {
   const contextualTask = runSession && opts.resume
     ? `${buildSessionContextBlock(runSession)}${task}`
     : task;
-  const pipelineTask = contextualTask;
+  // Resolve the Extension's @file / @folder attachments against the repository.
+  // Without this the markers reached the model as literal text it cannot read,
+  // so "Attach file" silently did nothing.
+  const { task: pipelineTask, expanded, skipped } = expandTaskContext(contextualTask, repoRoot);
+  if (expanded > 0 || skipped > 0) console.log(`MINITOK_CONTEXT_INFO ${JSON.stringify({ expanded, skipped })}`);
   // Tell the extension (and any log reader) which thread this run belongs to.
   // Session events use the same line protocol as approvals so the extension
   // needs no extra transport.

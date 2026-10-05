@@ -1257,6 +1257,7 @@ window.addEventListener('message',event=>{const m=event.data;
       return}if(m.type==='bind-result'){if(m.ok){document.getElementById('bindPanel').hidden=true;document.getElementById('bindKeyInput').value='';showToast(m.text||'License linked.','info');}else{showToast(m.text||'Could not link the license key.','error');}
       return}if(m.type==='progress'){if(m.text)stage.textContent=m.text;
       return}if(m.type==='summary'){if(m.text)showToast(m.text,'info');
+      return}if(m.type==='context-info'){if(m.text){showToast('Attachments: '+m.text,m.ok===false?'error':'info');add('[context] '+m.text);}
       return}if(m.type==='approval-request'){const ap=document.getElementById('approval');ap.hidden=false;const label=document.getElementById('approvalLabel');if(label&&m.request&&m.request.summary)label.textContent=m.request.summary;document.getElementById('approve').focus();
       return}if(m.type==='result'){document.getElementById('approval').hidden=true;running=false;stop.disabled=true;stop.setAttribute('aria-disabled','true');run.disabled=dry.disabled=!entitledNow;run.setAttribute('aria-disabled',String(!entitledNow));dry.setAttribute('aria-disabled',String(!entitledNow));stage.textContent=m.ok?'Done':'Failed';stage.className='task-status '+(m.ok?'success':'error');const displayText=m.userMessage||m.text;if(displayText)showToast(displayText,m.ok?'info':'error');add((m.ok?'[result] ':'[error] ')+(displayText||''));renderChangedFiles(m.evidence);return
       // Track the conversation so the next input becomes a follow-up turn.

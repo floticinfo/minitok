@@ -343,6 +343,19 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
       try { const payload = JSON.parse(line.slice("MINITOK_SESSION_INFO ".length)); this.activeSessionId = payload.session_id; }
       catch { /* best-effort: malformed session info */ }
     }
+    if (line.startsWith("MINITOK_CONTEXT_INFO ")) {
+      try {
+        const payload = JSON.parse(line.slice("MINITOK_CONTEXT_INFO ".length));
+        const attached = Number(payload.expanded || 0);
+        const skipped = Number(payload.skipped || 0);
+        if (attached > 0 || skipped > 0) {
+          const parts = [];
+          if (attached > 0) parts.push(`${attached} attachment${attached === 1 ? "" : "s"} included`);
+          if (skipped > 0) parts.push(`${skipped} skipped`);
+          this.view?.webview.postMessage({ type: "context-info", ok: skipped === 0, text: parts.join(", ") });
+        }
+      } catch { /* best-effort: malformed context info */ }
+    }
     if (line.startsWith("MINITOK_APPROVAL_REQUEST ")) {
       try { this.view?.webview.postMessage({ type: "approval-request", request: JSON.parse(line.slice("MINITOK_APPROVAL_REQUEST ".length)) }); }
       catch { this.view?.webview.postMessage({ type: "log", stream: "stdout", text: "Invalid approval request received from minitok" }); }
