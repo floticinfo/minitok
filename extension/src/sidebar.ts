@@ -185,6 +185,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
   private approvalFile?: string;
   private activeRunId?: string;
   private activeRunStartedAt?: string;
+  private activeSessionId?: string;
   private latestCliVersion?: string;
   private deviceLoginCancellation?: DeviceLoginCancellation;
   // entitlementCache removed: license management is auth-based only.
@@ -338,6 +339,10 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
   private progress(line: string) {
     const stage = /Gathering repository intelligence|Planning|Implementing|Running verification|Reviewing|Evaluating goal progress/.exec(line)?.[0];
     if (stage) this.view?.webview.postMessage({ type: "progress", stage });
+    if (line.startsWith("MINITOK_SESSION_INFO ")) {
+      try { const payload = JSON.parse(line.slice("MINITOK_SESSION_INFO ".length)); this.activeSessionId = payload.session_id; }
+      catch { /* best-effort: malformed session info */ }
+    }
     if (line.startsWith("MINITOK_APPROVAL_REQUEST ")) {
       try { this.view?.webview.postMessage({ type: "approval-request", request: JSON.parse(line.slice("MINITOK_APPROVAL_REQUEST ".length)) }); }
       catch { this.view?.webview.postMessage({ type: "log", stream: "stdout", text: "Invalid approval request received from minitok" }); }
@@ -375,7 +380,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
     await this.refreshAuth();
   }
 
-  private async handle(message: { command: string; task?: string; email?: string; password?: string; provider?: string; target?: string; checkpoint?: string; key?: string; settings?: Record<string, unknown>; secrets?: Record<string, string>; enterBehavior?: string }) {
+  private async handle(message: { command: string; task?: string; email?: string; password?: string; provider?: string; target?: string; checkpoint?: string; key?: string; settings?: Record<string, unknown>; secrets?: Record<string, string>; enterBehavior?: string; resume?: string }) {
     // Every auth-status path below must settle with an auth-state post. A rejection
     // here was caught by the caller and reported as a task result, which the auth
     // gate ignores, so the sidebar stayed on "Loading minitok..." with no way to
@@ -463,11 +468,16 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
       }
       this.activeRunId = runId;
       this.activeRunStartedAt = startedAt;
+    // A brand-new run starts a fresh conversation; only a resumed run carries
+    // the prior session id forward. Clear it so a failed resume doesn't leave
+    // a stale id behind for the next fresh run.
+    if (!message.resume) this.activeSessionId = undefined;
     const evidenceSetting = this.effectiveEvidencePath();
     workspaceRelativePath(cwd!, evidenceSetting, "evidencePath");
     const args = ["run", message.task, "--repo", cwd!, "--evidence-path", evidenceSetting, "--run-id", runId];
     if (message.command === "dry-run") args.push("--dry-run");
     else if (autoApprove()) args.push("--auto-accept");
+    if (this.activeSessionId) args.push("--resume", this.activeSessionId);
       // P-2 fix: an admin session authorizes this run through a one-time,
       // runId-bound server token instead of the local signed entitlement. The
       // admin token itself stays in SecretStorage and never crosses into the
@@ -483,14 +493,14 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
       await this.context.workspaceState.update("minitok.history", [...history.slice(-19), { runId, ...taskRecord(message.task || ""), startedAt, completedAt: new Date().toISOString(), status: "completed", success: true, totalTokens, cost: evidence?.cost ?? null, evidencePath: cwd ? this.evidenceFile(cwd) : null, patchPath: cwd ? path.join(cwd, ".minitok", "last-run.patch") : null, checkpointPath: checkpoint, enterBehavior: message.enterBehavior || "enter-run" }]);
       const safeText = redactOutputText(text);
       const safePatch = patch ? redactOutputText(patch) : patch;
-      this.view?.webview.postMessage({ type: "result", ok: true, text: safeText, evidence, patch: safePatch }); if (safePatch) this.view?.webview.postMessage({ type: "patch", patch: safePatch });
+      this.view?.webview.postMessage({ type: "result", ok: true, text: safeText, evidence, patch: safePatch, sessionId: this.activeSessionId }); if (safePatch) this.view?.webview.postMessage({ type: "patch", patch: safePatch });
     } catch (error) {
       const history = this.context.workspaceState.get<Array<Record<string, unknown>>>("minitok.history", []);
       const rawError = String(error);
       const safeError = redactOutputText(rawError);
       if (this.activeRunId) await this.context.workspaceState.update("minitok.history", [...history.slice(-19), { runId: this.activeRunId, ...taskRecord(message.task || ""), startedAt: this.activeRunStartedAt, completedAt: new Date().toISOString(), status: "failed", success: false, error: safeError, enterBehavior: message.enterBehavior || "enter-run" }]);
       this.view?.webview.postMessage({ type: "result", ok: false, text: safeError, runId: this.activeRunId, errorDetail: safeError, userMessage: toUserFriendlyError(safeError) });
-    } finally { this.activeRunId = undefined; this.activeRunStartedAt = undefined; }
+    } finally { this.activeRunId = undefined; this.activeRunStartedAt = undefined; /* keep activeSessionId for the next follow-up turn */ }
   }
   // Checkout is the only billing action any surface reaches: the webviews dropped
   // their plan-management button, so nothing asks for the billing portal and

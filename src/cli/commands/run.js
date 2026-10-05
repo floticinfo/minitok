@@ -10,6 +10,28 @@ const path = require("path");
 const crypto = require("crypto");
 const { resolveServerUrl } = require("./server-config");
 const { capabilityPermissions, FULL_TEST_PROFILE } = require("../../entitlement/capability");
+const { createRunSession, loadRunSession, latestRunSession, appendRunEvent, buildSessionContextBlock } = require("./run-session-store");
+
+// Resolve the session this run belongs to and prepend prior-turn context.
+// A corrupt or unknown --resume id falls back to a fresh session rather than
+// failing the run: conversation history is an ergonomic aid, not a correctness
+// requirement, and a broken session file must never block a user's task.
+function openRunSession(repoRoot, task, resume) {
+  const resumeId = typeof resume === "string" ? resume.trim() : "";
+  let session = null;
+  if (resume === true || resumeId) {
+    session = resumeId ? loadRunSession(repoRoot, resumeId) : latestRunSession(repoRoot);
+    if (!session) console.warn(`[warn] No usable session to resume (${resumeId || "latest"}); starting a new one.`);
+  }
+  if (!session) {
+    try { session = createRunSession(repoRoot, task); }
+    catch (error) {
+      console.warn(`[warn] Could not create run session: ${error.message}`);
+      return null;
+    }
+  }
+  return session;
+}
 
 function ensureRunId(opts) {
   if (typeof opts.runId === "string" && opts.runId.trim()) return opts.runId.trim();
@@ -57,6 +79,20 @@ async function cmdRun(task, opts = {}) {
       return 1;
     }
   }
+  // Open the conversation session before preflight so the session id is known
+  // even when a later gate rejects the run — the attempt is part of the thread.
+  const runSession = openRunSession(repoRoot, task, opts.resume);
+  // Only a resumed session carries prior turns; a brand new session's context
+  // block would just restate the task we are about to send.
+  const contextualTask = runSession && opts.resume
+    ? `${buildSessionContextBlock(runSession)}${task}`
+    : task;
+  const pipelineTask = contextualTask;
+  // Tell the extension (and any log reader) which thread this run belongs to.
+  // Session events use the same line protocol as approvals so the extension
+  // needs no extra transport.
+  if (runSession) console.log(`MINITOK_SESSION_INFO ${JSON.stringify({ session_id: runSession.id, resumed: opts.resume === true || typeof opts.resume === "string" })}`);
+
   if (opts.mode) {
     config = loadConfig(path.join(repoRoot, "minitok.yml"), { repoRoot });
     policyDecision = resolveExecutionPolicy({ mode: opts.mode, capabilities: requestedCapabilities, explicit_confirmation: opts.explicitConfirmation === true || capabilityGranted.length > 0, auto_accept: autoAcceptGranted, runtime_permission: capabilityGranted.includes("unrestricted_autonomous") || capabilityGranted.includes("unrestricted_general_autonomous"), source: "cli", actor: opts.actor, config });
@@ -191,7 +227,7 @@ async function cmdRun(task, opts = {}) {
   }
 
   try {
-    const result = await runPipeline(task, {
+    const result = await runPipeline(pipelineTask, {
       repoRoot,
       // cmdRun already performed the gate before provider preflight. Pass the
       // internal authorization marker so runPipeline does not perform a second
@@ -239,6 +275,19 @@ async function cmdRun(task, opts = {}) {
     // summarizeRunOutcome in src/pipeline/loop.js): a run that ends on a rejection
     // exits non-zero even when an earlier cycle was approved. `result.approved`
     // says whether such a change set exists (it is preserved, not merged).
+// Record the outcome so the next --resume turn can cite it. Best-effort
+    // like last-run.json: a session write must not change the exit code the
+    // pipeline outcome already decided.
+    if (runSession) {
+      const changed = result && result.stages && result.stages.work && result.stages.work.changed_files;
+      appendRunEvent(repoRoot, runSession, {
+        type: "result",
+        ok: result.success === true,
+        runId: ensureRunId(opts),
+        evidencePath: typeof opts.evidencePath === "string" ? opts.evidencePath : undefined,
+        filesChanged: Array.isArray(changed) ? changed.length : undefined,
+      });
+    }
     const exitCode = result.success ? 0 : 1;
     return exitCode;
   } catch (e) {
