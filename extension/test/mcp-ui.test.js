@@ -43,7 +43,7 @@ test("MCP badge updates on 'mcp' message type", () => {
   );
   assert.match(
     sidebarHtml,
-    /badge\.textContent=m\.ok\?'MCP: online':'MCP: offline'/,
+    /badge\.textContent=m\.ok\?'MCP online':'MCP offline'/,
     "badge text must reflect the connection state",
   );
 });
@@ -164,7 +164,7 @@ test("run completion updates the UI state", () => {
   );
   assert.match(
     sidebarHtml,
-    /showToast\(m\.text,m\.ok\?'info':'error'\)/,
+    /showToast\(displayText,m\.ok\?'info':'error'\)/,
     "result must show a toast with the outcome",
   );
 });
