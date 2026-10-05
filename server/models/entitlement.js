@@ -120,7 +120,29 @@ function findByInstallationId(installationId) {
   return null;
 }
 
-function create({ key, installationId, planId }) {
+function findByCustomerId(customerId) {
+  for (const record of store.values()) {
+    if (record.customerId === customerId) return { ...record };
+  }
+  return null;
+}
+
+/**
+ * Bind an auth-server customer id to an existing key's record.
+ *
+ * This is the only path that fills `customerId` (activation is license-key
+ * based and has no OAuth token), and it is what makes GET /me resolvable.
+ * Re-binding to a different customer overwrites the previous value.
+ */
+function bindCustomerId(key, customerId) {
+  const record = store.get(key);
+  if (!record) return null;
+  record.customerId = customerId;
+  _saveToDisk();
+  return { ...record };
+}
+
+function create({ key, installationId, planId, customerId }) {
   const defaults = PLAN_DEFAULTS[planId] || PLAN_DEFAULTS.level1;
   const now = new Date();
   const expires = new Date(now.getTime() + defaults.durationDays * 86400000);
@@ -128,6 +150,7 @@ function create({ key, installationId, planId }) {
     key,
     installationId,
     planId,
+    customerId: customerId || null,
     features: [...defaults.features],
     maxDevices: defaults.maxDevices,
     activatedAt: now.toISOString(),
@@ -180,6 +203,8 @@ module.exports = {
   validateKey,
   findByKey,
   findByInstallationId,
+  findByCustomerId,
+  bindCustomerId,
   create,
   revoke,
   isActive,

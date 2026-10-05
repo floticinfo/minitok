@@ -6,6 +6,7 @@ const jwt = require("jsonwebtoken");
 const store = require("../models/entitlement");
 const { requireAuth, JWT_SECRET, TOKEN_TTL_SECONDS } = require("../middleware/auth");
 const { rateLimit } = require("../middleware/rate-limit");
+const { verifyOAuthToken } = require("../middleware/oauth-auth");
 
 const router = express.Router();
 
@@ -64,6 +65,66 @@ router.post("/activate", rateLimit, (req, res) => {
     expires_in: TOKEN_TTL_SECONDS,
     entitlement: statusBody(record),
   });
+});
+
+// GET /api/entitlement/me — resolve entitlement from an auth-server JWT.
+//
+// The OAuth access_token is a JWT signed by the auth server. This server
+// verifies the token locally using the shared secret, then looks up the
+// entitlement bound to that customer. This lets the Extension check
+// entitlement after OAuth login without requiring a separate license key.
+router.get("/me", rateLimit, (req, res) => {
+  const header = req.get("Authorization") || "";
+  const match = /^Bearer\s+(.+)$/i.exec(header);
+  if (!match) {
+    return res.status(401).json({ error: "Authorization: Bearer <auth-token> header is required." });
+  }
+  
+  const result = verifyOAuthToken(match[1]);
+  
+  if (!result.valid) {
+    return res.status(401).json({ active: false, error: result.error || "Invalid OAuth token" });
+  }
+  
+  const record = store.findByCustomerId(result.customerId);
+  if (!record) {
+    return res.status(404).json({ active: false, error: "No entitlement found for this account." });
+  }
+  return res.status(200).json(statusBody(record));
+});
+
+// POST /api/entitlement/bind — link a license key to an auth-server customer.
+//
+// Activation is license-key based and carries no OAuth identity, so this is the
+// one path that fills record.customerId and makes GET /me resolvable. The key
+// authorizes the binding; the auth token is verified locally to obtain the
+// customer_id rather than trusting a client-supplied value.
+router.post("/bind", rateLimit, (req, res) => {
+  const key = req.body && req.body.key;
+  const authToken = req.body && (req.body.auth_token || req.body.authToken);
+  const check = store.validateKey(key);
+  if (!check.valid) {
+    return res.status(401).json({ error: check.reason });
+  }
+  const record = store.findByKey(check.key);
+  if (!record) {
+    return res.status(404).json({ error: "Activate this key before binding it to an account." });
+  }
+  if (record.revokedAt) {
+    return res.status(403).json({ error: "This activation key has been revoked." });
+  }
+  if (typeof authToken !== "string" || !authToken.trim()) {
+    return res.status(400).json({ error: "An auth_token is required." });
+  }
+  
+  const result = verifyOAuthToken(authToken);
+  
+  if (!result.valid) {
+    return res.status(401).json({ error: result.error || "The auth token is not valid." });
+  }
+  
+  const updated = store.bindCustomerId(check.key, result.customerId);
+  return res.status(200).json({ bound: true, customer_id: result.customerId, entitlement: statusBody(updated) });
 });
 
 // GET /api/entitlement/status — verify the bearer token, return state.
