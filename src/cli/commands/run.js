@@ -12,6 +12,7 @@ const { resolveServerUrl } = require("./server-config");
 const { capabilityPermissions, FULL_TEST_PROFILE } = require("../../entitlement/capability");
 const { createRunSession, loadRunSession, latestRunSession, appendRunEvent, buildSessionContextBlock } = require("./run-session-store");
 const { expandTaskContext } = require("./task-context");
+const { printError } = require("../output");
 
 // Resolve the session this run belongs to and prepend prior-turn context.
 // A corrupt or unknown --resume id falls back to a fresh session rather than
@@ -61,7 +62,7 @@ async function cmdRun(task, opts = {}) {
   let config;
   let policyDecision = null;
   if (!task) {
-    console.error("Error: Task description required.\n\nUsage: minitok run \"Fix authentication bug\"");
+    printError("Task description required.\n\nUsage: minitok run \"Fix authentication bug\"");
     return 1;
   }
 
@@ -76,7 +77,7 @@ async function cmdRun(task, opts = {}) {
       repoRoot = ws.repository_root;
       console.log(`Workspace: ${ws.name} (${repoRoot})`);
     } catch (e) {
-      console.error(`Error: ${e.message}`);
+      printError(`${e.message}`);
       return 1;
     }
   }
@@ -123,7 +124,7 @@ async function cmdRun(task, opts = {}) {
     } catch (configError) {
       // A malformed minitok.yml must stop the run before any provider probe: the
       // pipeline would otherwise proceed with defaults the user never wrote.
-      console.error(`Error: ${configError.message}`);
+      printError(`${configError.message}`);
       return 1;
     }
     // Authorization must precede every provider network probe. A provider health
@@ -135,9 +136,9 @@ async function cmdRun(task, opts = {}) {
       // by the issuing server, so the preflight passes the id along for the
       // binding check. The id also keys trial idempotency further below.
       try { gate = await authorizeEntitlement({ serverUrl: opts.serverUrl || resolveServerUrl(), entitlementDir: opts.entitlementDir, delegationRunIds: [ensureRunId(opts)] }); }
-      catch (error) { console.error(`Error: Entitlement check failed: ${error instanceof Error ? error.message : String(error)}`); return 1; }
+      catch (error) { printError(`Entitlement check failed: ${error instanceof Error ? error.message : String(error)}`); return 1; }
       if (!gate.allowed) {
-        console.error(`Error: Entitlement ${gate.state}: ${gate.message}`);
+        printError(`Entitlement ${gate.state}: ${gate.message}`);
         return 1;
       }
       preflightAuthorized = true;
@@ -145,7 +146,7 @@ async function cmdRun(task, opts = {}) {
     }
     const available = await detectAvailableProviders(preflightConfig);
     if (available.length === 0) {
-      console.error("Error: No LLM provider is configured.\n");
+      printError("No LLM provider is configured.\n");
       console.error("minitok needs one API key before it can run. Pick one:");
       console.error("  $env:ANTHROPIC_API_KEY='sk-ant-...'   # Claude");
       console.error("  $env:OPENAI_API_KEY='sk-...'          # GPT");
@@ -194,7 +195,7 @@ async function cmdRun(task, opts = {}) {
     if (skipped.length > 0) console.warn(`[warn] provider preflight skipped for local/no-auth provider(s): ${skipped.join(", ")}`);
 
     if (blocking.length > 0) {
-      console.error("Error: one or more providers required by the configured roles are not ready:\n");
+      printError("one or more providers required by the configured roles are not ready:\n");
       for (const name of blocking) {
         const state = statusOf(name);
         const detail = health.get(name)?.detail || (state === "absent" ? "no credentials configured" : "provider preflight failed");
@@ -221,13 +222,13 @@ async function cmdRun(task, opts = {}) {
         idempotencyKey: opts.runId,
       });
       if (!trialResult.consumed) {
-        console.error(`Error: Trial run unavailable: ${trialResult.message}`);
+        printError(`Trial run unavailable: ${trialResult.message}`);
         return 1;
       }
       opts.trialRunConsumed = true;
     }
   } catch (preflightError) {
-    console.error(`Error: Provider preflight failed${preflightError?.code ? ` [${preflightError.code}]` : ""}: ${preflightError instanceof Error ? preflightError.message : String(preflightError)}`);
+    printError(`Provider preflight failed${preflightError?.code ? ` [${preflightError.code}]` : ""}: ${preflightError instanceof Error ? preflightError.message : String(preflightError)}`);
     return 1;
   }
 
@@ -304,7 +305,7 @@ async function cmdRun(task, opts = {}) {
     const exitCode = result.success ? 0 : 1;
     return exitCode;
   } catch (e) {
-    console.error(`Pipeline error: ${e.message}`);
+    console.error(`Pipeline [error] ${e.message}`);
     return 1;
   }
 }

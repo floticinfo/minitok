@@ -5,6 +5,7 @@ const path = require("path");
 const crypto = require("crypto");
 const git = require("../../git/operations");
 const { WorkspaceManager } = require("../../workspace/manager");
+const { printError } = require("../output");
 
 // Writes `content` to `filePath` atomically using the codebase-wide pattern:
 // a unique temp file in the same directory is created exclusively, then renamed
@@ -96,12 +97,12 @@ async function cmdMigrate(repoPath, name) {
   const resolved = path.resolve(repoPath);
 
   if (!fs.existsSync(resolved)) {
-    console.error(`Error: Path does not exist: ${resolved}`);
+    printError(`Path does not exist: ${resolved}`);
     return 1;
   }
 
   if (!git.isGitRepo(resolved)) {
-    console.error(`Error: Not a git repository: ${resolved}`);
+    printError(`Not a git repository: ${resolved}`);
     console.error("Initialize git first: git init");
     return 1;
   }

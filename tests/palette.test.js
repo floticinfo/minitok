@@ -8,6 +8,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -16,6 +17,13 @@ const palette = require(path.join(root, "src", "core", "palette.js"));
 const { BRAND, WEBVIEW_CUSTOM_PROPERTIES, WEBVIEW_ACCENT_ALIAS } = palette;
 
 const read = (...segments) => fs.readFileSync(path.join(root, ...segments), "utf8");
+
+// Colour-use rule: BRAND.primary (#013DCF) is a dark hue, so painting it as text
+// on a light background fails contrast. It is the badge background only; text
+// on that tile uses BRAND.onPrimary, and plain foreground text uses
+// BRAND.secondaryBlue (see the fullscreen-gui ansi table). These two scans
+// enforce that rule over the CLI surface instead of leaving it a comment.
+const CLI_COLOUR_SCENES = ["src/cli/fullscreen-gui.js", "src/cli/output.js", "src/cli/commands/gui.js"];
 
 // The brand mark renders only the fill and the glyph. Anti-aliased PNG edges
 // blend the two, so a near match (any channel within 0x20) counts as on-brand.
@@ -55,6 +63,42 @@ test("the palette and its webview mirror are internally consistent", () => {
   }
 });
 
+test("CLI colour scenes never paint the primary hue as text and only badge it as a tile", () => {
+  const { BRAND, ansiForeground, ansiBackground } = palette;
+  const primaryFg = ansiForeground(BRAND.primary);
+  const secondaryFg = ansiForeground(BRAND.secondaryBlue);
+  const onPrimaryFg = ansiForeground(BRAND.onPrimary);
+  const primaryBg = ansiBackground(BRAND.primary);
+  const deepNavyBg = ansiBackground(BRAND.deepNavy);
+  for (const scene of CLI_COLOUR_SCENES) {
+    const source = read(scene);
+    assert.ok(!source.includes(primaryFg) || source.includes(primaryBg),
+      `${scene}: BRAND.primary as foreground is only legal inside a badge tile (after a primary background)`);
+    if (source.includes(primaryFg)) {
+      // Every occurrence of a primary foreground must be preceded (in the same
+      // literal) by a tile background, i.e. it is the onPrimary-style glyph —
+      // but the only legal glyph there is BRAND.onPrimary, never primary itself.
+      const literals = source.match(new RegExp("\u0060[^\u0060]*\u0060", "g")) || [];
+      for (const literal of literals) {
+        if (literal.includes(primaryFg)) {
+          assert.ok(literal.startsWith(primaryBg) || literal.includes(deepNavyBg),
+            `${scene}: primary foreground outside a tile literal: ${literal.slice(0, 60)}`);
+        }
+      }
+    }
+    // Status colour must come from the terminal's own green/red, not a brand hue
+    // (asserted in test-cli-output-markers.js); here we assert the text-only brand
+    // foreground that does exist is the readable secondary blue.
+  }
+  // Runtime truth: the exported ansi table is what actually paints pixels.
+  const { ansi } = require(path.join(root, "src", "cli", "fullscreen-gui.js"));
+  assert.equal(ansi.brand, secondaryFg, "brand text foreground is secondaryBlue, not primary");
+  assert.notEqual(ansi.brand, primaryFg);
+  assert.equal(ansi.accent, ansiForeground(BRAND.cyanAccent));
+  assert.equal(ansi.actBadge, `${primaryBg}${onPrimaryFg}`, "actBadge paints a primary tile with an onPrimary glyph");
+  assert.equal(ansi.planBadge, `${deepNavyBg}${ansiForeground(BRAND.pale)}`, "planBadge paints a deepNavy tile with a pale glyph");
+});
+
 for (const file of ["extension/src/sidebar.html", "extension/src/panel.html"]) {
   test(`${file} mirrors every webview custom property verbatim`, () => {
     const html = read(...file.split("/"));
@@ -74,8 +118,6 @@ test("extension package.json gallery banner carries the primary brand colour", (
 test("minitok.svg paints the mark only with the primary fill and onPrimary glyph", () => {
   const svg = read("extension", "media", "minitok.svg");
   const hexes = new Set([...svg.matchAll(/#([0-9a-f]{6})\b/gi)].map(m => `#${m[1].toLowerCase()}`));
-  // The Inkscape namedview records the editing UI, not the artwork.
-  for (const meta of ["#ffffff", "#000000", "#d1d1d1"]) hexes.delete(meta);
   for (const hex of hexes) {
     assert.ok(isBrandColour(hex), `minitok.svg paints ${hex}, which is not a brand colour`);
   }
@@ -151,6 +193,15 @@ function decodePngRgba(buffer) {
   }
   return { width, height, pixels };
 }
+
+test("minitok.png is byte-identical to the canonical mark", () => {
+  const sha256 = buf => crypto.createHash("sha256").update(buf).digest("hex");
+  assert.equal(
+    sha256(fs.readFileSync(path.join(root, "assets", "minitok-harlekin-mark.png"))),
+    sha256(fs.readFileSync(path.join(root, "extension", "media", "minitok.png"))),
+    "assets/minitok-harlekin-mark.png and extension/media/minitok.png must be the same image",
+  );
+});
 
 test("minitok.png renders only the brand fill and glyph, blended at the edges", () => {
   const { width, height, pixels } = decodePngRgba(fs.readFileSync(path.join(root, "extension", "media", "minitok.png")));

@@ -1,16 +1,17 @@
 "use strict";
 const { importCapabilityToken, readCapabilityRecord, clearCapabilityRecord } = require("../../entitlement/capability");
 const { resolveServerUrl } = require("./server-config");
+const { printError } = require("../output");
 
 async function cmdCapabilityImport(token, options = {}) {
   if (!token && options.tokenEnv && /^[A-Z_][A-Z0-9_]*$/i.test(options.tokenEnv)) token = process.env[options.tokenEnv];
-  if (!token) { console.error("Error: capability token required. Use --token-env NAME."); return 1; }
+  if (!token) { printError("capability token required. Use --token-env NAME."); return 1; }
   try {
     const result = await importCapabilityToken(token, { serverUrl: resolveServerUrl({ cliServer: options.server }), filePath: options.file });
-    if (!result.success) { console.error(`Error: ${result.error}`); return 1; }
+    if (!result.success) { printError(`${result.error}`); return 1; }
     console.log(JSON.stringify({ status: "ok", profile: result.record.profile, installation_id: result.record.installation_id, expires_at: result.record.expires_at, capabilities: result.record.capabilities }));
     return 0;
-  } catch (error) { console.error(`Error: capability validation failed: ${error.message}`); return 1; }
+  } catch (error) { printError(`capability validation failed: ${error.message}`); return 1; }
 }
 function cmdCapabilityStatus(options = {}) {
   const record = readCapabilityRecord({ filePath: options.file });

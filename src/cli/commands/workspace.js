@@ -2,6 +2,7 @@
 
 const { WorkspaceManager } = require("../../workspace/manager");
 const path = require("path");
+const { printError } = require("../output");
 
 async function cmdWsAdd(repoPath, name) {
   try {
@@ -22,7 +23,7 @@ async function cmdWsAdd(repoPath, name) {
     console.log(`  project:     ${ws.project_type}`);
     return 0;
   } catch (e) {
-    console.error(`Error: ${e.message}`);
+    printError(`${e.message}`);
     return 1;
   }
 }
@@ -52,7 +53,7 @@ async function cmdWsUse(name) {
     console.log(`Switched to workspace '${ws.name}'`);
     return 0;
   } catch (e) {
-    console.error(`Error: ${e.message}`);
+    printError(`${e.message}`);
     return 1;
   }
 }
@@ -79,7 +80,7 @@ async function cmdWsRemove(name) {
     console.log(`Workspace '${name}' removed`);
     return 0;
   } catch (e) {
-    console.error(`Error: ${e.message}`);
+    printError(`${e.message}`);
     return 1;
   }
 }

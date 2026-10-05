@@ -10,6 +10,7 @@
 
 const { resolveServerUrl } = require("./server-config");
 const { postJson } = require("../../core/http");
+const { printError } = require("../output");
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
@@ -24,7 +25,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 async function cmdTrial(opts) {
   const email = typeof opts?.email === "string" ? opts.email.trim().toLowerCase() : "";
   if (!EMAIL_RE.test(email)) {
-    console.error("Error: A valid email address is required.\n");
+    printError("A valid email address is required.\n");
     console.error("Usage: minitok trial --email you@example.com [--activate] [--server <url>]");
     return 1;
   }
@@ -39,12 +40,12 @@ async function cmdTrial(opts) {
       idempotency_key: idempotencyKey,
     });
   } catch (err) {
-    console.error(`Error: Cannot connect to server at ${serverUrl}\n${err.message}`);
+    printError(`Cannot connect to server at ${serverUrl}\n${err.message}`);
     return 1;
   }
 
   if (!result.ok) {
-    console.error(`Error: ${result.body?.error || "Trial request failed"}`);
+    printError(`${result.body?.error || "Trial request failed"}`);
     return 1;
   }
 
@@ -60,7 +61,7 @@ async function cmdTrial(opts) {
 
   const key = body.activation_key;
   if (!key) {
-    console.error("Error: Server did not return an activation key.");
+    printError("Server did not return an activation key.");
     return 1;
   }
 

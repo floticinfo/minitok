@@ -9,10 +9,20 @@ const { loadConfig, resolveProviderName } = require("../../config/loader");
 const { normalizeProvider } = require("../../auth/aliases");
 const { checkEntitlement, GateState } = require("../../entitlement/gate");
 const { loadInstallationRecord } = require("../../entitlement/online");
+const { markerOk, markerError } = require("../output");
+
+// Records every diagnostic so `minitok doctor --json` can emit the same data
+// the human-readable output prints. The returned module-scope array is reset
+// at the start of each cmdDoctor run so repeated invocations stay accurate.
+let records = [];
+let jsonMode = false;
 
 function check(name, ok, detail = "") {
-  const marker = ok ? "[ok]" : "[error]";
-  console.log(`  ${marker} ${name}${detail ? " — " + detail : ""}`);
+  if (!jsonMode) {
+    const marker = ok ? markerOk() : markerError();
+    console.log(`  ${marker} ${name}${detail ? " — " + detail : ""}`);
+  }
+  records.push({ name: name.trim(), ok, detail });
   return ok;
 }
 
@@ -46,7 +56,9 @@ function buildProviderChecks(config = {}) {
 }
 
 async function cmdDoctor(opts = {}) {
-  console.log(`minitok ${minitokVersion} — Environment Check\n`);
+  records = [];
+  jsonMode = opts.json === true;
+  if (!jsonMode) console.log(`minitok ${minitokVersion} — Environment Check\n`);
 
   let allOk;
 
@@ -91,15 +103,19 @@ async function cmdDoctor(opts = {}) {
     config = loadConfig();
   } catch (error) {
     check("Configuration", false, error instanceof Error ? error.message : String(error));
-    console.log("\n[error] Cannot inspect providers or roles until minitok.yml is repaired.");
-    console.log("Recovery: run `minitok migrate` or fix the reported YAML/configuration error.");
+    if (jsonMode) {
+      console.log(JSON.stringify({ version: minitokVersion, ok: false, checks: records }, null, 2));
+    } else {
+      console.log(`\n${markerError()} Cannot inspect providers or roles until minitok.yml is repaired.`);
+      console.log("Recovery: run `minitok migrate` or fix the reported YAML/configuration error.");
+    }
     return 1;
   }
   const providers = await detectAvailableProviders(config);
 
   // LLM providers — informational per-provider; the overall check requires
   // at least one configured provider (most customers use exactly one).
-  console.log("\nLLM Providers:");
+  if (!jsonMode) console.log("\nLLM Providers:");
   const providerChecks = buildProviderChecks(config);
   for (const provider of providerChecks) {
     const available = providers.includes(provider.key);
@@ -113,7 +129,7 @@ async function cmdDoctor(opts = {}) {
   // presence checks cannot). This includes configured custom endpoints.
   if (opts && opts.verify) {
     const { verifyCredentials } = require("../../llm/provider");
-    console.log("\nLive credential check:");
+    if (!jsonMode) console.log("\nLive credential check:");
     for (const provider of providerChecks) {
       if (!provider.custom && !providers.includes(provider.key)) {
         check(`  ${provider.label} (live)`, false, `${provider.envVar} not set - skipped`);
@@ -134,7 +150,7 @@ async function cmdDoctor(opts = {}) {
   const anyProvider = providers.length > 0;
   allOk = check("LLM provider configured", anyProvider, anyProvider ? `using: ${providers.join(", ")}` : "set at least one provider API key (or configure a custom provider)") && allOk;
 
-  console.log(`\nRoles:`);
+  if (!jsonMode) console.log(`\nRoles:`);
   for (const [role, cfg] of Object.entries(config.roles)) {
     const providerName = resolveProviderName(config, role);
     const availableProviderName = normalizeProvider(providerName);
@@ -149,7 +165,12 @@ async function cmdDoctor(opts = {}) {
     }
   }
 
-  console.log(`\n${allOk ? "[ok] All checks passed" : "[error] Some checks failed — see above"}`);
+  if (jsonMode) {
+    console.log(JSON.stringify({ version: minitokVersion, ok: allOk, checks: records }, null, 2));
+    return allOk ? 0 : 1;
+  }
+
+  console.log(`\n${allOk ? markerOk() + " All checks passed" : markerError() + " Some checks failed — see above"}`);
   if (!allOk) {
     console.log("\nNext steps:");
     if (!fs.existsSync(minitokHome)) console.log("  1. Run: minitok migrate");

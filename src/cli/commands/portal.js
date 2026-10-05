@@ -2,6 +2,7 @@ const { resolveServerUrl } = require("./server-config");
 const { postJson } = require("../../core/http");
 const { loadCustomerToken } = require("../../auth/customer-token");
 const { ensureAccountSession } = require("./account");
+const { printError } = require("../output");
 
 async function cmdPortal(opts) {
   const serverUrl = resolveServerUrl({ cliServer: opts?.server });
@@ -9,7 +10,7 @@ async function cmdPortal(opts) {
   const account = opts?.token || envToken ? null : await ensureAccountSession({ server: opts?.server });
   const token = opts?.token || envToken || account?.access_token || loadCustomerToken();
   if (!token) {
-    console.error("Error: Authentication token required.");
+    printError("Authentication token required.");
     console.error("Usage: minitok portal --token <JWT>");
     return 1;
   }
@@ -23,19 +24,19 @@ async function cmdPortal(opts) {
       {},
       { Authorization: "Bearer " + token });
   } catch (err) {
-    console.error("Error: Cannot connect to server at " + serverUrl);
+    printError("Cannot connect to server at " + serverUrl);
     console.error(err.message);
     return 1;
   }
 
   if (!result.ok) {
-    console.error("Error: " + (result.body?.error || "Portal failed"));
+    printError("" + (result.body?.error || "Portal failed"));
     return 1;
   }
 
   const { portal_url } = result.body;
   if (!portal_url) {
-    console.error("Error: Server did not return a portal URL.");
+    printError("Server did not return a portal URL.");
     return 1;
   }
 

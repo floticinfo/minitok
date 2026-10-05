@@ -2,6 +2,7 @@ const { resolveServerUrl } = require("./server-config");
 const { postJson } = require("../../core/http");
 const { loadCustomerToken } = require("../../auth/customer-token");
 const { ensureAccountSession } = require("./account");
+const { printError } = require("../output");
 
 async function cmdCheckout(opts) {
   const serverUrl = resolveServerUrl({ cliServer: opts?.server });
@@ -9,14 +10,14 @@ async function cmdCheckout(opts) {
   const account = opts?.token || envToken ? null : await ensureAccountSession({ server: opts?.server });
   const token = opts?.token || envToken || account?.access_token || loadCustomerToken();
   if (!token) {
-    console.error("Error: Authentication token required.");
+    printError("Authentication token required.");
     console.error("Usage: minitok checkout --token <JWT> [--plan level1]");
     return 1;
   }
 
   const planId = opts?.plan || "level1";
   if (planId !== "level1") {
-    console.error("Error: Only the Level 1 plan is available for purchase.");
+    printError("Only the Level 1 plan is available for purchase.");
     return 1;
   }
   const endpoint = "/v1/checkout/dodo";
@@ -28,19 +29,19 @@ async function cmdCheckout(opts) {
       { planId },
       { Authorization: "Bearer " + token });
   } catch (err) {
-    console.error("Error: Cannot connect to server at " + serverUrl);
+    printError("Cannot connect to server at " + serverUrl);
     console.error(err.message);
     return 1;
   }
 
   if (!result.ok) {
-    console.error("[error] " + (result.body?.error || "Checkout failed"));
+    printError("" + (result.body?.error || "Checkout failed"));
     return 1;
   }
 
   const { checkout_url } = result.body;
   if (!checkout_url) {
-    console.error("Error: Server did not return a checkout URL.");
+    printError("Server did not return a checkout URL.");
     return 1;
   }
 

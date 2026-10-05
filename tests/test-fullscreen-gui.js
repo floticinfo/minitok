@@ -37,6 +37,18 @@ test("fullscreen layout measures wide, combining, and emoji graphemes", () => {
   assert.equal(visibleWidth("a\u200db"), 2);
 });
 
+test("fullscreen layout measures Korean syllables and precomposed jamo as double width", () => {
+  // Hangul filler and syllables sit in the wide CJK block; precomposed jamo (U+1100 block)
+  // are also width-2 per the same terminal convention used for the frame borders.
+  assert.equal(visibleWidth("가"), 2);
+  assert.equal(visibleWidth("한국어"), 6);
+  assert.equal(visibleWidth("한국어 태스크"), 13, "six wide syllables plus one ASCII space");
+  assert.equal(visibleWidth("ᄀ"), 2, "precomposed jamo counts as double width");
+  const fitted = fit("한국어 태스크", 5);
+  assert.equal(visibleWidth(fitted), 5);
+  assert.ok(!fitted.includes("한국"), "truncated output cannot contain a grapheme that no longer fits");
+});
+
 test("fullscreen layout fits Unicode without splitting graphemes", () => {
   assert.equal(fit("界界", 3), "...");
   assert.equal(fit("e\u0301x", 1), "e\u0301");

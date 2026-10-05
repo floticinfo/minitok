@@ -11,6 +11,7 @@ const { resolveServerUrl } = require("./server-config");
 const { postJson } = require("../../core/http");
 const { loadCustomerToken } = require("../../auth/customer-token");
 const { ensureAccountSession } = require("./account");
+const { printError } = require("../output");
 
 /**
  * Retrieve the activation key for the authenticated customer.
@@ -25,7 +26,7 @@ async function cmdActivationKey(opts) {
   const account = opts?.token ? null : await ensureAccountSession({ server: opts?.server });
   const token = opts?.token || account?.access_token || loadCustomerToken();
   if (!token) {
-    console.error("Error: Authentication token required.");
+    printError("Authentication token required.");
     console.error("Usage: minitok activation-key --token <JWT> [--payment <dodo_payment_id>]");
     return 1;
   }
@@ -40,19 +41,19 @@ async function cmdActivationKey(opts) {
       Authorization: "Bearer " + token,
     });
   } catch (err) {
-    console.error("Error: Cannot connect to server at " + serverUrl);
+    printError("Cannot connect to server at " + serverUrl);
     console.error(err.message);
     return 1;
   }
 
   if (!result.ok) {
-    console.error("Error: " + (result.body?.error || "Activation key retrieval failed"));
+    printError("" + (result.body?.error || "Activation key retrieval failed"));
     return 1;
   }
 
   const { activation_key } = result.body;
   if (!activation_key) {
-    console.error("Error: Server did not return an activation key.");
+    printError("Server did not return an activation key.");
     return 1;
   }
 

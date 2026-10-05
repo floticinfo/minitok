@@ -3,6 +3,7 @@
 const { loadConfig } = require("../../config/loader");
 const { detectAvailableProviders } = require("../../llm/provider");
 const { listModels, discoverModels, formatModel, ensureFreshCatalog } = require("../../llm/models");
+const { printError } = require("../output");
 
 function register(program) {
   program
@@ -74,7 +75,7 @@ function register(program) {
           console.log("Provider status: available = API key configured, unavailable = not configured");
         }
       } catch (e) {
-        console.error(`Error: ${e.message}`);
+        printError(`${e.message}`);
         process.exitCode = 1;
       }
     });

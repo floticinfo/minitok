@@ -3,6 +3,7 @@ const path = require("path");
 const { pathToFileURL } = require("url");
 const { runtimeTokenPath } = require("../../mcp/runtime-token");
 const { resolveServerUrl } = require("./server-config");
+const { printError } = require("../output");
 
 async function cmdAgent(task, options = {}) {
   const { resolveMode, assertModeEnabled, requireAbsoluteRepo } = await import(pathToFileURL(path.resolve(__dirname, "../../agent/policy.mjs")).href);
@@ -73,7 +74,7 @@ function register(program) {
         const result = await cmdAgent(task, options);
         console.log(JSON.stringify(result));
       } catch (error) {
-        console.error(`Error: ${error.message}`);
+        printError(`${error.message}`);
         process.exitCode = error.code === "MINITOK_MODE_OFF" ? 2 : 1;
       }
     });

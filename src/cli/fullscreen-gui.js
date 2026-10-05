@@ -102,4 +102,4 @@ function createFullscreenGui(options = {}) {
   render();
   return { cleanup, render, run, state };
 }
-module.exports = { createFullscreenGui, visibleWidth, fit, frame, graphemeBoundaries, normalizeCursor, editTask, clampTranscriptOffset, scrollTranscript };
+module.exports = { createFullscreenGui, visibleWidth, fit, frame, graphemeBoundaries, normalizeCursor, editTask, clampTranscriptOffset, scrollTranscript, ansi };

@@ -42,6 +42,36 @@ for (const value of ["lint", "test", "validation", "type_error", "timeout", "api
   if (!sanitizer.includes(`"${value}"`)) errors.push(`sanitizer: missing failure category ${value}`);
   if (!classification.includes(`\`${value}\``)) errors.push(`DATA_CLASSIFICATION.md: missing failure category ${value}`);
 }
+
+// docs/ command-reference consistency: `minitok <cmd>` followed by a flag,
+// `<placeholder>`, or a known subcommand keyword must name a real top-level
+// command. Bare `minitok <cmd>` and prose ("minitok requires an...") are ignored.
+const binSource = fs.readFileSync(path.join(root, "bin/minitok.js"), "utf8");
+const binCommands = new Set(
+  [...binSource.matchAll(/\.command\("([a-z0-9|-]+)/g)].map(m => m[1].split("|")[0])
+);
+// `runs` (and others) are registered via register() modules, not .command() in bin.
+const registerModules = [...binSource.matchAll(/require\("([^"]+)"\)\.register\(/g)].map(m => m[1]);
+for (const rel of registerModules) {
+  let modPath = path.join(root, "bin", rel);
+  if (!fs.existsSync(modPath) && fs.existsSync(modPath + ".js")) modPath += ".js";
+  if (!fs.existsSync(modPath)) continue;
+  const modSource = fs.readFileSync(modPath, "utf8");
+  for (const m of modSource.matchAll(/\.command\("([a-z0-9|-]+)/g)) binCommands.add(m[1].split("|")[0]);
+}
+const subcommandKeywords = ["list", "show", "status", "start", "stop", "login", "logout", "get", "set", "create", "delete", "remove", "add", "use", "new"];
+const docsDir = path.join(root, "docs");
+if (fs.existsSync(docsDir)) {
+  for (const name of fs.readdirSync(docsDir).filter(n => n.endsWith(".md"))) {
+    const text = fs.readFileSync(path.join(docsDir, name), "utf8");
+    for (const m of text.matchAll(/minitok ([a-z][a-z0-9-]+)(?:\s+(--[a-z]|<[a-z]|``|`?[a-z0-9-]+))?/g)) {
+      const cmd = m[1];
+      const next = (m[2] || "").replace(/^`/, "");
+      const looksLikeInvocation = next.startsWith("--") || next.startsWith("<") || subcommandKeywords.includes(next);
+      if (looksLikeInvocation && !binCommands.has(cmd)) errors.push(`docs/${name}: references unknown command 'minitok ${cmd}'`);
+    }
+  }
+}
 if (errors.length) {
   console.error(errors.join("\n"));
   process.exit(1);

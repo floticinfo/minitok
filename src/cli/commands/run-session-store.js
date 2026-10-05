@@ -140,11 +140,13 @@ function listRunSessions(repoRoot) {
     if (!entry.endsWith(".json")) continue;
     const session = loadRunSession(repoRoot, entry.slice(0, -5));
     if (!session) continue;
+    const lastTask = session.events.filter(event => event.type === "task").pop();
     sessions.push({
       id: session.id,
       created_at: session.created_at,
       updated_at: session.updated_at,
       turns: session.events.filter(event => event.type === "task").length,
+      last_task: lastTask ? lastTask.text : "",
     });
   }
   sessions.sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""));

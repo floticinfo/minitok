@@ -17,6 +17,7 @@ const { EntitlementCache } = require("../../entitlement/cache");
 const client = require("../../entitlement/client");
 const { postJson } = require("../../core/http");
 const { resolveServerUrl } = require("./server-config");
+const { printError } = require("../output");
 
 /** Shared request helper (same implementation as activation-key). */
 function _httpPost(urlString, body, headers) {
@@ -27,7 +28,7 @@ async function cmdActivate(key, opts) {
   const envName = opts?.keyEnv;
   if (!key && envName && /^[A-Z_][A-Z0-9_]*$/i.test(envName)) key = process.env[envName];
   if (!key || typeof key !== "string") {
-    console.error("Error: Activation key required.\n\nUsage: minitok activate <key> or minitok activate --key-env MINITOK_ACTIVATION_KEY");
+    printError("Activation key required.\n\nUsage: minitok activate <key> or minitok activate --key-env MINITOK_ACTIVATION_KEY");
     return 1;
   }
 
@@ -40,19 +41,19 @@ async function cmdActivate(key, opts) {
   try {
     result = await client.activate(key, { serverUrl });
   } catch (err) {
-    console.error(`Error: Cannot connect to server at ${serverUrl}\n${err.message}`);
+    printError(`Cannot connect to server at ${serverUrl}\n${err.message}`);
     return 1;
   }
 
   if (!result.ok) {
     const errMsg = result.body?.error || `Activation failed (HTTP ${result.status})`;
-    console.error(`Error: ${errMsg}`);
+    printError(`${errMsg}`);
     return 1;
   }
 
   const { token, entitlement } = result.body || {};
   if (!token || !entitlement) {
-    console.error("Error: Server returned incomplete activation response.");
+    printError("Server returned incomplete activation response.");
     return 1;
   }
 
@@ -63,7 +64,7 @@ async function cmdActivate(key, opts) {
     const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
     cache.save(token, payload);
   } catch (err) {
-    console.error(`Error: Failed to store session token: ${err.message}`);
+    printError(`Failed to store session token: ${err.message}`);
     return 1;
   }
 
