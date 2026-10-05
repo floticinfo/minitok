@@ -250,6 +250,7 @@ class minitokSidebar {
     approvalFile;
     activeRunId;
     activeRunStartedAt;
+    activeSessionId;
     latestCliVersion;
     deviceLoginCancellation;
     // entitlementCache removed: license management is auth-based only.
@@ -424,6 +425,29 @@ class minitokSidebar {
         const stage = /Gathering repository intelligence|Planning|Implementing|Running verification|Reviewing|Evaluating goal progress/.exec(line)?.[0];
         if (stage)
             this.view?.webview.postMessage({ type: "progress", stage });
+        if (line.startsWith("MINITOK_SESSION_INFO ")) {
+            try {
+                const payload = JSON.parse(line.slice("MINITOK_SESSION_INFO ".length));
+                this.activeSessionId = payload.session_id;
+            }
+            catch { /* best-effort: malformed session info */ }
+        }
+        if (line.startsWith("MINITOK_CONTEXT_INFO ")) {
+            try {
+                const payload = JSON.parse(line.slice("MINITOK_CONTEXT_INFO ".length));
+                const attached = Number(payload.expanded || 0);
+                const skipped = Number(payload.skipped || 0);
+                if (attached > 0 || skipped > 0) {
+                    const parts = [];
+                    if (attached > 0)
+                        parts.push(`${attached} attachment${attached === 1 ? "" : "s"} included`);
+                    if (skipped > 0)
+                        parts.push(`${skipped} skipped`);
+                    this.view?.webview.postMessage({ type: "context-info", ok: skipped === 0, text: parts.join(", ") });
+                }
+            }
+            catch { /* best-effort: malformed context info */ }
+        }
         if (line.startsWith("MINITOK_APPROVAL_REQUEST ")) {
             try {
                 this.view?.webview.postMessage({ type: "approval-request", request: JSON.parse(line.slice("MINITOK_APPROVAL_REQUEST ".length)) });
@@ -604,7 +628,7 @@ class minitokSidebar {
         }
         if (message.command === "open-diff") {
             if (cwd)
-                await this.openDiff(cwd);
+                await this.openDiff(cwd, message.file);
             return;
         }
         if (message.command === "restore-session") {
@@ -722,6 +746,11 @@ class minitokSidebar {
             }
             this.activeRunId = runId;
             this.activeRunStartedAt = startedAt;
+            // A brand-new run starts a fresh conversation; only a resumed run carries
+            // the prior session id forward. Clear it so a failed resume doesn't leave
+            // a stale id behind for the next fresh run.
+            if (!message.resume)
+                this.activeSessionId = undefined;
             const evidenceSetting = this.effectiveEvidencePath();
             (0, workspace_1.workspaceRelativePath)(cwd, evidenceSetting, "evidencePath");
             const args = ["run", message.task, "--repo", cwd, "--evidence-path", evidenceSetting, "--run-id", runId];
@@ -729,6 +758,8 @@ class minitokSidebar {
                 args.push("--dry-run");
             else if ((0, workspace_1.autoApprove)())
                 args.push("--auto-accept");
+            if (this.activeSessionId)
+                args.push("--resume", this.activeSessionId);
             // P-2 fix: an admin session authorizes this run through a one-time,
             // runId-bound server token instead of the local signed entitlement. The
             // admin token itself stays in SecretStorage and never crosses into the
@@ -744,7 +775,7 @@ class minitokSidebar {
             await this.context.workspaceState.update("minitok.history", [...history.slice(-19), { runId, ...taskRecord(message.task || ""), startedAt, completedAt: new Date().toISOString(), status: "completed", success: true, totalTokens, cost: evidence?.cost ?? null, evidencePath: cwd ? this.evidenceFile(cwd) : null, patchPath: cwd ? path.join(cwd, ".minitok", "last-run.patch") : null, checkpointPath: checkpoint, enterBehavior: message.enterBehavior || "enter-run" }]);
             const safeText = redactOutputText(text);
             const safePatch = patch ? redactOutputText(patch) : patch;
-            this.view?.webview.postMessage({ type: "result", ok: true, text: safeText, evidence, patch: safePatch });
+            this.view?.webview.postMessage({ type: "result", ok: true, text: safeText, evidence, patch: safePatch, sessionId: this.activeSessionId });
             if (safePatch)
                 this.view?.webview.postMessage({ type: "patch", patch: safePatch });
         }
@@ -758,7 +789,7 @@ class minitokSidebar {
         }
         finally {
             this.activeRunId = undefined;
-            this.activeRunStartedAt = undefined;
+            this.activeRunStartedAt = undefined; /* keep activeSessionId for the next follow-up turn */
         }
     }
     // Checkout is the only billing action any surface reaches: the webviews dropped
@@ -1352,16 +1383,37 @@ class minitokSidebar {
     catch {
         return null;
     } }
-    async openDiff(cwd) {
+    async openDiff(cwd, file) {
         const patch = this.readPatch(cwd);
         if (!patch) {
             vscode.window.showInformationMessage("No minitok patch found. Run a minitok task first to produce one.");
             return;
         }
-        const file = path.join(cwd, ".minitok", "last-run.patch");
-        const original = await vscode.workspace.openTextDocument({ content: "", language: "diff" });
-        const modified = await vscode.workspace.openTextDocument({ content: patch, language: "diff" });
-        await vscode.commands.executeCommand("vscode.diff", original.uri, modified.uri, "minitok changes", { preview: false });
+        if (!file) {
+            // No file selected: open the full patch.
+            const original = await vscode.workspace.openTextDocument({ content: "", language: "diff" });
+            const modified = await vscode.workspace.openTextDocument({ content: patch, language: "diff" });
+            await vscode.commands.executeCommand("vscode.diff", original.uri, modified.uri, "minitok changes", { preview: false });
+            return;
+        }
+        // File selected: open checkpoint-vs-current diff for that file.
+        // Use the most recent successful run's checkpoint.
+        const history = this.context.workspaceState.get("minitok.history", []);
+        const lastRun = history.filter(h => h.status === "completed" && h.success === true).pop();
+        const runId = lastRun?.runId;
+        if (!runId) {
+            vscode.window.showInformationMessage("No completed minitok run found. Run a task first.");
+            return;
+        }
+        const checkpointFile = path.join(cwd, ".minitok", "checkpoints", runId, file);
+        const currentFile = path.join(cwd, file);
+        if (!fs.existsSync(checkpointFile)) {
+            vscode.window.showInformationMessage(`No checkpoint found for ${file}.`);
+            return;
+        }
+        const original = await vscode.workspace.openTextDocument(vscode.Uri.file(checkpointFile));
+        const modified = await vscode.workspace.openTextDocument(vscode.Uri.file(currentFile));
+        await vscode.commands.executeCommand("vscode.diff", original.uri, modified.uri, `minitok: ${file}`, { preview: false });
     }
     /**
      * Effective evidence path: the value saved from the Settings UI
