@@ -425,6 +425,15 @@ class minitokSidebar {
         const stage = /Gathering repository intelligence|Planning|Implementing|Running verification|Reviewing|Evaluating goal progress/.exec(line)?.[0];
         if (stage)
             this.view?.webview.postMessage({ type: "progress", stage });
+        if (line.startsWith("MINITOK_PROGRESS ")) {
+            try {
+                const payload = JSON.parse(line.slice("MINITOK_PROGRESS ".length));
+                if (payload && payload.phase && payload.state) {
+                    this.view?.webview.postMessage({ type: "phase", event: payload });
+                }
+            }
+            catch { /* best-effort: malformed progress event */ }
+        }
         if (line.startsWith("MINITOK_SESSION_INFO ")) {
             try {
                 const payload = JSON.parse(line.slice("MINITOK_SESSION_INFO ".length));
