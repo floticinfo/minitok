@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 1.5.3 - 2026-10-06
+
+### Fixed
+
+- Approval manifest: VSIX artifact metadata updated to match extension 0.3.29 build.
+- Extension: `device-auth.test.js` redirects `USERPROFILE` to a temp home so tests never clobber the real session file.
+- CLI: `doctor` next-steps numbering is now dynamic instead of hardcoded.
+
 ## 1.5.2 - 2026-10-06
 
 ### Added
