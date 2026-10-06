@@ -990,7 +990,8 @@ private async discoverModels(cwd?: string, provider?: string) {
     try { cli = cliPath(); }
     catch (error) { this.view?.webview.postMessage({ type: "mcp", ok: false, text: redactOutputText(`minitok CLI not found: ${error instanceof Error ? error.message : String(error)}. Install with: npm install -g @flotic/minitok`) }); return; }
     if (this.mcpProcess) { this.view?.webview.postMessage({ type: "mcp", ok: false, text: "MCP health check already running" }); return; }
-    const configured = mcpCommand();
+    let configured: string[];
+    try { configured = mcpCommand(); } catch (error) { this.view?.webview.postMessage({ type: "mcp", ok: false, text: redactOutputText(String(error)) }); return; }
     if (!configured.length || !configured[0]) { this.view?.webview.postMessage({ type: "mcp", ok: false, text: "minitok MCP command is not configured" }); return; }
     const processSpec = spawnSpec(configured[0], configured.slice(1));
     // Refresh the short lived runtime token before spawning the server, so both
