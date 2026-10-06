@@ -173,9 +173,10 @@ async function cmdDoctor(opts = {}) {
   console.log(`\n${allOk ? markerOk() + " All checks passed" : markerError() + " Some checks failed — see above"}`);
   if (!allOk) {
     console.log("\nNext steps:");
-    if (!fs.existsSync(minitokHome)) console.log("  1. Run: minitok migrate");
-    if (!entitlement.allowed) console.log("  2. Activate: minitok activate <activation-key>");
-    if (!anyProvider) console.log("  3. Configure a provider API key or a custom provider in minitok.yml");
+    let step = 1;
+    if (!fs.existsSync(minitokHome)) console.log(`  ${step++}. Run: minitok migrate`);
+    if (!entitlement.allowed) console.log(`  ${step++}. Activate: minitok activate <activation-key>`);
+    if (!anyProvider) console.log(`  ${step}. Configure a provider API key or a custom provider in minitok.yml`);
     console.log("  Run minitok doctor again after applying the fixes.");
   }
   return allOk ? 0 : 1;

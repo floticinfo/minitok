@@ -1,8 +1,17 @@
 "use strict";
+// Behavioral tests below drive the compiled device-auth module end to end,
+// including writeSharedSession(). os.homedir() resolves USERPROFILE on
+// Windows, so redirect it to a temp home BEFORE the module is loaded,
+// otherwise a successful fake login writes "at-test" into the real
+// ~/.minitok/account/session.json and clobbers the signed-in session.
+const { mkdtempSync } = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+const tempHome = mkdtempSync(path.join(os.tmpdir(), "minitok-device-auth-test-"));
+process.env.USERPROFILE = tempHome;
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
-const path = require("node:path");
 const root = path.join(__dirname, "..");
 const sidebar = fs.readFileSync(path.join(root, "src", "sidebar.ts"), "utf8");
 const html = fs.readFileSync(path.join(root, "src", "sidebar.html"), "utf8");

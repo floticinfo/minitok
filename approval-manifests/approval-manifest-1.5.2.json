@@ -14,8 +14,8 @@
         "sha256": "dfc1d0991cb8b661a93975fed5a2830390cb5567357faa05a39972263f71d6a8"
       },
       "vsix": {
-        "version": "0.3.27",
-        "sha256": "e38c5447b87225f76db7ddc07fec65f8e165986e6d161356f9199cc6b86bf67e"
+        "version": "0.3.28",
+        "sha256": "78bac9a76717bbc575647cdad835cc92e5318808beb1efb81f004391f0cf3532"
       }
     }
   },
@@ -56,7 +56,7 @@
       "decision": "Approved for release",
       "approvedAt": "2026-10-06T00:00:00.000Z",
       "evidenceRef": { "type": "external", "reference": "internal-approval-2026-10-06" },
-      "marketplacePublication": { "publisher": "Flotic", "extension": "minitok-extension", "version": "0.3.27" }
+      "marketplacePublication": { "publisher": "Flotic", "extension": "minitok-extension", "version": "0.3.28" }
     },
     "registry-publication-verification": {
       "status": "APPROVED",
