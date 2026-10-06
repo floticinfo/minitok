@@ -38,12 +38,12 @@ test("MCP badge updates on 'mcp' message type", () => {
   );
   assert.match(
     sidebarHtml,
-    /badge\.className='badge '\+\(m\.ok\?'online':'offline'\)/,
+    /badge\.className='badge '\+state/,
     "badge className must switch between online and offline",
   );
   assert.match(
     sidebarHtml,
-    /badge\.textContent=m\.ok\?'MCP online':'MCP offline'/,
+    /badge\.textContent='MCP '\+state/,
     "badge text must reflect the connection state",
   );
 });

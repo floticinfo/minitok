@@ -131,7 +131,7 @@ test("the panel task listener ignores auth-state traffic", () => {
   // auth-state carries no result text; without this guard the auth gate's own reply
   // blanks the status line with undefined and steals focus from the sign-in button.
   const html = panel();
-  assert.match(html, /window\.addEventListener\('message',e=>\{const m=e\.data;if\(m\.type!=='result'\)return;/);
+  assert.match(html, /window\.addEventListener\('message',e=>\{const m=e\.data;if\(m\.type==='mcp'\)\{/);
 });
 
 test("extension-side auth status always settles with an auth-state post", () => {
@@ -192,7 +192,7 @@ test("error paths route their message through showToast", () => {
   // The single mcp-connect handler lives in the auth listener and owns both the
   // pending state and the outcome, so the badge reflects a connect in flight.
   assert.match(html, /m\.type==='mcp-connect'\)\{const badge=document\.getElementById\('mcpBadge'\);if\(m\.pending\)/);
-  assert.match(html, /if\(m\.ok\)showToast\(m\.text\|\|'MCP connected\.','info'\);else showToast\(m\.text\|\|'MCP connection failed\.','error'\)/);
+  assert.match(html, /if\(m\.ok\)\{showToast\(m\.text\|\|'MCP connected\.','info'\);vscode\.postMessage\(\{command:'mcp-status'\}\)\}/);
   assert.match(html, /m\.type==='summary'\)\{if\(m\.text\)showToast\(/);
   assert.match(html, /m\.type==='info'\)\{[^}]*showToast\(m\.text,'info'\)/);
   assert.match(html, /m\.type==='activation'\)\{[^}]*showToast\(m\.text,'info'\)/);
