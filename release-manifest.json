@@ -2,16 +2,16 @@
   "schemaVersion": 1,
   "release": {
     "package": "@flotic/minitok",
-    "version": "1.5.2",
-    "commit": "57f530b2e46cd630fe3b61e4d0ca8c8744188247",
-    "tree": "ee5d76ffc78a0d21c983917d270a6893344e7f7d",
-    "tag": "v1.5.2",
-    "changelog": "## 1.5.2",
+    "version": "1.5.3",
+    "commit": "a009337f74dcccabab67b5f6601e748b1b778cd7",
+    "tree": "37594302b5b06a81bd5f9be6609c7f89a5a4e28e",
+    "tag": "v1.5.3",
+    "changelog": "## 1.5.3",
     "artifact": {
-      "filename": "flotic-minitok-1.5.2.tgz",
-      "size": 457424,
-      "sha256": "dfc1d0991cb8b661a93975fed5a2830390cb5567357faa05a39972263f71d6a8",
-      "integrity": "sha512-7x7DN3B0HlviL1dt3KKiOx2lpow+xD5ApYsQZ2KpMPQWbyg2e4BxmS+T+FOBGJeORGt4t9AXccOx4p6NM/vrRQ==",
+      "filename": "flotic-minitok-1.5.3.tgz",
+      "size": 457507,
+      "sha256": "dcdf93284bb3ca510360d55740b5b069e1014a85a67682b495866cb7cfe3a4ad",
+      "integrity": "sha512-PG9eMbtRMYhQzayVr4vK+ZOYPP8KqLoObcG1a2sL0rdr0s0Sz3OmMWaaPjPxljErA/dRAJi1FokJWGi7T/5xwQ==",
       "files": [
         {
           "path": "BENCHMARK_EVIDENCE.json",
@@ -20,8 +20,8 @@
         },
         {
           "path": "CHANGELOG.md",
-          "size": 64151,
-          "sha256": "e6b6a38c71f89f5b26092edb244d1d74ace6f6b712a94f6000ca18e981a04ed7"
+          "size": 64473,
+          "sha256": "d7fd6b0c2c2f340bcd9ddfabca5b05808bdbfb1b1caa6bcb3d4dd53cbbf5e460"
         },
         {
           "path": "DATA_CLASSIFICATION.md",
@@ -41,7 +41,7 @@
         {
           "path": "LAUNCH_CHECKLIST.md",
           "size": 3544,
-          "sha256": "bf01de557c3b164301ce5dd8a83ba496158b4b49feb3c65e73bea9aaf48cd444"
+          "sha256": "c6f00d0ccdf3359aed479e41d22adf95a6239d062d8e98609e3fea654d92fdec"
         },
         {
           "path": "LICENSE",
@@ -56,7 +56,7 @@
         {
           "path": "PROMOTION_KIT.md",
           "size": 6549,
-          "sha256": "7a45c95b53053cec47175a24949673c379ab5045bdc6adc41125ebab5fbc9f7e"
+          "sha256": "78fc1f21198e73c26a7706138f1d4c8a2230eb598a877ac00c5e2e6ba80b37b7"
         },
         {
           "path": "README.md",
@@ -81,12 +81,12 @@
         {
           "path": "mcp-marketplace.json",
           "size": 3148,
-          "sha256": "8482be092f685dc15cc518864477054e5bcf8d4051648bd22380056a88a23c12"
+          "sha256": "057e32063d0f66c03843119151670e5e2f98052b6bd31f48f44918b10fd7ee12"
         },
         {
           "path": "package.json",
-          "size": 7184,
-          "sha256": "e94ab80a92242849139046228c6a860482f00636295b5d605aa573af540643be"
+          "size": 7349,
+          "sha256": "94fca089c8d642f1a3c6b7db3751a70dce546565139cb4146a5eb92735fdc0ee"
         },
         {
           "path": "promotion-posts/linkedin.md",
@@ -96,7 +96,7 @@
         {
           "path": "promotion-posts/mcp-directory.md",
           "size": 3078,
-          "sha256": "70886ef21fe3cb003b148c602186d4f926c1b167587efbd6f220dbe306454fec"
+          "sha256": "5ecaf4b8904a3f02fe16cf4cbf10d2721a74a087dee6c2a8d6ca5490f27d426f"
         },
         {
           "path": "promotion-posts/product-hunt.md",
@@ -131,7 +131,7 @@
         {
           "path": "server.json",
           "size": 1952,
-          "sha256": "7174043a43016dbcd74a516c1b9bcef4d6dab4bb24a380e2e497d98b2c5004fd"
+          "sha256": "412901a98853a31c865c768164b612fd848235a89a171a03ac16dc83e6844c31"
         },
         {
           "path": "src/agent/host.mjs",
@@ -240,8 +240,8 @@
         },
         {
           "path": "src/cli/commands/doctor.js",
-          "size": 8495,
-          "sha256": "d8a31d5d4295c6b21d5fd44b5677d126ced43b096412b56f448090f673b16d1a"
+          "size": 8536,
+          "sha256": "1e278211e6f4e337e7de901a00b871e708f403bc422b5ba11bb11919e6647aea"
         },
         {
           "path": "src/cli/commands/evolution.js",
@@ -330,8 +330,8 @@
         },
         {
           "path": "src/cli/fullscreen-gui.js",
-          "size": 15208,
-          "sha256": "07c14c80895aafcb133b85180af4643ac55fcf10a85d58a3fe95e3c71759b021"
+          "size": 15312,
+          "sha256": "4ff660e8e63004a1dc077265c29716b6062065b52b54c676be34e420ac3815a2"
         },
         {
           "path": "src/cli/gui-commands.js",
