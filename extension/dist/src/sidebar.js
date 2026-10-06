@@ -1315,30 +1315,9 @@ class minitokSidebar {
             this.view?.webview.postMessage({ type: "mcp-connect", ok: false, text: redactOutputText(String(error)) });
             return;
         }
-        // A malformed minitok.mcpCommand (e.g. an unterminated quote) throws from
-        // the parser. Surface it as an mcp-connect failure before taking the lock.
-        let configuredMcp;
-        try {
-            configuredMcp = (0, workspace_1.mcpCommand)();
-        }
-        catch (error) {
-            this.view?.webview.postMessage({ type: "mcp-connect", ok: false, text: redactOutputText(String(error)), action: "open-settings" });
-            return;
-        }
-        // Warn when the configured MCP command differs from the packaged default,
-        // because mcpCommand executes arbitrary code with the user's permissions.
-        const defaultMcp = (0, mcp_1.packagedMcpCommand)(path.resolve(__dirname, "..", ".."), process.execPath);
-        if (configuredMcp.join(" ") !== defaultMcp.join(" ")) {
-            const acknowledged = await vscode.window.showWarningMessage(`The configured minitok.mcpCommand differs from the default. This command runs with your user permissions. Continue?`, "Continue", "Cancel");
-            if (acknowledged !== "Continue") {
-                this.view?.webview.postMessage({ type: "mcp-connect", ok: false, text: "Connection cancelled." });
-                return;
-            }
-        }
         fs.mkdirSync(path.dirname(configPath), { recursive: true, mode: 0o700 });
         const configLock = acquireMcpConfigLock(configPath);
         let backup;
-        let configuredEnv;
         try {
             // Read and validate only after the lock is held. This prevents a
             // concurrent host writer from being overwritten by a stale snapshot.
@@ -1359,7 +1338,23 @@ class minitokSidebar {
             backup = `${configPath}.minitok-backup-${Date.now()}`;
             if (this.safeConfigExists(configPath))
                 fs.copyFileSync(configPath, backup, fs.constants.COPYFILE_EXCL);
-            configuredEnv = (0, workspace_1.mcpEnvironment)();
+            let configuredMcp;
+            try {
+                configuredMcp = (0, workspace_1.mcpCommand)();
+            }
+            catch (error) {
+                this.view?.webview.postMessage({ type: "mcp-connect", ok: false, text: redactOutputText(String(error)), action: "open-settings" });
+                return;
+            }
+            const defaultMcp = (0, mcp_1.packagedMcpCommand)(path.resolve(__dirname, "..", ".."), process.execPath);
+            if (JSON.stringify(configuredMcp) !== JSON.stringify(defaultMcp)) {
+                const confirmed = await vscode.window.showWarningMessage("The configured minitok.mcpCommand differs from the default. This command runs with your user permissions. Continue?", { modal: true }, "Continue");
+                if (confirmed !== "Continue") {
+                    this.view?.webview.postMessage({ type: "mcp-connect", ok: false, text: "Connection cancelled by user." });
+                    return;
+                }
+            }
+            const configuredEnv = (0, workspace_1.mcpEnvironment)();
             const existingMinitok = existingServers.minitok;
             const existingEnv = existingMinitok && typeof existingMinitok === "object" && existingMinitok.env && typeof existingMinitok.env === "object" ? existingMinitok.env : {};
             const scopes = typeof existingEnv.MINITOK_MCP_SCOPES === "string" && existingEnv.MINITOK_MCP_SCOPES.trim() ? existingEnv.MINITOK_MCP_SCOPES : configuredEnv.MINITOK_MCP_SCOPES;
@@ -1403,8 +1398,6 @@ class minitokSidebar {
             this.view?.webview.postMessage({ type: "mcp", ok: false, text: "MCP health check already running" });
             return;
         }
-        // Like minitok.mcpStatus, a malformed minitok.mcpCommand must be reported
-        // to the webview instead of escaping the command as an unhandled rejection.
         let configured;
         try {
             configured = (0, workspace_1.mcpCommand)();
@@ -1420,14 +1413,7 @@ class minitokSidebar {
         const processSpec = (0, workspace_1.spawnSpec)(configured[0], configured.slice(1));
         // Refresh the short lived runtime token before spawning the server, so both
         // sides use the same credential instead of failing 15 minutes after setup.
-        let token;
-        try {
-            token = await (0, workspace_1.ensureMcpAuthToken)();
-        }
-        catch (error) {
-            this.view?.webview.postMessage({ type: "mcp", ok: false, text: `MCP authentication token could not be prepared: ${redactOutputText(String(error))}` });
-            return;
-        }
+        const token = await (0, workspace_1.ensureMcpAuthToken)();
         if (!token) {
             this.view?.webview.postMessage({ type: "mcp", ok: false, text: "MCP authentication token could not be prepared." });
             return;
@@ -1476,7 +1462,8 @@ class minitokSidebar {
             if (retryCount < 2) {
                 this.output.appendLine(`[mcp] handshake timed out, retrying (${retryCount + 1}/2)...`);
                 this.stopChild(mcp);
-                this.mcpProcess = undefined;
+                if (this.mcpProcess === mcp)
+                    this.mcpProcess = undefined;
                 void this.checkMcpHealth(retryCount + 1);
             }
             else {
@@ -1500,14 +1487,13 @@ class minitokSidebar {
             }
         } });
         mcp.on("error", error => {
-            const raw = error instanceof Error ? error : new Error(String(error));
-            const errno = raw;
-            const userMessage = errno.code === "ENOENT"
+            const errno = error;
+            const message = errno.code === "ENOENT"
                 ? "MCP command not found. Check minitok.mcpCommand setting."
                 : errno.code === "EACCES"
                     ? "MCP command permission denied. Check file permissions."
-                    : `MCP offline: ${redactOutputText(raw.message)}`;
-            finish(false, userMessage);
+                    : `MCP offline: ${redactOutputText(error.message)}`;
+            finish(false, message);
         });
         send("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "minitok-sidebar", version: String(this.context.extension.packageJSON.version) } });
     }
