@@ -1,0 +1,75 @@
+name: Publish extension to VS Code Marketplace
+
+# Publishes minitok-extension VSIX to the Visual Studio Marketplace.
+#
+# Triggers:
+#   - workflow_dispatch: manual publish for a given extension version
+#
+# Publishing auth:
+#   - vsce publish --oidc (trusted publishing) when the publisher has an
+#     OIDC trusted publishing policy configured; falls back to VSCE_PAT
+#     secret if present.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Extension version to publish (must match extension/package.json)"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: publish-marketplace
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Verify extension version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          test "${INPUT_VERSION}" = "$(node -p "require('./extension/package.json').version")"
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install extension dependencies
+        run: npm --prefix extension ci
+
+      - name: Compile and test extension
+        run: |
+          npm --prefix extension run compile
+          npm --prefix extension run test:unit
+
+      - name: Package VSIX
+        run: npm --prefix extension run package
+
+      - name: Verify VSIX metadata
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          ls -la extension/*.vsix
+          test -f "extension/minitok-extension-${INPUT_VERSION}.vsix"
+
+      - name: Publish to Marketplace
+        working-directory: extension
+        env:
+          VSCE_PAT: ${{ secrets.VSCE_PAT }}
+        run: |
+          if [ -n "$VSCE_PAT" ]; then
+            npx @vscode/vsce publish --pat "$VSCE_PAT"
+          else
+            npx @vscode/vsce publish --oidc
+          fi
