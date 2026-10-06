@@ -45,8 +45,12 @@ jobs:
         with:
           node-version: "22"
 
-      - name: Install extension dependencies
-        run: npm --prefix extension ci
+      - name: Install dependencies
+        # Root deps are required: extension tests spawn bin/minitok.js,
+        # which requires commander from the root node_modules.
+        run: |
+          npm ci
+          npm --prefix extension ci
 
       - name: Compile and test extension
         run: |
