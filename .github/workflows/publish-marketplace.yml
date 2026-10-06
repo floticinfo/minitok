@@ -84,7 +84,10 @@ jobs:
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
-          npm install --no-save @vscode/vsce@latest
+          # 4.0.1-3 (npm "next" tag) includes the OIDC Marketplace contract
+          # fix (PR microsoft/vscode-vsce#1337): FederatedToken scheme +
+          # api-version=7.2-preview.1. latest (4.0.0) predates it.
+          npm install --no-save @vscode/vsce@4.0.1-3
           if [ -n "$VSCE_PAT" ]; then
             npx --no-install @vscode/vsce publish --pat "$VSCE_PAT"
           else
