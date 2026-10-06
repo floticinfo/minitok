@@ -6,6 +6,7 @@ import { runProcess, killProcessTree } from "./run-process";
 import * as os from "node:os";
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import { cliPath, mcpCommand, mcpEnvironment, configuredMcpScopes, ensureMcpAuthToken, workspacePath, requireTrustedWorkspace, autoApprove, spawnSpec, spawnOptionsFor, npmSpawnSpec, normalizeProviderName, appendBoundedOutput, workspaceRelativePath } from "./workspace";
+import { packagedMcpCommand } from "./mcp";
 import { checkEntitlement, invalidateEntitlementCache, requireEntitlement, adminRunDelegationEnv, bindLicenseToAccount } from "./entitlement";
 // activateWithServer, statusEntitlementSession, refreshEntitlementSession, deactivateEntitlementSession removed: license management is auth-based only.
 // EntitlementCache removed: license management is auth-based only.
@@ -918,14 +919,15 @@ private async discoverModels(cwd?: string, provider?: string) {
     configuredMcpScopes();
     const configs = this.mcpConfigPaths();
     const candidates = target && Object.prototype.hasOwnProperty.call(configs, target) ? [target] : target ? [] : Object.keys(configs).filter(name => this.safeConfigExists(configs[name as keyof typeof configs]));
-    if (!candidates.length) { this.view?.webview.postMessage({ type: "mcp-connect", ok: false, text: target ? "Unsupported MCP host." : "No supported MCP host detected." }); return; }
+    if (!candidates.length) { this.view?.webview.postMessage({ type: "mcp-connect", ok: false, text: target ? "Unsupported MCP host." : "No supported MCP host detected.", action: "open-settings" }); return; }
     const host = candidates[0] as keyof typeof configs;
     const configPath = configs[host];
     const hasBackup = this.safeConfigExists(configPath);
     const approved = await vscode.window.showInformationMessage(`Connect minitok MCP to ${host}? ${hasBackup ? "A backup will be created before changes." : "No backup will be created because the host configuration is new."}`, "Connect", "Cancel");
-    if (approved !== "Connect") { this.view?.webview.postMessage({ type: "mcp-connect", ok: false, text: "Connection cancelled." }); return; }
-    const token = await ensureMcpAuthToken();
-    if (!token) { this.view?.webview.postMessage({ type: "mcp-connect", ok: false, text: "MCP authentication token could not be prepared." }); return; }
+    if (approved !== "Connect") { this.view?.webview.postMessage({ type: "mcp-connect", ok: false, text: "Connection cancelled.", action: "retry" }); return; }
+    let token: string | undefined;
+    try { token = await ensureMcpAuthToken(); } catch (error) { this.view?.webview.postMessage({ type: "mcp-connect", ok: false, text: `MCP authentication token could not be prepared: ${redactOutputText(String(error))}`, action: "sign-in" }); return; }
+    if (!token) { this.view?.webview.postMessage({ type: "mcp-connect", ok: false, text: "MCP authentication token could not be prepared.", action: "sign-in" }); return; }
     try { mcpEnvironment(); await requireEntitlement(); } catch (error) { this.view?.webview.postMessage({ type: "mcp-connect", ok: false, text: redactOutputText(String(error)) }); return; }
     fs.mkdirSync(path.dirname(configPath), { recursive: true, mode: 0o700 });
     const configLock = acquireMcpConfigLock(configPath);
@@ -946,7 +948,17 @@ private async discoverModels(cwd?: string, provider?: string) {
       if (!existingServers || typeof existingServers !== "object" || Array.isArray(existingServers)) throw new Error("MCP server configuration must be an object");
       backup = `${configPath}.minitok-backup-${Date.now()}`;
       if (this.safeConfigExists(configPath)) fs.copyFileSync(configPath, backup, fs.constants.COPYFILE_EXCL);
-      const configuredMcp = mcpCommand();
+      let configuredMcp: string[];
+      try { configuredMcp = mcpCommand(); } catch (error) { this.view?.webview.postMessage({ type: "mcp-connect", ok: false, text: redactOutputText(String(error)), action: "open-settings" }); return; }
+      const defaultMcp = packagedMcpCommand(path.resolve(__dirname, "..", ".."), process.execPath);
+      if (JSON.stringify(configuredMcp) !== JSON.stringify(defaultMcp)) {
+        const confirmed = await vscode.window.showWarningMessage(
+          "The configured minitok.mcpCommand differs from the default. This command runs with your user permissions. Continue?",
+          { modal: true },
+          "Continue",
+        );
+        if (confirmed !== "Continue") { this.view?.webview.postMessage({ type: "mcp-connect", ok: false, text: "Connection cancelled by user." }); return; }
+      }
       const configuredEnv = mcpEnvironment();
       const existingMinitok = (existingServers as Record<string, any>).minitok;
       const existingEnv = existingMinitok && typeof existingMinitok === "object" && existingMinitok.env && typeof existingMinitok.env === "object" ? existingMinitok.env as Record<string, string> : {};

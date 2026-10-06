@@ -12,6 +12,17 @@ const sidebar = fs.readFileSync(path.join(root, "src", "sidebar.ts"), "utf8");
 const sidebarHtml = fs.readFileSync(path.join(root, "src", "sidebar.html"), "utf8");
 const manifest = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8"));
 
+// The mcpScopes setting accepts exactly the MCP_SCOPES list the code validates
+// against; a description that documents a subset made users believe the
+// unrestricted_* scopes were rejected.
+test("the documented mcp scopes match the validated scope list", () => {
+  const documented = manifest.contributes.configuration.properties["minitok.mcpScopes"].description
+    .match(/\b(read|write|auto_accept|verify_exec|unrestricted_autonomous|unrestricted_general_autonomous)\b/g) || [];
+  const validated = workspace.match(/export const MCP_SCOPES = \[([^\]]+)\]/)[1]
+    .match(/"([^"]+)"/g).map(value => value.slice(1, -1));
+  assert.deepEqual([...new Set(documented)].sort(), [...new Set(validated)].sort());
+});
+
 // The activation key is a bearer credential: whoever holds it can spend the
 // plan. These assertions pin the two properties that keep it out of places a
 // local process can read -- argv and the CLI's own child environment.
