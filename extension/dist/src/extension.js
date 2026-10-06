@@ -166,7 +166,18 @@ function activate(context) {
             vscode.window.showErrorMessage(redactExtensionOutput(String(error)));
             return;
         }
-        const command = (0, workspace_2.mcpCommand)();
+        // A malformed minitok.mcpCommand (e.g. an unterminated quote) throws from
+        // the parser; catch it here so the command surfaces the settings error
+        // instead of dying as an unhandled rejection in the command handler.
+        let command;
+        try {
+            command = (0, workspace_2.mcpCommand)();
+        }
+        catch (error) {
+            void vscode.window.showErrorMessage(redactExtensionOutput(String(error)), "Open Settings").then(answer => { if (answer === "Open Settings")
+                return vscode.commands.executeCommand("workbench.action.openSettings", "minitok.mcpCommand"); return undefined; });
+            return;
+        }
         if (!command.length || !command[0]) {
             void vscode.window.showErrorMessage("minitok MCP command is not configured. Set minitok.mcpCommand in Settings.", "Open Settings").then(answer => { if (answer === "Open Settings")
                 return vscode.commands.executeCommand("workbench.action.openSettings", "minitok.mcpCommand"); return undefined; });
@@ -175,7 +186,15 @@ function activate(context) {
         const processSpec = (0, workspace_1.spawnSpec)(command[0], command.slice(1));
         // Refresh the short lived runtime token before spawning the server, so both
         // sides read the same credential.
-        const token = await (0, workspace_2.ensureMcpAuthToken)();
+        let token;
+        try {
+            token = await (0, workspace_2.ensureMcpAuthToken)();
+        }
+        catch (error) {
+            void vscode.window.showErrorMessage(`minitok MCP authentication token could not be prepared: ${redactExtensionOutput(String(error))}`, "Sign In").then(answer => { if (answer === "Sign In")
+                return vscode.commands.executeCommand("minitok.sidebar.focus"); return undefined; });
+            return;
+        }
         if (!token) {
             void vscode.window.showErrorMessage("minitok MCP authentication token could not be prepared. Sign in again to refresh your session.", "Sign In").then(answer => { if (answer === "Sign In")
                 return vscode.commands.executeCommand("minitok.sidebar.focus"); return undefined; });
@@ -204,7 +223,7 @@ function activate(context) {
         let finished = false;
         let timer;
         const finish = (text) => { if (finished)
-            return; finished = true; clearTimeout(timer); const safeText = redactExtensionOutput(text); child.kill(); output.appendLine(safeText); vscode.window.showInformationMessage(safeText); };
+            return; finished = true; clearTimeout(timer); const safeText = redactExtensionOutput(text); killProcessTree(child); output.appendLine(safeText); vscode.window.showInformationMessage(safeText); };
         timer = setTimeout(() => finish("minitok MCP handshake timed out"), 5000);
         // The probe must look like a real host: the credential is carried by the
         // spawned process environment (mcpEnvironment) and never by request params.

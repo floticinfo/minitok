@@ -17,10 +17,15 @@ function killProcessTree(child) {
             child.kill(); });
     }
     else {
-        try {
-            process.kill(-child.pid, "SIGTERM");
+        if (child.pid) {
+            try {
+                process.kill(-child.pid, "SIGTERM");
+            }
+            catch {
+                child.kill("SIGTERM");
+            }
         }
-        catch {
+        else {
             child.kill("SIGTERM");
         }
     }

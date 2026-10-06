@@ -317,20 +317,27 @@ function inheritedMcpEnvironment() {
     }
     return env;
 }
+/** Canonical path of the rotating MCP runtime token file. */
+function runtimeTokenFile() {
+    const dir = path.join(os.homedir(), ".minitok", "mcp");
+    if (!fs.existsSync(dir))
+        fs.mkdirSync(dir, { recursive: true, mode: 0o700 });
+    return path.join(dir, "runtime-token.json");
+}
 function mcpEnvironment() {
     const scopes = configuredMcpScopes().join(",");
     const root = workspacePath();
     return {
         ...inheritedMcpEnvironment(),
         minitok_server_url: configuredServerUrl(),
-        MINITOK_MCP_AUTH_TOKEN_FILE: path.join(os.homedir(), ".minitok", "mcp", "runtime-token.json"),
+        MINITOK_MCP_AUTH_TOKEN_FILE: runtimeTokenFile(),
         MINITOK_CAPABILITY_FILE: capabilityFile(),
         MINITOK_MCP_SCOPES: scopes,
         ...(root ? { MINITOK_MCP_WORKSPACE_ROOT: root } : {}),
     };
 }
 function mcpAuthToken() {
-    const tokenFile = path.join(os.homedir(), ".minitok", "mcp", "runtime-token.json");
+    const tokenFile = runtimeTokenFile();
     try {
         const value = JSON.parse(fs.readFileSync(tokenFile, "utf8"));
         if (typeof value.token !== "string" || !value.token || value.revoked_at || typeof value.expires_at !== "number" || Date.now() >= value.expires_at)
@@ -361,21 +368,24 @@ async function ensureMcpAuthToken() {
     return mcpAuthToken();
 }
 function refreshRuntimeToken() {
-    return new Promise(resolve => {
+    return new Promise((resolve, reject) => {
         const spec = spawnSpec(cliPath(), ["mcp", "token"]);
         let settled = false;
-        const done = () => { if (!settled) {
+        const done = (error) => { if (!settled) {
             settled = true;
-            resolve();
+            if (error)
+                reject(error);
+            else
+                resolve();
         } };
         try {
             const child = (0, node_child_process_1.spawn)(spec.command, spec.args, { ...spawnOptionsFor(spec, { cwd: workspacePath() }), stdio: "ignore" });
-            const timer = setTimeout(() => { child.kill(); done(); }, 30000);
-            child.on("error", () => { clearTimeout(timer); done(); });
-            child.on("close", () => { clearTimeout(timer); done(); });
+            const timer = setTimeout(() => { child.kill(); done(new Error("minitok mcp token timed out")); }, 30000);
+            child.on("error", (error) => { clearTimeout(timer); done(error); });
+            child.on("close", (code) => { clearTimeout(timer); done(code ? new Error(`minitok mcp token exited with code ${code}`) : undefined); });
         }
-        catch {
-            done();
+        catch (error) {
+            done(error instanceof Error ? error : new Error(String(error)));
         }
     });
 }

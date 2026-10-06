@@ -38,6 +38,9 @@ exports.parseMcpCommand = parseMcpCommand;
 exports.packagedMcpCommand = packagedMcpCommand;
 const path = __importStar(require("node:path"));
 exports.QUOTED_ESCAPES = "\"'\\";
+// `'` is listed for symmetry with shell convention only: `escaped` is never
+// set while `quote === "'"` (see the backslash branch below), so a backslash
+// inside a single-quoted span is always a literal path separator.
 function parseMcpCommand(value) {
     const result = [];
     let token = "";

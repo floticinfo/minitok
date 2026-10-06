@@ -9,5 +9,6 @@ function redactSensitiveText(value) {
         .replace(/Basic\s+[A-Za-z0-9+/=]+/gi, "Basic [REDACTED]")
         .replace(/\b(?:sk-(?:proj-|ant-)?[A-Za-z0-9_-]{12,}|gh[pousr]_[A-Za-z0-9_]{12,}|xox[baprs]-[A-Za-z0-9-]{12,})\b/g, "[REDACTED]")
         .replace(/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\b/g, "[REDACTED]")
-        .replace(/(https?:\/\/)[^\s/@:]+(?::[^\s/@]*)?@([^\s/]+)/gi, "$1[REDACTED]@$2");
+        .replace(/(https?:\/\/)[^\s/@:]+(?::[^\s/@]*)?@([^\s/]+)/gi, "$1[REDACTED]@$2")
+        .replace(/([A-Za-z]:\\Users\\)[^\\]+/gi, "$1[USER]");
 }

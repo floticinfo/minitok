@@ -235,6 +235,10 @@ class minitokPanel {
             this.postAuth("signed-out", false, false, remoteRevoked ? "Signed out locally and from the server." : "Signed out locally. The server session could not be revoked; sign in again when online.");
             return;
         }
+        if (message?.command === "mcp-status") {
+            this.postMcpStatus();
+            return;
+        }
         if (!message || !["status", "run", "dry-run", "stop", "activate"].includes(message.command)) {
             this.post(false, "Unsupported command");
             return;
@@ -325,6 +329,9 @@ class minitokPanel {
         (0, run_process_1.killProcessTree)(child);
     }
     post(ok, text) { this.panel.webview.postMessage({ type: "result", ok, text: redactPanelOutput(text) }); }
+    postMcpStatus() {
+        this.panel.webview.postMessage({ type: "mcp", ok: false, text: "Check sidebar for MCP status" });
+    }
     // The panel brand mark must render the same Harlekin 'm' glyph the Activity
     // Bar icon (media/minitok-activitybar.svg) uses, so the glyph is the SVG
     // artwork (media/minitok.svg) rather than a system-ui text 'm'. The webview

@@ -44,6 +44,7 @@ const run_process_1 = require("./run-process");
 const os = __importStar(require("node:os"));
 const node_crypto_1 = require("node:crypto");
 const workspace_1 = require("./workspace");
+const mcp_1 = require("./mcp");
 const entitlement_1 = require("./entitlement");
 // activateWithServer, statusEntitlementSession, refreshEntitlementSession, deactivateEntitlementSession removed: license management is auth-based only.
 // EntitlementCache removed: license management is auth-based only.
@@ -337,6 +338,7 @@ class minitokSidebar {
         // entitlement cache removed: license management is auth-based only.
         view.webview.options = { enableScripts: true, localResourceRoots: [this.extensionUri] };
         view.webview.html = this.html(view.webview);
+        view.onDidDispose(() => this.dispose());
         view.webview.onDidReceiveMessage(message => {
             void this.handle(message).catch(error => {
                 this.view?.webview.postMessage({ type: "result", ok: false, text: redactOutputText(String(error)) });
@@ -1282,7 +1284,7 @@ class minitokSidebar {
         const configs = this.mcpConfigPaths();
         const candidates = target && Object.prototype.hasOwnProperty.call(configs, target) ? [target] : target ? [] : Object.keys(configs).filter(name => this.safeConfigExists(configs[name]));
         if (!candidates.length) {
-            this.view?.webview.postMessage({ type: "mcp-connect", ok: false, text: target ? "Unsupported MCP host." : "No supported MCP host detected." });
+            this.view?.webview.postMessage({ type: "mcp-connect", ok: false, text: target ? "Unsupported MCP host." : "No supported MCP host detected.", action: "open-settings" });
             return;
         }
         const host = candidates[0];
@@ -1290,12 +1292,19 @@ class minitokSidebar {
         const hasBackup = this.safeConfigExists(configPath);
         const approved = await vscode.window.showInformationMessage(`Connect minitok MCP to ${host}? ${hasBackup ? "A backup will be created before changes." : "No backup will be created because the host configuration is new."}`, "Connect", "Cancel");
         if (approved !== "Connect") {
-            this.view?.webview.postMessage({ type: "mcp-connect", ok: false, text: "Connection cancelled." });
+            this.view?.webview.postMessage({ type: "mcp-connect", ok: false, text: "Connection cancelled.", action: "retry" });
             return;
         }
-        const token = await (0, workspace_1.ensureMcpAuthToken)();
+        let token;
+        try {
+            token = await (0, workspace_1.ensureMcpAuthToken)();
+        }
+        catch (error) {
+            this.view?.webview.postMessage({ type: "mcp-connect", ok: false, text: `MCP authentication token could not be prepared: ${redactOutputText(String(error))}`, action: "sign-in" });
+            return;
+        }
         if (!token) {
-            this.view?.webview.postMessage({ type: "mcp-connect", ok: false, text: "MCP authentication token could not be prepared." });
+            this.view?.webview.postMessage({ type: "mcp-connect", ok: false, text: "MCP authentication token could not be prepared.", action: "sign-in" });
             return;
         }
         try {
@@ -1306,9 +1315,30 @@ class minitokSidebar {
             this.view?.webview.postMessage({ type: "mcp-connect", ok: false, text: redactOutputText(String(error)) });
             return;
         }
+        // A malformed minitok.mcpCommand (e.g. an unterminated quote) throws from
+        // the parser. Surface it as an mcp-connect failure before taking the lock.
+        let configuredMcp;
+        try {
+            configuredMcp = (0, workspace_1.mcpCommand)();
+        }
+        catch (error) {
+            this.view?.webview.postMessage({ type: "mcp-connect", ok: false, text: redactOutputText(String(error)), action: "open-settings" });
+            return;
+        }
+        // Warn when the configured MCP command differs from the packaged default,
+        // because mcpCommand executes arbitrary code with the user's permissions.
+        const defaultMcp = (0, mcp_1.packagedMcpCommand)(path.resolve(__dirname, "..", ".."), process.execPath);
+        if (configuredMcp.join(" ") !== defaultMcp.join(" ")) {
+            const acknowledged = await vscode.window.showWarningMessage(`The configured minitok.mcpCommand differs from the default. This command runs with your user permissions. Continue?`, "Continue", "Cancel");
+            if (acknowledged !== "Continue") {
+                this.view?.webview.postMessage({ type: "mcp-connect", ok: false, text: "Connection cancelled." });
+                return;
+            }
+        }
         fs.mkdirSync(path.dirname(configPath), { recursive: true, mode: 0o700 });
         const configLock = acquireMcpConfigLock(configPath);
         let backup;
+        let configuredEnv;
         try {
             // Read and validate only after the lock is held. This prevents a
             // concurrent host writer from being overwritten by a stale snapshot.
@@ -1329,8 +1359,7 @@ class minitokSidebar {
             backup = `${configPath}.minitok-backup-${Date.now()}`;
             if (this.safeConfigExists(configPath))
                 fs.copyFileSync(configPath, backup, fs.constants.COPYFILE_EXCL);
-            const configuredMcp = (0, workspace_1.mcpCommand)();
-            const configuredEnv = (0, workspace_1.mcpEnvironment)();
+            configuredEnv = (0, workspace_1.mcpEnvironment)();
             const existingMinitok = existingServers.minitok;
             const existingEnv = existingMinitok && typeof existingMinitok === "object" && existingMinitok.env && typeof existingMinitok.env === "object" ? existingMinitok.env : {};
             const scopes = typeof existingEnv.MINITOK_MCP_SCOPES === "string" && existingEnv.MINITOK_MCP_SCOPES.trim() ? existingEnv.MINITOK_MCP_SCOPES : configuredEnv.MINITOK_MCP_SCOPES;
@@ -1357,7 +1386,7 @@ class minitokSidebar {
         // so re-resolve the gate instead of leaving a stale not-entitled badge.
         await this.refreshAuth();
     }
-    async checkMcpHealth() {
+    async checkMcpHealth(retryCount = 0) {
         (0, workspace_1.requireTrustedWorkspace)((0, workspace_1.workspacePath)());
         // Scope errors are local configuration errors; surface them before token
         // rotation, entitlement lookup, or process spawning.
@@ -1374,7 +1403,16 @@ class minitokSidebar {
             this.view?.webview.postMessage({ type: "mcp", ok: false, text: "MCP health check already running" });
             return;
         }
-        const configured = (0, workspace_1.mcpCommand)();
+        // Like minitok.mcpStatus, a malformed minitok.mcpCommand must be reported
+        // to the webview instead of escaping the command as an unhandled rejection.
+        let configured;
+        try {
+            configured = (0, workspace_1.mcpCommand)();
+        }
+        catch (error) {
+            this.view?.webview.postMessage({ type: "mcp", ok: false, text: redactOutputText(String(error)) });
+            return;
+        }
         if (!configured.length || !configured[0]) {
             this.view?.webview.postMessage({ type: "mcp", ok: false, text: "minitok MCP command is not configured" });
             return;
@@ -1382,7 +1420,14 @@ class minitokSidebar {
         const processSpec = (0, workspace_1.spawnSpec)(configured[0], configured.slice(1));
         // Refresh the short lived runtime token before spawning the server, so both
         // sides use the same credential instead of failing 15 minutes after setup.
-        const token = await (0, workspace_1.ensureMcpAuthToken)();
+        let token;
+        try {
+            token = await (0, workspace_1.ensureMcpAuthToken)();
+        }
+        catch (error) {
+            this.view?.webview.postMessage({ type: "mcp", ok: false, text: `MCP authentication token could not be prepared: ${redactOutputText(String(error))}` });
+            return;
+        }
         if (!token) {
             this.view?.webview.postMessage({ type: "mcp", ok: false, text: "MCP authentication token could not be prepared." });
             return;
@@ -1401,9 +1446,15 @@ class minitokSidebar {
             mcp = (0, node_child_process_1.spawn)(processSpec.command, processSpec.args, (0, workspace_1.spawnOptionsFor)(processSpec, { cwd: (0, workspace_1.workspacePath)(), env: (0, workspace_1.mcpEnvironment)() }));
         }
         catch (error) {
-            const safeError = redactOutputText(String(error));
-            this.output.appendLine(`[spawn] synchronous error=${safeError}`);
-            this.view?.webview.postMessage({ type: "mcp", ok: false, text: `MCP spawn failed: ${safeError}` });
+            const raw = error instanceof Error ? error : new Error(String(error));
+            const errno = raw;
+            const userMessage = errno.code === "ENOENT"
+                ? "MCP command not found. Check minitok.mcpCommand setting."
+                : errno.code === "EACCES"
+                    ? "MCP command permission denied. Check file permissions."
+                    : `MCP spawn failed: ${redactOutputText(raw.message)}`;
+            this.output.appendLine(`[spawn] synchronous error=${redactOutputText(String(raw))}`);
+            this.view?.webview.postMessage({ type: "mcp", ok: false, text: userMessage });
             return;
         }
         this.mcpProcess = mcp;
@@ -1421,7 +1472,17 @@ class minitokSidebar {
         const finish = (ok, text) => { if (finished)
             return; finished = true; clearTimeout(timeout); if (this.mcpProcess === mcp)
             this.mcpProcess = undefined; this.stopChild(mcp); this.view?.webview.postMessage({ type: "mcp", ok, text: redactOutputText(text) }); };
-        timeout = setTimeout(() => finish(false, "MCP offline: handshake timed out"), 5000);
+        timeout = setTimeout(() => {
+            if (retryCount < 2) {
+                this.output.appendLine(`[mcp] handshake timed out, retrying (${retryCount + 1}/2)...`);
+                this.stopChild(mcp);
+                this.mcpProcess = undefined;
+                void this.checkMcpHealth(retryCount + 1);
+            }
+            else {
+                finish(false, "MCP offline: handshake timed out");
+            }
+        }, 5000);
         mcp.stdout.on("data", chunk => { buffer += chunk.toString(); const lines = buffer.split(/\r?\n/); buffer = lines.pop() || ""; for (const line of lines) {
             try {
                 const message = JSON.parse(line);
@@ -1438,7 +1499,16 @@ class minitokSidebar {
                 this.output.appendLine(redactOutputText(`MCP invalid response: ${error instanceof Error ? error.message : String(error)}`));
             }
         } });
-        mcp.on("error", error => finish(false, redactOutputText(`MCP offline: ${error.message}`)));
+        mcp.on("error", error => {
+            const raw = error instanceof Error ? error : new Error(String(error));
+            const errno = raw;
+            const userMessage = errno.code === "ENOENT"
+                ? "MCP command not found. Check minitok.mcpCommand setting."
+                : errno.code === "EACCES"
+                    ? "MCP command permission denied. Check file permissions."
+                    : `MCP offline: ${redactOutputText(raw.message)}`;
+            finish(false, userMessage);
+        });
         send("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "minitok-sidebar", version: String(this.context.extension.packageJSON.version) } });
     }
     execGit(cwd, args) {
