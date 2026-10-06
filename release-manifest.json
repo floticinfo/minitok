@@ -2,16 +2,16 @@
   "schemaVersion": 1,
   "release": {
     "package": "@flotic/minitok",
-    "version": "1.4.21",
-    "commit": "bf5c7c35d03877f57721be0fcb7b3ce2baec048f",
-    "tree": "4b9ac5a8bd793e99edd60cf102678b88cfdaa512",
-    "tag": "v1.4.21",
-    "changelog": "## 1.4.21",
+    "version": "1.5.2",
+    "commit": "76fa09f059551423b9031be966e4518f102f4172",
+    "tree": "af4ec5eb1b249b198ab7054bd9a0f5b8e736fd23",
+    "tag": "v1.5.2",
+    "changelog": "## 1.5.2",
     "artifact": {
-      "filename": "flotic-minitok-1.4.21.tgz",
-      "size": 444007,
-      "sha256": "06534da9e10220f88769dbfa40a3c50091e03bfb71e6535061309cd4e25e2bbb",
-      "integrity": "sha512-dQa97s4QhrPzisSzSnEwwF6slg6h+HKQFxEokbi05HnBHU1BRub6vYjQ8NXZEfELtVjHPwkpNmHZkthn/p+HWw==",
+      "filename": "flotic-minitok-1.5.2.tgz",
+      "size": 457424,
+      "sha256": "dfc1d0991cb8b661a93975fed5a2830390cb5567357faa05a39972263f71d6a8",
+      "integrity": "sha512-7x7DN3B0HlviL1dt3KKiOx2lpow+xD5ApYsQZ2KpMPQWbyg2e4BxmS+T+FOBGJeORGt4t9AXccOx4p6NM/vrRQ==",
       "files": [
         {
           "path": "BENCHMARK_EVIDENCE.json",
@@ -20,8 +20,8 @@
         },
         {
           "path": "CHANGELOG.md",
-          "size": 62405,
-          "sha256": "f8dec8b2fc83eeeaf53eaf2f3cf0b1e10cbe5434f512eef308b542c54c802834"
+          "size": 64151,
+          "sha256": "e6b6a38c71f89f5b26092edb244d1d74ace6f6b712a94f6000ca18e981a04ed7"
         },
         {
           "path": "DATA_CLASSIFICATION.md",
@@ -40,8 +40,8 @@
         },
         {
           "path": "LAUNCH_CHECKLIST.md",
-          "size": 3546,
-          "sha256": "9eb1899c2617b3a6c62bdc22dce03b5cd563a81c7c138dcd1163a61e0231ced5"
+          "size": 3544,
+          "sha256": "bf01de557c3b164301ce5dd8a83ba496158b4b49feb3c65e73bea9aaf48cd444"
         },
         {
           "path": "LICENSE",
@@ -55,13 +55,13 @@
         },
         {
           "path": "PROMOTION_KIT.md",
-          "size": 6551,
-          "sha256": "be9c81e0f88b9547a1027ed8deaa80c56bc9b32e335efe7d4f6d65270fa9a0ee"
+          "size": 6549,
+          "sha256": "7a45c95b53053cec47175a24949673c379ab5045bdc6adc41125ebab5fbc9f7e"
         },
         {
           "path": "README.md",
-          "size": 40812,
-          "sha256": "21862f955abeb876ccea34a109b6811f01fc31341607be3081b5f30e0bfa7f5e"
+          "size": 41213,
+          "sha256": "077ec32d005c3be606ffcd25b27bc4240224fcd16101536737a003b97e65ba3b"
         },
         {
           "path": "assets/minitok-harlekin-mark.png",
@@ -70,23 +70,23 @@
         },
         {
           "path": "assets/README.md",
-          "size": 419,
-          "sha256": "c33881860f67f24331f33423f3aa4e7d608dea530a25a675f3c6c992eef4893e"
+          "size": 1546,
+          "sha256": "0ba3cda0733c3b6c9d1c09d62fd9775849bd38090338516bfd454c01773d5e7b"
         },
         {
           "path": "bin/minitok.js",
-          "size": 14254,
-          "sha256": "69d771310dc45b04f1d6c854f1d6b4a0e8089942977d7c20030c4bf38f5b602a"
+          "size": 16614,
+          "sha256": "b57c2b3860e549896d820d20bd2b411ee5f971936bbbda531bd63a305a098b36"
         },
         {
           "path": "mcp-marketplace.json",
-          "size": 3149,
-          "sha256": "82debabe7403cf3113a216431d95d845ca092a9ffdb943f8116241aeb7d3b2cf"
+          "size": 3148,
+          "sha256": "8482be092f685dc15cc518864477054e5bcf8d4051648bd22380056a88a23c12"
         },
         {
           "path": "package.json",
-          "size": 6868,
-          "sha256": "f5a417718095390722dd76e188d0d9ed2f53bf2305b94b52dc59719d476a089a"
+          "size": 7184,
+          "sha256": "e94ab80a92242849139046228c6a860482f00636295b5d605aa573af540643be"
         },
         {
           "path": "promotion-posts/linkedin.md",
@@ -95,8 +95,8 @@
         },
         {
           "path": "promotion-posts/mcp-directory.md",
-          "size": 3080,
-          "sha256": "4be76544ac373489a0d33ec6e3eef5867b95ad5754845ec3aed6394a9a8adf14"
+          "size": 3078,
+          "sha256": "70886ef21fe3cb003b148c602186d4f926c1b167587efbd6f220dbe306454fec"
         },
         {
           "path": "promotion-posts/product-hunt.md",
@@ -130,8 +130,8 @@
         },
         {
           "path": "server.json",
-          "size": 1954,
-          "sha256": "6ae80e25fd6f51acc23c5c5ff0cc5891fe16b80dd3f8f599b2398931b9edc6b9"
+          "size": 1952,
+          "sha256": "7174043a43016dbcd74a516c1b9bcef4d6dab4bb24a380e2e497d98b2c5004fd"
         },
         {
           "path": "src/agent/host.mjs",
@@ -200,18 +200,18 @@
         },
         {
           "path": "src/cli/commands/activate.js",
-          "size": 4521,
-          "sha256": "bcc1ea57cc3abaa752c8e10097df8f28ae82528044e2921268b433a6f47ac666"
+          "size": 2887,
+          "sha256": "0e2767b6e4914e74c8b63313c97fb73df825266e94b8041801c4a9923b4fa5dd"
         },
         {
           "path": "src/cli/commands/activation-key.js",
-          "size": 2341,
-          "sha256": "50d5357d77321ba37c3f957dc990f9cc433cd39d1cc8b63d8189c7a0b5a5f62e"
+          "size": 2347,
+          "sha256": "d5d1750a372940c428b0edb2a7599ea4f5483659f3535c8e31b2a5ec1f53f58b"
         },
         {
           "path": "src/cli/commands/agent.js",
-          "size": 4029,
-          "sha256": "4e06972dadcf2422d73285d05e543da234d0b410ecdd6e9f3457776c4071bd8a"
+          "size": 4065,
+          "sha256": "357da19b76e38f425146208658197712fd1c9641c467ed90ab208426cd8d24bd"
         },
         {
           "path": "src/cli/commands/auth.js",
@@ -225,18 +225,23 @@
         },
         {
           "path": "src/cli/commands/capability.js",
-          "size": 1978,
-          "sha256": "3d6d5417394dede2507b6932d1fc9392d9563917715e78abe65a4f8f472a6fa1"
+          "size": 1994,
+          "sha256": "71b84242d502353bbe13eb02a4542c11fdaa3f7df8e0670c48fda58cc5e7e4c7"
         },
         {
           "path": "src/cli/commands/checkout.js",
-          "size": 2148,
-          "sha256": "77298d88668f12ca5ca8987a2d5a078fa5b6af707840a4b493a9dce4a4200199"
+          "size": 2143,
+          "sha256": "52a8ac6813df1255ec967ed5d6ef2cb4a98aab8fd68e1041f539839df34bf537"
+        },
+        {
+          "path": "src/cli/commands/deactivate.js",
+          "size": 1620,
+          "sha256": "c55efcdaeff9af66fab24fe6343670295175fb9c10339dfa860b39d7548ad225"
         },
         {
           "path": "src/cli/commands/doctor.js",
-          "size": 7630,
-          "sha256": "ca5b2750bade23f332ed14d31bd539e9693aa4ad278dc51ed3a1ecc68473060e"
+          "size": 8495,
+          "sha256": "d8a31d5d4295c6b21d5fd44b5677d126ced43b096412b56f448090f673b16d1a"
         },
         {
           "path": "src/cli/commands/evolution.js",
@@ -265,23 +270,28 @@
         },
         {
           "path": "src/cli/commands/migrate.js",
-          "size": 6748,
-          "sha256": "8460d1e5ed64dd93fdcfec978fbf7ce11449029938c5a542afe64021a205ff89"
+          "size": 6774,
+          "sha256": "fc06805d6bddbc2844107f0d3e2535e079d07038536eaa4387d78424aff62424"
         },
         {
           "path": "src/cli/commands/models.js",
-          "size": 4303,
-          "sha256": "8deac373e2de7700805aad24455420ea662b098299cc8f7cbba780543df671da"
+          "size": 4339,
+          "sha256": "eed2bebb008bfc69907a20762cb3d8e8f3aea16417d4567cda316bc9322b2f3c"
         },
         {
           "path": "src/cli/commands/portal.js",
-          "size": 1817,
-          "sha256": "ed96f4624c2d16d57d27ca8d2545f5a57f7be5661aa156f559799be10e3b5777"
+          "size": 1823,
+          "sha256": "9f33198a4efd18c407c492802c87050b7c7a030b3a8ca1b424cc3673f5dd8f8b"
+        },
+        {
+          "path": "src/cli/commands/run-session-store.js",
+          "size": 6731,
+          "sha256": "5e22706882b14b8eff27b97e9ac579e3753033b019fe8e05a543902678042a44"
         },
         {
           "path": "src/cli/commands/run.js",
-          "size": 13699,
-          "sha256": "243498572ff89a5fc1fd1860ea1ad2649210a0a7d6a9aac06209a21462be987a"
+          "size": 17391,
+          "sha256": "5ebee89aaf24501ac1c06b49a84e518c419d2d0fe7c31b36610c235801e820d9"
         },
         {
           "path": "src/cli/commands/runs.js",
@@ -300,23 +310,28 @@
         },
         {
           "path": "src/cli/commands/status.js",
-          "size": 7761,
-          "sha256": "18bb77da70658d020ab1d93d2b4466250e2fad8e4331ca0bc74f428d1848b819"
+          "size": 8061,
+          "sha256": "894beca55f70604a3f1c1e3d05b26516303fecfa9beccaca28628b5aeee7a80f"
+        },
+        {
+          "path": "src/cli/commands/task-context.js",
+          "size": 5856,
+          "sha256": "d07c3cbdd96e8e9d4e10b26375e99cb8123a37d2d94683ca0a20c6664be3c382"
         },
         {
           "path": "src/cli/commands/trial.js",
-          "size": 3408,
-          "sha256": "7b704de96dd636b356c76306904da3d93de20823669bcb958ddfa5e1cd20fcef"
+          "size": 3416,
+          "sha256": "64ae639e761d0470bc569a382fc8fed097d091a3c500a0c05185be8bd57f01c7"
         },
         {
           "path": "src/cli/commands/workspace.js",
-          "size": 2526,
-          "sha256": "1276a3652bce278f0cdc9c3d319e6ef5f1c293430ab48b4e7fcf63b148ff075b"
+          "size": 2542,
+          "sha256": "08d331b9a900bedd2af1060043d51ba43ff8d294b3b94b0fefda11b40d255146"
         },
         {
           "path": "src/cli/fullscreen-gui.js",
-          "size": 15202,
-          "sha256": "2156ca227555195326194412f5d8810a845dfd61232ec5584b28a76555ec658d"
+          "size": 15208,
+          "sha256": "07c14c80895aafcb133b85180af4643ac55fcf10a85d58a3fe95e3c71759b021"
         },
         {
           "path": "src/cli/gui-commands.js",
@@ -339,14 +354,19 @@
           "sha256": "9e97c67ec1baca736d2c615fc8bbf5be68cf9593f24dc7d1548816ff2a21e3aa"
         },
         {
+          "path": "src/cli/output.js",
+          "size": 1930,
+          "sha256": "0bcd0c2a902a96ced948ab27e3f0070fb15180486df4fefe619b8ede7a25f6c0"
+        },
+        {
           "path": "src/cli/terminal-probe.js",
           "size": 783,
           "sha256": "acfeed571a7af4643826b039e3547a5b14d549f9956def6dc29a46b2bb7d310a"
         },
         {
           "path": "src/config/loader.js",
-          "size": 26580,
-          "sha256": "8485276f26e12f4197a61e9c30306428f83c1d63e4967c4c04c8f2cc20b16464"
+          "size": 29994,
+          "sha256": "d3614274e9079baaa73870461e2084ea4dd2df0decf3fd837612052d487c8995"
         },
         {
           "path": "src/context/compaction.js",
@@ -404,9 +424,19 @@
           "sha256": "6e5e04ef2501665f1771d64a10905fcd8464482ea54bda92f5ebbe1affc04f3b"
         },
         {
+          "path": "src/entitlement/cache.js",
+          "size": 3402,
+          "sha256": "e1ddea7f6ee7b8b53a965223f67f2a506e39240188a2cd29c53b6855c6a7521f"
+        },
+        {
           "path": "src/entitlement/capability.js",
           "size": 5181,
           "sha256": "660c6283cc516e0d812a3adbe0c8369ef4dc6bcaf805e40ec4a3bc4aa2d2832f"
+        },
+        {
+          "path": "src/entitlement/client.js",
+          "size": 3324,
+          "sha256": "49e179dc7be20ad8411cef0745c056d68db59d05535e1513fe4c25252b6befb5"
         },
         {
           "path": "src/entitlement/delegation.js",
@@ -710,18 +740,18 @@
         },
         {
           "path": "src/llm/catalog-update.js",
-          "size": 6114,
-          "sha256": "1b29abc4839285d55bed3987ed5814e7971547e68433f843cd3d550fc41599d3"
+          "size": 10719,
+          "sha256": "c5d776df6972711c70d9766f382ce6c04b1fbace33511686bcc231ad8b49402a"
         },
         {
           "path": "src/llm/models.js",
-          "size": 18278,
-          "sha256": "03675de752c9b51fa3a9e5b57d097d1366ffb56c5a44e995e2e0530335c477d5"
+          "size": 19246,
+          "sha256": "85ccde1f6b59ebdb34dde58b97828f0446383e0b3d8a4f54d91cc8602f7586db"
         },
         {
           "path": "src/llm/provider.js",
-          "size": 43571,
-          "sha256": "261f15024e256e31e225f41b05a1e44564ff5f33d4ffd8b9cf33fac125426a9b"
+          "size": 43964,
+          "sha256": "a9e43f902e599e51a523f21d9c79a60e682a40a3868a7578d3cb4abe024c0bba"
         },
         {
           "path": "src/mcp/cline-compat.js",
@@ -880,8 +910,8 @@
         },
         {
           "path": "src/runtime/server.js",
-          "size": 19472,
-          "sha256": "cdd83d9bb9406e0321648f1aac2df73076e37cadbd4b3b88106d037171531585"
+          "size": 19814,
+          "sha256": "c538b8465ccd3b9c8125de7055b9144e9348f0c99678ebc4bd0f548248bc3215"
         },
         {
           "path": "src/runtime/sessions.js",
@@ -895,8 +925,8 @@
         },
         {
           "path": "src/runtime/stdio.js",
-          "size": 47400,
-          "sha256": "8e54ed9d99edd07c18ba452481b44eed7daa116b6eee86a6eae2e1351938b7e8"
+          "size": 50358,
+          "sha256": "1e34a98b6b1c5aee8911c78ac25c5d63ee02bea3035ce251622e8ebc66654f6d"
         },
         {
           "path": "src/runtime/workspace.js",
