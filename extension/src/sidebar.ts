@@ -265,6 +265,7 @@ export class minitokSidebar implements vscode.WebviewViewProvider {
     // entitlement cache removed: license management is auth-based only.
     view.webview.options = { enableScripts: true, localResourceRoots: [this.extensionUri] };
     view.webview.html = this.html(view.webview);
+    view.onDidDispose(() => this.dispose());
     view.webview.onDidReceiveMessage(message => {
       void this.handle(message).catch(error => {
         this.view?.webview.postMessage({ type: "result", ok: false, text: redactOutputText(String(error)) });
@@ -968,7 +969,7 @@ private async discoverModels(cwd?: string, provider?: string) {
     // so re-resolve the gate instead of leaving a stale not-entitled badge.
     await this.refreshAuth();
   }
-  private async checkMcpHealth() {
+  private async checkMcpHealth(retryCount = 0) {
     requireTrustedWorkspace(workspacePath());
     // Scope errors are local configuration errors; surface them before token
     // rotation, entitlement lookup, or process spawning.
@@ -987,7 +988,18 @@ private async discoverModels(cwd?: string, provider?: string) {
     try { mcpEnvironment(); await requireEntitlement(); } catch (error) { this.view?.webview.postMessage({ type: "mcp", ok: false, text: redactOutputText(String(error)) }); return; }
     this.output.appendLine(`[spawn] mcp command=${JSON.stringify(processSpec.command)} args=${JSON.stringify(processSpec.args)} cwd=${JSON.stringify(workspacePath())}`);
     let mcp: ChildProcessWithoutNullStreams;
-    try { mcp = spawn(processSpec.command, processSpec.args, spawnOptionsFor(processSpec, { cwd: workspacePath(), env: mcpEnvironment() })); } catch (error) { const safeError = redactOutputText(String(error)); this.output.appendLine(`[spawn] synchronous error=${safeError}`); this.view?.webview.postMessage({ type: "mcp", ok: false, text: `MCP spawn failed: ${safeError}` }); return; }
+    try { mcp = spawn(processSpec.command, processSpec.args, spawnOptionsFor(processSpec, { cwd: workspacePath(), env: mcpEnvironment() })); } catch (error) {
+      const raw = error instanceof Error ? error : new Error(String(error));
+      const errno = raw as NodeJS.ErrnoException;
+      const userMessage = errno.code === "ENOENT"
+        ? "MCP command not found. Check minitok.mcpCommand setting."
+        : errno.code === "EACCES"
+          ? "MCP command permission denied. Check file permissions."
+          : `MCP spawn failed: ${redactOutputText(raw.message)}`;
+      this.output.appendLine(`[spawn] synchronous error=${redactOutputText(String(raw))}`);
+      this.view?.webview.postMessage({ type: "mcp", ok: false, text: userMessage });
+      return;
+    }
     this.mcpProcess = mcp;
     let buffer = "";
     let nextId = 1;
@@ -1001,9 +1013,26 @@ private async discoverModels(cwd?: string, provider?: string) {
     const send = (method: string, params: Record<string, unknown> = {}) => mcp.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", id: nextId++, method, params })}\n`);
     const sendNotification = (method: string, params: Record<string, unknown> = {}) => mcp.stdin.write(`${JSON.stringify({ jsonrpc: "2.0", method, params })}\n`);
     const finish = (ok: boolean, text: string) => { if (finished) return; finished = true; clearTimeout(timeout); if (this.mcpProcess === mcp) this.mcpProcess = undefined; this.stopChild(mcp); this.view?.webview.postMessage({ type: "mcp", ok, text: redactOutputText(text) }); };
-    timeout = setTimeout(() => finish(false, "MCP offline: handshake timed out"), 5000);
+    timeout = setTimeout(() => {
+      if (retryCount < 2) {
+        this.output.appendLine(`[mcp] handshake timed out, retrying (${retryCount + 1}/2)...`);
+        this.stopChild(mcp);
+        if (this.mcpProcess === mcp) this.mcpProcess = undefined;
+        void this.checkMcpHealth(retryCount + 1);
+      } else {
+        finish(false, "MCP offline: handshake timed out");
+      }
+    }, 5000);
     mcp.stdout.on("data", chunk => { buffer += chunk.toString(); const lines = buffer.split(/\r?\n/); buffer = lines.pop() || ""; for (const line of lines) { try { const message = JSON.parse(line); if (message.error) finish(false, `MCP handshake error: ${message.error.message}`); else if (message.id === 1) { sendNotification("notifications/initialized"); send("tools/list"); } else if (message.id === 2) finish(true, `MCP online: ${message.result?.tools?.length || 0} tools`); } catch (error) { this.output.appendLine(redactOutputText(`MCP invalid response: ${error instanceof Error ? error.message : String(error)}`)); } } });
-    mcp.on("error", error => finish(false, redactOutputText(`MCP offline: ${error.message}`)));
+    mcp.on("error", error => {
+      const errno = error as NodeJS.ErrnoException;
+      const message = errno.code === "ENOENT"
+        ? "MCP command not found. Check minitok.mcpCommand setting."
+        : errno.code === "EACCES"
+          ? "MCP command permission denied. Check file permissions."
+          : `MCP offline: ${redactOutputText(error.message)}`;
+      finish(false, message);
+    });
      send("initialize", { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "minitok-sidebar", version: String(this.context.extension.packageJSON.version) } });
 
   }

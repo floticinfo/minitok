@@ -43,7 +43,11 @@ export function killProcessTree(child: ChildProcessWithoutNullStreams) {
   if (process.platform === "win32") {
     execFile("taskkill", ["/pid", String(child.pid), "/t", "/f"], { windowsHide: true, timeout: 10000 }, error => { if (error) child.kill(); });
   } else {
-    try { process.kill(-child.pid!, "SIGTERM"); } catch { child.kill("SIGTERM"); }
+    if (child.pid) {
+      try { process.kill(-child.pid, "SIGTERM"); } catch { child.kill("SIGTERM"); }
+    } else {
+      child.kill("SIGTERM");
+    }
   }
 }
 
