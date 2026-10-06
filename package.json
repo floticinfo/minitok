@@ -1,6 +1,6 @@
 {
   "name": "@flotic/minitok",
-  "version": "1.5.1",
+  "version": "1.5.2",
   "mcpName": "dev.minitok/minitok",
   "description": "Verified coding workflows for the terminal",
   "main": "src/index.js",
@@ -43,7 +43,7 @@
     "test:extension": "npm --prefix extension run test:unit",
     "test:host": "npm --prefix extension run test:host",
     "lint:extension": "npm --prefix extension run lint",
-    "release:check": "npm run check:version-metadata && npm run check:mcp-registry && npm run check:runtime-sync && npm run check:extension-dist-sync && npm run check:repo-hygiene && npm test && npm run lint && npm run lint:extension && npm run typecheck && npm run test:extension && npm audit --audit-level=high && npm run docs:check && node scripts/secret-scan.mjs && npm run stage2:parity && npm pack --dry-run --json && npm run test:packed-install && node VERIFY_CMD.mjs && npm run release:verify",
+    "release:check": "npm run check:version-metadata && npm run check:mcp-registry && npm run check:runtime-sync && npm run check:extension-dist-sync && npm run check:repo-hygiene && npm test && npm run lint && npm run lint:extension && npm run typecheck && npm run test:extension && node scripts/audit-filter.mjs && npm run docs:check && node scripts/secret-scan.mjs && npm run stage2:parity && npm pack --dry-run --json && npm run test:packed-install && node VERIFY_CMD.mjs && npm run release:verify",
     "docs:check": "node scripts/documentation-consistency.mjs",
     "mcp:registry:check": "node scripts/mcp-registry-check.mjs",
     "release:verify": "node scripts/release-verify.mjs",
@@ -103,6 +103,13 @@
   "overrides": {
     "node-forge": "^1.4.0",
     "@opentelemetry/core": "^2.8.0",
+    "simple-git": "4.0.1",
+    "@simple-git/argv-parser": "2.0.1",
+    "@sap-ai-sdk/core": "2.16.0",
+    "@sap-ai-sdk/ai-api": "2.16.0",
+    "@sap-ai-sdk/foundation-models": "2.16.0",
+    "@sap-ai-sdk/orchestration": "2.16.0",
+    "@sap-ai-sdk/prompt-registry": "2.16.0",
     "dify-ai-provider": {
       "@ai-sdk/provider-utils": {
         "undici": "^8.10.1"

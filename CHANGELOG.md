@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+## 1.5.2 - 2026-10-06
+
 ### Added
 
 - Entitlement system (Phases 1–6):

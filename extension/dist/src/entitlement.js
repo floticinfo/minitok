@@ -23,10 +23,20 @@ const entitlement_cache_1 = require("./entitlement-cache");
 // ---------------------------------------------------------------------------
 // Phase 3: Server API client (mirrors src/entitlement/client.js in the CLI)
 // ---------------------------------------------------------------------------
-/** Server base resolution order matches the CLI: env → config → default. */
-const DEFAULT_ENTITLEMENT_SERVER = "http://localhost:3000";
+/**
+ * Server base resolution order matches the CLI (`src/cli/commands/server-config.js`):
+ *   1. minitok_server_url env var (lower-case, the canonical subprocess contract)
+ *   2. MINITOK_SERVER_URL env var (upper-case, shells/CI)
+ *   3. Default: https://api.minitok.dev
+ *
+ * Keep the default in lock-step with the CLI's DEFAULT_SERVER_URL. The previous
+ * default pointed at `http://localhost:3000`, so a fresh install that had never
+ * configured a server sent activation/status/refresh calls to a localhost that
+ * nothing was listening on while the CLI talked to production.
+ */
+const DEFAULT_ENTITLEMENT_SERVER = "https://api.minitok.dev";
 function entitlementServerUrl() {
-    const fromEnv = process.env.MINITOK_SERVER_URL;
+    const fromEnv = process.env.minitok_server_url || process.env.MINITOK_SERVER_URL;
     if (fromEnv && fromEnv.trim())
         return fromEnv.trim().replace(/\/+$/, "");
     return DEFAULT_ENTITLEMENT_SERVER;
