@@ -55,14 +55,14 @@ jobs:
       - name: Compile extension
         run: npm --prefix extension run compile
 
-      # Note: mcp-ui tests spawn live MCP processes which hang in CI
-      # (cancelled by parent timeout). The full suite including mcp-ui and
-      # host integration runs locally via `npm run test:extension` and gates
-      # the release. CI runs the non-process-spawning subset.
+      # Note: mcp-ui and mcp-config tests spawn live MCP processes which hang
+      # in CI (cancelled by parent timeout). The full suite including those
+      # and host integration runs locally via `npm run test:extension` and
+      # gates the release. CI runs the non-process-spawning subset.
       - name: Run extension unit tests (CI-safe subset)
         working-directory: extension
         run: >-
-          node --test test/process-contract.test.js test/mcp-config.test.js
+          node --test test/process-contract.test.js
           test/version.test.js test/spawn.test.js test/auth-ui.test.js
           test/device-auth.test.js test/activate.test.js test/truncate.test.js
           test/theme-contrast.test.js test/boundary-audit.test.js
