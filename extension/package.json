@@ -135,7 +135,7 @@
         "minitok.cliPath": {
           "type": "string",
           "default": "",
-          "description": "Optional path to the Node.js minitok CLI (??node_modules/@flotic/minitok/bin/minitok.js). Leave empty to auto-detect the npm package entry point, then minitok.cmd/minitok. Python minitok executables are not supported."
+          "description": "Optional path to the Node.js minitok CLI (e.g. node_modules/@flotic/minitok/bin/minitok.js). Leave empty to auto-detect the npm package entry point, then minitok.cmd/minitok. Python minitok executables are not supported."
         },
         "minitok.serverUrl": {
           "type": "string",
@@ -151,12 +151,12 @@
             "type": "string"
           },
           "default": "",
-          "description": "Command used to connect the minitok MCP runtime. Use an argument array or quote paths containing spaces."
+          "description": "Command used to connect the minitok MCP runtime. Set an argument array (recommended) or a single string. In string mode the value is split on whitespace; quote paths containing spaces with \" or '. Inside quotes a backslash escapes only \", ' and whitespace, otherwise it is kept as a path separator (\"C:\\Program Files\\node.exe\" is preserved). An unterminated quote is rejected with an error and an empty element (\"\") is ignored. ⚠️ This command is executed with your user permissions. Only configure a command you trust."
         },
         "minitok.mcpScopes": {
           "type": "string",
           "default": "read",
-          "description": "MCP permissions for Extension-launched servers: read, write, auto_accept, verify_exec. Keep read-only unless broader access is explicitly required."
+          "description": "MCP permissions for Extension-launched servers: read, write, auto_accept, verify_exec, unrestricted_autonomous, unrestricted_general_autonomous. Keep read-only unless broader access is explicitly required; the unrestricted_* scopes grant broad autonomous execution."
         },
         "minitok.showCost": {
           "type": "boolean",

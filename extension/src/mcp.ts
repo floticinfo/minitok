@@ -1,6 +1,9 @@
 import * as path from "node:path";
 
 export const QUOTED_ESCAPES = "\"'\\";
+// `'` is listed for symmetry with shell convention only: `escaped` is never
+// set while `quote === "'"` (see the backslash branch below), so a backslash
+// inside a single-quoted span is always a literal path separator.
 
 export function parseMcpCommand(value: string) {
   const result: string[] = [];
