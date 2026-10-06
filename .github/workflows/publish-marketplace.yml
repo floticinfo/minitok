@@ -84,8 +84,9 @@ jobs:
         env:
           VSCE_PAT: ${{ secrets.VSCE_PAT }}
         run: |
+          npm install --no-save @vscode/vsce@latest
           if [ -n "$VSCE_PAT" ]; then
-            npx @vscode/vsce publish --pat "$VSCE_PAT"
+            npx --no-install @vscode/vsce publish --pat "$VSCE_PAT"
           else
-            npx @vscode/vsce publish --oidc
+            npx --no-install @vscode/vsce publish --oidc
           fi
