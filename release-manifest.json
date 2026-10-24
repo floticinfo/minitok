@@ -3,15 +3,15 @@
   "release": {
     "package": "@flotic/minitok",
     "version": "1.5.4",
-    "commit": "33eed62a1ae0085a3c7e77cb6d15c60ce01ae688",
-    "tree": "fa7a24b25d4c7ea12337fef4274cf9fad3a9f971",
+    "commit": "428e1f124375078a78959dda40ce4e33484e336f",
+    "tree": "fd9e71c8f5755a6b1e0a208ec2dfdee552189622",
     "tag": "v1.5.4",
     "changelog": "## 1.5.4",
     "artifact": {
       "filename": "flotic-minitok-1.5.4.tgz",
-      "size": 457216,
-      "sha256": "52245d5476c960c353d1befb7ffe1bf01850850ea2a7a899e8c64e5852dddd7e",
-      "integrity": "sha512-0M9YpmtwPGq2SUjm0F4rqG6NfzPiCVhJLmF7XIBB627eZ6k8pF+Ilg3jpa42BbxHcz1y5beXS//FjU4MJuD6WA==",
+      "size": 457738,
+      "sha256": "3c9af64bf50cc0e9997eb74b654388aefb6aff0c92f01d0e37f23aa4ba820f6a",
+      "integrity": "sha512-umzAHclPruz93R1K0IhtPCNPaACnvGYdKM/dWVe1JKdgPno7rvsLNGeM1hDyvN32+O/4rmA9RuHZRtCS+cjwnw==",
       "files": [
         {
           "path": "BENCHMARK_EVIDENCE.json",
@@ -85,8 +85,8 @@
         },
         {
           "path": "package.json",
-          "size": 7602,
-          "sha256": "fe49d126f2fbfb27e3a644cb0e9616a4062bc7f9234f10d374ab85bb20626e7e"
+          "size": 7662,
+          "sha256": "dcafedb5bb683b6cc2dd92d66b09e8fd50ad8db87bed57e7bc979d0281f5a41a"
         },
         {
           "path": "promotion-posts/linkedin.md",
@@ -760,8 +760,8 @@
         },
         {
           "path": "src/mcp/cline-integration.js",
-          "size": 6150,
-          "sha256": "1be6fee03535a879d556a508ba9ff86d48b08a171f76180188b81e43791260f2"
+          "size": 6925,
+          "sha256": "b6337f648ba7d5b9aee6338f8c4806a7c0e3ff0836fa95c94be35c94d94827d1"
         },
         {
           "path": "src/mcp/goal-tools.js",
@@ -950,8 +950,8 @@
         },
         {
           "path": "src/utils/temp-cleanup.js",
-          "size": 5509,
-          "sha256": "849aedd9715de90f9187d31df677d3ae44ae682ae84aa86f1e5e6d6642d5dea6"
+          "size": 6448,
+          "sha256": "10c725cf739c3ccbc49b38b0a54bbae031c104c1e76559e86c36e0c66b2e9dbe"
         },
         {
           "path": "src/workspace/isolation.js",
