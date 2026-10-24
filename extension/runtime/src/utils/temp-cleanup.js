@@ -37,6 +37,23 @@ const DEFAULT_MAX_SCAN = 20000;
  */
 const DEFAULT_PREFIXES = Object.freeze(["minitok-", "mtok-", "evo-optin-"]);
 
+function removeWithRetry(target, options = {}) {
+  const fsImpl = options.fsImpl || fs;
+  const attempts = Number.isInteger(options.attempts) && options.attempts > 0 ? options.attempts : process.platform === "win32" ? 6 : 1;
+  let lastError = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try { fsImpl.rmSync(target, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 }); return true; } catch (error) {
+      lastError = error;
+      if (fsImpl !== fs || process.platform !== "win32" || !["EPERM", "EBUSY", "ENOTEMPTY"].includes(error.code) || attempt === attempts - 1) break;
+      const delay = [25, 50, 100, 200, 400][attempt] || 400;
+      const end = Date.now() + delay;
+      while (Date.now() < end) { /* wait for Windows handles */ }
+    }
+  }
+  if (options.throwOnFailure) throw lastError;
+  return false;
+}
+
 function lastActivityMs(stat) {
   // mtime is the last write; ctime is the last inode change (creation time on
   // Windows). Whichever is newer is the best evidence that the entry is live.
@@ -115,8 +132,8 @@ function sweepTempEntries(options = {}) {
     attempted += 1;
     if (dryRun) { summary.kept += 1; continue; }
     try {
-      fsImpl.rmSync(candidate.full, { recursive: true, force: true });
-      summary.removed += 1;
+      if (removeWithRetry(candidate.full, { fsImpl, attempts: fsImpl === fs ? undefined : 1 })) summary.removed += 1;
+      else summary.errors += 1;
     } catch {
       summary.errors += 1;
     }
@@ -127,4 +144,4 @@ function sweepTempEntries(options = {}) {
   return summary;
 }
 
-module.exports = { sweepTempEntries, DEFAULT_PREFIXES, DEFAULT_RETENTION_MS, DEFAULT_PROTECT_MS, DEFAULT_MAX_ENTRIES, DEFAULT_TIME_BUDGET_MS, DEFAULT_MAX_SCAN };
+module.exports = { sweepTempEntries, removeWithRetry, DEFAULT_PREFIXES, DEFAULT_RETENTION_MS, DEFAULT_PROTECT_MS, DEFAULT_MAX_ENTRIES, DEFAULT_TIME_BUDGET_MS, DEFAULT_MAX_SCAN };

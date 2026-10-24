@@ -36,6 +36,7 @@
     "benchmark:validate": "node scripts/real-benchmark-validate.mjs",
     "pretest": "node scripts/sweep-temp.mjs --older-than 2h --max-entries 500 --max-scan 50000 --time-budget 3s --quiet",
     "test": "node scripts/test-suite.mjs",
+    "test:release": "node scripts/release-test-suite.mjs",
     "temp:sweep": "node scripts/sweep-temp.mjs --max-entries 3000 --max-scan 50000 --time-budget 60s",
     "lint": "eslint --max-warnings=0 bin src tests",
     "typecheck": "tsc -p tsconfig.json",

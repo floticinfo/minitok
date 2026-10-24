@@ -19,6 +19,22 @@ function readJson(file) {
     throw new Error(`Cline MCP configuration is malformed: ${file}`, { cause: error });
   }
 }
+function renameAtomic(temp, file) {
+  try {
+    fs.renameSync(temp, file);
+    return;
+  } catch (error) {
+    if (process.platform !== "win32" || !["EPERM", "EACCES", "EBUSY"].includes(error.code)) throw error;
+    // Windows can reject replacing an open destination even while the lock is
+    // held. Retry briefly, then fail closed without deleting the previous file.
+    let lastError = error;
+    for (const delay of [25, 50, 100, 200, 400]) {
+      try { const end = Date.now() + delay; while (Date.now() < end) { /* wait for Windows handle release */ } } catch { /* best effort delay */ }
+      try { fs.rmSync(file, { force: true }); fs.renameSync(temp, file); return; } catch (retryError) { lastError = retryError; }
+    }
+    throw lastError;
+  }
+}
 function writeAtomic(file, value) {
   fs.mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
   const lock = `${file}.lock`;
@@ -30,7 +46,7 @@ function writeAtomic(file, value) {
     const temp = `${file}.tmp.${process.pid}.${Date.now()}`;
     fs.writeFileSync(temp, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600, flag: "wx" });
     try { const fd = fs.openSync(temp, "r"); try { fs.fsyncSync(fd); } finally { fs.closeSync(fd); } } catch {}
-    fs.renameSync(temp, file);
+    renameAtomic(temp, file);
     try { fs.chmodSync(file, 0o600); } catch {}
   } finally {
     if (lockFd !== undefined) { try { fs.closeSync(lockFd); } catch {} try { fs.unlinkSync(lock); } catch {} }

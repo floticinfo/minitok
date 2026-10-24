@@ -6,6 +6,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { createGoalSpec } = require("./spec");
+const { removeWithRetry } = require("../utils/temp-cleanup");
 const {
   createGoalSession, loadGoalSession, saveGoalSession, appendGoalEvent,
   createCheckpoint, restoreCheckpoint, pauseGoalSession, releaseGoalSessionLock, resumeGoalSession,
@@ -13,7 +14,7 @@ const {
 } = require("./session");
 
 function workspace() { return fs.mkdtempSync(path.join(os.tmpdir(), "minitok-goal-session-")); }
-function clean(root) { fs.rmSync(root, { recursive: true, force: true }); }
+function clean(root) { removeWithRetry(root); }
 function spec() { return createGoalSpec({ schema_version: 1, goal_id: "goal-session-test", objective: "Persist a goal", success_criteria: [{ id: "a", description: "criterion a", required: true, verifier: { type: "file", id: "file-a", config: { path: "a.txt", exists: true } } }], constraints: { allowed_paths: [], blocked_paths: [".git"], max_cycles: 3, max_tokens: 100, timeout_ms: 0, stagnation_limit: 3, max_changed_files: 20, same_task_limit: 2, same_failure_limit: 2, requires_approval_for: [] }, execution_policy: { mode: "safe" } }); }
 function sessionOptions(root, extra = {}) { return { workspaceRoot: root, goalSpec: spec(), model: "model-a", provider: "provider-a", ...extra }; }
 function validEvaluation() { const evidence = { evidence_id: "e-valid", valid: true, executed: true, execution: { executed: true } }; return { criteria: [{ id: "a", status: "passed", evidence_ids: [evidence.evidence_id] }], evidence: [evidence] }; }

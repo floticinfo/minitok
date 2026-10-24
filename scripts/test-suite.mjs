@@ -47,8 +47,17 @@ function options(argv) {
   const get = key => argv.find(value => value.startsWith(`${key}=`))?.slice(key.length + 1);
   const timeoutMs = Number(get("--timeout-ms") || DEFAULT_TIMEOUT_MS);
   const testTimeoutMs = Number(get("--test-timeout-ms") || DEFAULT_TEST_TIMEOUT_MS);
-  if (!Number.isInteger(timeoutMs) || timeoutMs <= 0 || !Number.isInteger(testTimeoutMs) || testTimeoutMs <= 0) throw new Error("timeouts must be positive integers");
-  return { group: get("--group") || "default", timeoutMs, testTimeoutMs, list: argv.includes("--list"), passthrough: argv.filter(value => !value.startsWith("--group=") && !value.startsWith("--timeout-ms=") && !value.startsWith("--test-timeout-ms=") && value !== "--list") };
+  const chunkSize = Number(get("--chunk-size") || 0);
+  if (!Number.isInteger(timeoutMs) || timeoutMs <= 0 || !Number.isInteger(testTimeoutMs) || testTimeoutMs <= 0 || !Number.isInteger(chunkSize) || chunkSize < 0) throw new Error("timeouts and chunk size must be valid integers");
+  return { group: get("--group") || "default", timeoutMs, testTimeoutMs, chunkSize, splitFiles: argv.includes("--split-files"), list: argv.includes("--list"), passthrough: argv.filter(value => !value.startsWith("--group=") && !value.startsWith("--timeout-ms=") && !value.startsWith("--test-timeout-ms=") && value !== "--list" && value !== "--split-files" && !value.startsWith("--chunk-size=")) };
+}
+function runChild(files, opts, bucket) {
+  return new Promise(resolve => {
+    if (!files.length) return resolve(0);
+    const child = spawn(process.execPath, ["--test", "--test-concurrency=1", `--test-timeout=${opts.testTimeoutMs}`, ...opts.passthrough, ...files], { cwd: root, stdio: "inherit", shell: false, detached: process.platform !== "win32", env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1" } });
+    child.once("error", error => { console.error(`Test bucket '${bucket}' failed to start: ${error.message}`); resolve(1); });
+    child.once("exit", (code, signal) => { const result = signal ? 1 : code ?? 1; console.log(`Test bucket '${bucket}' finished (exit ${result})`); setTimeout(() => resolve(result), process.platform === "win32" ? 250 : 0); });
+  });
 }
 export async function run(argv = process.argv.slice(2)) {
   const opts = options(argv); const all = await discoverTests();
@@ -56,9 +65,22 @@ export async function run(argv = process.argv.slice(2)) {
   if (!files.length) throw new Error(`No tests selected for group '${opts.group}'.`);
   if (opts.list) { files.forEach(file => console.log(`${classify(file)}\t${file}`)); return 0; }
   const started = performance.now(); console.log(`Test group '${opts.group}': ${files.length} files; per-file timeout ${opts.testTimeoutMs}ms`);
-  const child = spawn(process.execPath, ["--test", "--test-concurrency=1", `--test-timeout=${opts.testTimeoutMs}`, ...opts.passthrough, ...files], { cwd: root, stdio: "inherit", shell: false, detached: process.platform !== "win32", env: { ...process.env, GIT_CONFIG_NOSYSTEM: "1" } });
-  let timedOut = false; const timer = setTimeout(() => { timedOut = true; console.error(`Test group '${opts.group}' exceeded ${opts.timeoutMs}ms; terminating child process tree.`); if (process.platform === "win32") spawn("taskkill", ["/pid", String(child.pid), "/t", "/f"], { stdio: "ignore", windowsHide: true }); else { try { process.kill(-child.pid, "SIGTERM"); } catch { child.kill("SIGTERM"); } } }, opts.timeoutMs);
-  return await new Promise(resolve => { child.once("error", error => { clearTimeout(timer); console.error(`Test runner failed to start: ${error.message}`); resolve(1); }); child.once("exit", (code, signal) => { clearTimeout(timer); const result = timedOut ? 124 : signal ? 1 : code ?? 1; console.log(`Test group '${opts.group}' finished in ${Math.round(performance.now() - started)}ms (exit ${result})`); resolve(result); }); });
+  // Repository tests and src unit tests can mutate module/global state in one
+  // Node process. Isolate them into separate children so a test file cannot
+  // poison all following files; this is especially important on Windows.
+  const baseBuckets = opts.splitFiles ? files.map(file => [file, [file]]) : [["all", files]];
+  const buckets = opts.chunkSize > 0 ? baseBuckets.flatMap(([name, bucketFiles]) => { const chunks = []; for (let i = 0; i < bucketFiles.length; i += opts.chunkSize) chunks.push([`${name}-${Math.floor(i / opts.chunkSize) + 1}`, bucketFiles.slice(i, i + opts.chunkSize)]); return chunks; }) : baseBuckets;
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; console.error(`Test group '${opts.group}' exceeded ${opts.timeoutMs}ms; child buckets may still be terminating.`); }, opts.timeoutMs);
+  const results = [];
+  for (const [bucket, bucketFiles] of buckets) {
+    if (timedOut) break;
+    results.push(await runChild(bucketFiles, opts, bucket));
+  }
+  clearTimeout(timer);
+  const result = timedOut ? 124 : results.some(code => code !== 0) ? 1 : 0;
+  console.log(`Test group '${opts.group}' finished in ${Math.round(performance.now() - started)}ms (exit ${result})`);
+  return result;
 }
 const isMain = path.resolve(process.argv[1] || "") === path.resolve(fileURLToPath(import.meta.url));
 if (isMain) {
