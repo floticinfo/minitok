@@ -7,8 +7,18 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packagePath = path.join(root, "package.json");
 const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
-const run = (command, args) => execFileSync(command, args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+const run = (command, args, options = {}) => execFileSync(command, args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...options }).trim();
 const git = (...args) => run("git", args);
+
+// The manifest is committed with the release, so including it in the recorded
+// tree would make the manifest self-referential: writing the manifest changes
+// the tree it records. Provenance therefore uses the canonical root tree with
+// release-manifest.json excluded. This remains deterministic and still binds
+// every shipped source/artifact file to the release commit.
+function canonicalTree(ref) {
+  const entries = git("ls-tree", ref).split(/\r?\n/).filter(Boolean).filter(line => !/\trelease-manifest\.json$/.test(line));
+  return run("git", ["mktree"], { input: `${entries.join("\n")}\n` });
+}
 const sha256 = bytes => createHash("sha256").update(bytes).digest("hex");
 const integrity = bytes => `sha512-${createHash("sha512").update(bytes).digest("base64")}`;
 const normalized = value => String(value).replaceAll("\\", "/");
@@ -40,7 +50,7 @@ export function validateManifest(manifest, { packageData = packageJson, gitData 
   if (gitData) {
     if (gitData.status) errors.push("source worktree is dirty");
     if (gitData.commit !== release.commit && gitData.tagCommit !== release.commit) errors.push("manifest commit does not match HEAD or release tag target");
-    if (gitData.tree !== release.tree && gitData.tagTree !== release.tree) errors.push("manifest tree does not match HEAD or release tag target");
+    if (gitData.tree !== release.tree && gitData.tagTree !== release.tree && gitData.canonicalTree !== release.tree && gitData.tagCanonicalTree !== release.tree) errors.push("manifest tree does not match HEAD or release tag target");
     if (!gitData.tags.includes(release.tag) && gitData.tagCommit !== release.commit) errors.push(`release tag ${release.tag} does not point at the manifest release commit`);
   }
   if (changelog && !changelogHasVersion(packageData.version)) errors.push(`CHANGELOG.md has no ${packageData.version} heading`);
@@ -63,15 +73,18 @@ export function readGitData() {
   const status = contentStatus();
   const commit = git("rev-parse", "HEAD");
   const tree = git("rev-parse", "HEAD^{tree}");
+  const canonicalTreeValue = canonicalTree("HEAD");
   const tags = git("tag", "--points-at", "HEAD").split(/\r?\n/).filter(Boolean);
   const releaseTag = `v${packageJson.version}`;
   let tagCommit = "";
   let tagTree = "";
+  let tagCanonicalTree = "";
   try {
     tagCommit = git("rev-parse", `${releaseTag}^{commit}`);
     tagTree = git("rev-parse", `${releaseTag}^{commit}^{tree}`);
+    tagCanonicalTree = canonicalTree(`${releaseTag}^{commit}`);
   } catch {}
-  return { commit, tree, tagCommit, tagTree, status, tags };
+  return { commit, tree, canonicalTree: canonicalTreeValue, tagCommit, tagTree, tagCanonicalTree, status, tags };
 }
 
 export function generateManifest() {
@@ -80,7 +93,7 @@ export function generateManifest() {
   const tag = `v${packageJson.version}`;
   if (!gitData.tags.includes(tag) && gitData.tagCommit !== gitData.commit) throw new Error(`HEAD is untagged for ${tag}; refusing release manifest generation`);
   const releaseCommit = gitData.tags.includes(tag) ? gitData.commit : gitData.tagCommit;
-  const releaseTree = gitData.tags.includes(tag) ? gitData.tree : gitData.tagTree;
+  const releaseTree = gitData.tags.includes(tag) ? gitData.canonicalTree : gitData.tagCanonicalTree;
   const packed = pack();
   rmSync(packed.archivePath, { force: true });
   const manifest = { schemaVersion: 1, release: { package: packageJson.name, version: packageJson.version, commit: releaseCommit, tree: releaseTree, tag, changelog: `## ${packageJson.version}`, artifact: packed.artifact }, approvals: { legal: "NOT_GRANTED", support: "NOT_GRANTED", operations: "NOT_GRANTED", publication: "NOT_GRANTED" } };
