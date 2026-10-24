@@ -49,9 +49,11 @@ export function validateManifest(manifest, { packageData = packageJson, gitData 
   if (!release?.tree || !/^[0-9a-f]{40}$/.test(release.tree)) errors.push("manifest tree is missing or invalid");
   if (gitData) {
     if (gitData.status) errors.push("source worktree is dirty");
-    if (gitData.commit !== release.commit && gitData.tagCommit !== release.commit) errors.push("manifest commit does not match HEAD or release tag target");
-    if (gitData.tree !== release.tree && gitData.tagTree !== release.tree && gitData.canonicalTree !== release.tree && gitData.parentCanonicalTree !== release.tree && gitData.tagCanonicalTree !== release.tree) errors.push("manifest tree does not match HEAD or release tag target");
-    if (!gitData.tags.includes(release.tag) && gitData.tagCommit !== release.commit) errors.push(`release tag ${release.tag} does not point at the manifest release commit`);
+    const commitMatches = [gitData.commit, gitData.parentCommit, gitData.tagCommit].filter(Boolean).includes(release.commit);
+    const treeMatches = [gitData.tree, gitData.canonicalTree, gitData.parentCanonicalTree, gitData.tagTree, gitData.tagCanonicalTree].filter(Boolean).includes(release.tree);
+    if (!commitMatches) errors.push("manifest commit does not match the release payload commit or tag target");
+    if (!treeMatches) errors.push("manifest tree does not match the release payload tree or tag target");
+    if (!gitData.tags.includes(release.tag) && gitData.tagCommit !== release.commit && gitData.parentCommit !== release.commit) errors.push(`release tag ${release.tag} does not point at the manifest release commit`);
   }
   if (changelog && !changelogHasVersion(packageData.version)) errors.push(`CHANGELOG.md has no ${packageData.version} heading`);
   if (!release?.artifact?.filename || !release.artifact.sha256 || !release.artifact.integrity || !Array.isArray(release.artifact.files)) errors.push("manifest npm pack evidence is incomplete");
@@ -86,7 +88,7 @@ export function readGitData() {
     tagTree = git("rev-parse", `${releaseTag}^{commit}^{tree}`);
     tagCanonicalTree = canonicalTree(`${releaseTag}^{commit}`);
   } catch {}
-  return { commit, tree, canonicalTree: canonicalTreeValue, parentCanonicalTree, tagCommit, tagTree, tagCanonicalTree, status, tags };
+  return { commit, parentCommit, tree, canonicalTree: canonicalTreeValue, parentCanonicalTree, tagCommit, tagTree, tagCanonicalTree, status, tags };
 }
 
 export function generateManifest() {
