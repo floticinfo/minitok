@@ -50,7 +50,7 @@ export function validateManifest(manifest, { packageData = packageJson, gitData 
   if (gitData) {
     if (gitData.status) errors.push("source worktree is dirty");
     if (gitData.commit !== release.commit && gitData.tagCommit !== release.commit) errors.push("manifest commit does not match HEAD or release tag target");
-    if (gitData.tree !== release.tree && gitData.tagTree !== release.tree && gitData.canonicalTree !== release.tree && gitData.tagCanonicalTree !== release.tree) errors.push("manifest tree does not match HEAD or release tag target");
+    if (gitData.tree !== release.tree && gitData.tagTree !== release.tree && gitData.canonicalTree !== release.tree && gitData.parentCanonicalTree !== release.tree && gitData.tagCanonicalTree !== release.tree) errors.push("manifest tree does not match HEAD or release tag target");
     if (!gitData.tags.includes(release.tag) && gitData.tagCommit !== release.commit) errors.push(`release tag ${release.tag} does not point at the manifest release commit`);
   }
   if (changelog && !changelogHasVersion(packageData.version)) errors.push(`CHANGELOG.md has no ${packageData.version} heading`);
@@ -72,8 +72,10 @@ function contentStatus() {
 export function readGitData() {
   const status = contentStatus();
   const commit = git("rev-parse", "HEAD");
+  const parentCommit = (() => { try { return git("rev-parse", "HEAD^"); } catch { return ""; } })();
   const tree = git("rev-parse", "HEAD^{tree}");
   const canonicalTreeValue = canonicalTree("HEAD");
+  const parentCanonicalTree = parentCommit ? canonicalTree("HEAD^") : "";
   const tags = git("tag", "--points-at", "HEAD").split(/\r?\n/).filter(Boolean);
   const releaseTag = `v${packageJson.version}`;
   let tagCommit = "";
@@ -84,7 +86,7 @@ export function readGitData() {
     tagTree = git("rev-parse", `${releaseTag}^{commit}^{tree}`);
     tagCanonicalTree = canonicalTree(`${releaseTag}^{commit}`);
   } catch {}
-  return { commit, tree, canonicalTree: canonicalTreeValue, tagCommit, tagTree, tagCanonicalTree, status, tags };
+  return { commit, tree, canonicalTree: canonicalTreeValue, parentCanonicalTree, tagCommit, tagTree, tagCanonicalTree, status, tags };
 }
 
 export function generateManifest() {
