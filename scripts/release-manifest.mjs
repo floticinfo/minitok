@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const packagePath = path.join(root, "package.json");
 const packageJson = JSON.parse(readFileSync(packagePath, "utf8"));
-const run = (command, args, options = {}) => execFileSync(command, args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], ...options }).trim();
+const run = (command, args, options = {}) => execFileSync(command, args, { cwd: root, encoding: "utf8", stdio: options.input === undefined ? ["ignore", "pipe", "pipe"] : ["pipe", "pipe", "pipe"], ...options }).trim();
 const git = (...args) => run("git", args);
 
 // The manifest is committed with the release, so including it in the recorded
