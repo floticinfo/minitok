@@ -3,8 +3,8 @@
   "release": {
     "package": "@flotic/minitok",
     "version": "1.5.4",
-    "commit": "4bbe92833792ef6b1d9dc5c8994556d627bbc5dd",
-    "tree": "26bf56e317deb1930d24f7fd6c43dddaf110354a",
+    "commit": "a889f578deae7c10580fe7774693490e79e3fccd",
+    "tree": "be6547bcf652766bac8446a708aa2f4410de3f7b",
     "tag": "v1.5.4",
     "changelog": "## 1.5.4",
     "artifact": {
