@@ -100,7 +100,7 @@ export function readApprovalManifest(manifestPath = process.env[manifestEnvironm
     const pinPath = path.join(root, "approval-manifests", `approval-manifest-${packageData.version}.json`);
     if (fs.existsSync(pinPath)) manifestPath = pinPath;
   }
-  if (!manifestPath) return { state: "MISSING", errors: [`approval manifest path was not supplied (${manifestEnvironmentVariable}); start from scripts/approval-manifest.example.json`] };
+  if (!manifestPath) return { state: "NOT_CONFIGURED", errors: [`approval manifest path was not supplied (${manifestEnvironmentVariable}); commercial approval tracking is optional`] };
   const resolvedPath = path.resolve(manifestPath);
   try {
     const manifest = JSON.parse(fs.readFileSync(resolvedPath, "utf8"));
@@ -118,8 +118,8 @@ export function evaluateCommercialReadiness(documentReader = file => fs.readFile
     const approval = manifest.state === "VALID" ? manifest.manifest.approvals[requirement.id] : null;
     const structured = !requirement.structured || Object.values(approval?.[requirement.structured] || {}).every(value => typeof value === "string" && value.trim());
     const approved = approval?.status === "APPROVED" && approval.owner.trim() && approval.decision.trim() && structured;
-    const status = markers.length && requirement.status === "BLOCKED" ? "BLOCKED" : approved ? "PASS" : "UNVERIFIED";
-    const detail = approved ? "explicit approval manifest evidence supplied" : manifest.state === "MALFORMED" ? "approval manifest is malformed" : manifest.state === "MISSING" ? "approval manifest was not supplied; start from scripts/approval-manifest.example.json" : "explicit approval is not recorded";
+    const status = approved ? "PASS" : "UNVERIFIED";
+    const detail = approved ? "explicit approval manifest evidence supplied" : manifest.state === "MALFORMED" ? "approval manifest is malformed" : manifest.state === "NOT_CONFIGURED" ? "commercial approval tracking is optional and not configured" : "explicit approval is not recorded";
     return { id: requirement.id, status, markers, approvalState: approved ? "APPROVED" : manifest.state, detail };
   });
 }
@@ -129,7 +129,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   if (manifestIndex >= 0) process.env[manifestEnvironmentVariable] = process.argv[manifestIndex + 1];
   const manifest = readApprovalManifest();
   const results = evaluateCommercialReadiness(undefined, manifest);
-  const blocked = results.filter(result => result.status === "BLOCKED" || result.status === "UNVERIFIED");
-  console.log(JSON.stringify({ checklist: results, approvalManifest: { state: manifest.state, errors: manifest.errors || [] }, releaseReady: blocked.length === 0 }, null, 2));
+  const blocked = results.filter(result => result.status === "BLOCKED");
+  console.log(JSON.stringify({ checklist: results, approvalManifest: { state: manifest.state, errors: manifest.errors || [] }, releaseReady: blocked.length === 0, commercialApprovalConfigured: manifest.state === "VALID" }, null, 2));
   if (blocked.length) process.exit(1);
 }

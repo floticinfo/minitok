@@ -1,6 +1,6 @@
 {
   "name": "@flotic/minitok",
-  "version": "1.5.3",
+  "version": "1.5.4",
   "mcpName": "dev.minitok/minitok",
   "description": "Verified coding workflows for the terminal",
   "main": "src/index.js",
@@ -112,15 +112,23 @@
     "@sap-ai-sdk/prompt-registry": "2.16.0",
     "dify-ai-provider": {
       "@ai-sdk/provider-utils": {
-        "undici": "^8.10.1"
+        "undici": "^8.12.3"
       }
-    }
+    },
+    "undici": "^8.12.3",
+    "brace-expansion": "^5.0.12",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "body-parser": "^2.4.0",
+    "follow-redirects": "^1.16.1",
+    "fast-uri": "^4.2.3",
+    "hono": "^4.13.13",
+    "ip-address": "^10.7.4"
   },
   "dependencies": {
+    "@cline/sdk": "0.0.95",
     "commander": "^12.0.0",
     "js-yaml": "^4.3.2",
-    "undici": "^8.10.1",
-    "@cline/sdk": "^0.0.83",
+    "undici": "^8.12.3",
     "zod": "^3.25.76"
   },
   "files": [

@@ -35,6 +35,18 @@
       }
     }
   },
+  "dependencySecurity": {
+    "status": "PENDING",
+    "owner": "TODO security/dependency owner",
+    "decision": "TBD",
+    "packageVersion": { "package": "@flotic/minitok", "version": "PENDING" },
+    "scope": "TODO exact dependency paths and advisories",
+    "rationale": "TODO exploitability and compatibility analysis",
+    "mitigation": "TODO mitigation, monitoring, and rollback plan",
+    "approvedAt": "PENDING",
+    "reviewDate": "PENDING",
+    "evidenceRef": { "type": "external", "reference": "REPLACE_ME" }
+  },
   "approvals": {
     "legal-owner-approval": {
       "status": "PENDING",

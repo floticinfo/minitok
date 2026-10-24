@@ -3,7 +3,6 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { evaluateCommercialReadiness } from "./commercial-readiness.mjs";
 import { validateManifest, readGitData } from "./release-manifest.mjs";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -16,11 +15,6 @@ const releaseTag = process.env.RELEASE_TAG;
 
 
 try {
-  const readiness = evaluateCommercialReadiness();
-  for (const result of readiness) {
-    if (result.status === "BLOCKED" || result.status === "UNVERIFIED") errors.push(`commercial readiness ${result.id}: ${result.status}`);
-  }
-
   const head = git("rev-parse", "HEAD");
   const tree = git("rev-parse", "HEAD^{tree}");
   const status = git("status", "--short").split(/\r?\n/).filter(line => line.trim() && !/^\s*M?\s+release-manifest\.json$/.test(line)).join("\n");

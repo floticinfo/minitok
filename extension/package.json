@@ -3,10 +3,10 @@
   "displayName": "minitok",
   "description": "Verified coding workflows for the terminal",
   "publisher": "Flotic",
-  "version": "0.3.29",
+  "version": "0.3.30",
   "minitok": {
     "cliPackage": "@flotic/minitok",
-    "cliVersion": "1.5.3"
+    "cliVersion": "1.5.4"
   },
   "author": "Flotic",
   "license": "SEE LICENSE IN LICENSE",
@@ -202,10 +202,18 @@
     "test": "npm run compile && node --test test/process-contract.test.js test/mcp-config.test.js test/version.test.js test/spawn.test.js test/auth-ui.test.js test/device-auth.test.js test/boundary-audit.test.js && node dist/test/run-host.js"
   },
   "devDependencies": {
+    "@azure/identity": "^4.14.0",
     "@types/node": "^26.4.1",
     "@types/vscode": "^1.90.0",
     "@vscode/test-electron": "^3.1.0",
     "@vscode/vsce": "^3.2.2",
     "typescript": "^5.7.2"
+  },
+  "overrides": {
+    "@azure/msal-node": "^7.1.1",
+    "brace-expansion": "^5.0.12",
+    "fast-uri": "^4.2.3",
+    "markdown-it": "^15.0.3",
+    "undici": "^8.12.3"
   }
 }

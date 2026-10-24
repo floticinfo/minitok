@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 1.5.4 - 2026-10-24
+
+### Fixed
+
+- Technical release: separate optional commercial approval tracking from the technical release gate.
+- Security: refresh supported dependency versions and keep unresolved transitive advisories fail-closed.
+- Tooling: add grouped, bounded test execution with Windows process-tree cleanup.
+
 ## 1.5.3 - 2026-10-06
 
 ### Fixed

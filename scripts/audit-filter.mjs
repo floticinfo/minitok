@@ -1,18 +1,18 @@
 #!/usr/bin/env node
 // Security gate: fail on any high/critical vulnerability whose root cause is
-// NOT the known-unpatched node-forge advisory (GHSA-86w9-cpqp-85rv).
+// not explicitly documented as an accepted, non-exploitable dependency risk.
 //
-// node-forge <=1.4.0 has no patched release yet. It reaches us only through
-// jks-js (SAP keystore parsing in @sap-cloud-sdk/connectivity); minitok never
-// performs RSA PKCS#1 v1.5 signature verification through it, so the advisory
-// is non-exploitable in this codebase. The check re-arms automatically once a
-// fixed node-forge ships and npm stops reporting it.
+// This script is intentionally fail-closed: adding a package to the documented
+// risk list does not make the release pass. The list is used only to explain the
+// remaining root cause and to require a separate, time-bounded acceptance record.
+// The check re-arms automatically once a fixed dependency ships and npm stops
+// reporting the advisory.
 import { execSync } from "node:child_process";
 
-// Root-cause advisories that have no patched release and are non-exploitable
-// in this codebase (see header). Package names, not GHSA ids, so the check
-// re-arms automatically once npm stops reporting them.
-const TOLERATED_ROOTS = new Set(["node-forge", "@opentelemetry/core", "@ai-sdk/provider-utils"]);
+// Root-cause advisory packages are listed for classification only. They are
+// never automatically tolerated; package names rather than GHSA ids mean the
+// check re-arms automatically once npm stops reporting them.
+const DOCUMENTED_RISK_ROOTS = new Set(["node-forge", "zod", "@opentelemetry/core", "@ai-sdk/provider-utils"]);
 
 function auditReport() {
   try {
@@ -45,8 +45,9 @@ const offenders = [];
 for (const [name, entry] of Object.entries(vulnerabilities)) {
   if (!["high", "critical"].includes(entry.severity)) continue;
   const roots = new Set(rootAdvisories(name));
-  if (roots.size > 0 && [...roots].every(root => TOLERATED_ROOTS.has(root))) {
-    console.log(`tolerated (unpatched root advisory only): ${name} <- ${[...roots].join(", ")}`);
+  if (roots.size > 0 && [...roots].every(root => DOCUMENTED_RISK_ROOTS.has(root))) {
+    console.error(`risk acceptance required (not automatically tolerated): ${name} <- ${[...roots].join(", ")}`);
+    offenders.push(`${name} (documented risk roots require time-bounded acceptance: ${[...roots].join(", ")})`);
     continue;
   }
   offenders.push(`${name} (roots: ${[...roots].join(", ") || "unknown"})`);
