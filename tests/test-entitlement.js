@@ -38,7 +38,7 @@ function signPayload(payload, privateKeyPem, keyId) {
 // ============================================================
 
 describe("Entitlement Model", () => {
-  const { validatePayload, validateArtifact, canonicalize, VALID_PLAN_IDS } = require("../src/entitlement/model");
+  const { validatePayload, validateArtifact, canonicalize, CURRENT_PLAN_IDS, LEGACY_PLAN_IDS } = require("../src/entitlement/model");
 
   it("valid payload passes", () => {
     assert.equal(validatePayload(makePayload()).valid, true);
@@ -82,8 +82,18 @@ describe("Entitlement Model", () => {
     assert.equal(validatePayload(makePayload({ key_id: "" })).valid, false);
   });
   it("accepts all valid paid plan_ids", () => {
-    for (const plan of VALID_PLAN_IDS.filter((plan) => plan !== "trial")) {
+    for (const plan of CURRENT_PLAN_IDS.filter((plan) => plan !== "trial")) {
       assert.equal(validatePayload(makePayload({ plan_id: plan })).valid, true);
+    }
+  });
+  it("rejects a retired plan id in a signed entitlement", () => {
+    for (const plan of LEGACY_PLAN_IDS) {
+      assert.equal(validatePayload(makePayload({ plan_id: plan })).valid, false, `${plan} must never be a runtime entitlement`);
+    }
+  });
+  it("still rejects an unknown plan id", () => {
+    for (const plan of ["level_1", "pro", "team", ""]) {
+      assert.equal(validatePayload(makePayload({ plan_id: plan })).valid, false, `${plan} must be rejected`);
     }
   });
   it("accepts a complete server-issued trial payload", () => {

@@ -3,13 +3,14 @@
 /**
  * minitok deactivate — Revoke the current entitlement.
  *
- * Calls DELETE /api/entitlement on the server to revoke the token, then
- * removes the local cache so the CLI stops accepting the session.
+ * Calls POST /v1/deactivate on the server to revoke the installation token,
+ * then removes the local cache so the CLI stops accepting the session.
  */
 
 const { EntitlementCache } = require("../../entitlement/cache");
 const client = require("../../entitlement/client");
 const { resolveServerUrl } = require("./server-config");
+const { redactSecrets } = require("../../goal/evidence");
 
 async function cmdDeactivate(opts = {}) {
   const serverUrl = resolveServerUrl({ cliServer: opts?.server });
@@ -27,11 +28,11 @@ async function cmdDeactivate(opts = {}) {
     const result = await client.deactivate(cached.token, { serverUrl });
     if (!result.ok) {
       const errMsg = result.body?.error || `Server returned ${result.status}`;
-      console.error(`Warning: server revocation failed: ${errMsg}`);
+      console.error(`Warning: server revocation failed: ${redactSecrets(errMsg, cached.token)}`);
       console.error("Local entitlement cache will still be cleared.");
     }
   } catch (err) {
-    console.error(`Warning: cannot reach server: ${err.message}`);
+    console.error(`Warning: cannot reach server: ${redactSecrets(err.message, cached.token)}`);
     console.error("Local entitlement cache will still be cleared.");
   }
 

@@ -2,13 +2,21 @@
 
 const { checkEntitlementOnline } = require("./online");
 const { GateState } = require("./gate");
-const { VALID_PLAN_IDS } = require("./model");
+const { CURRENT_PLAN_IDS, isLegacyPlanId } = require("./model");
 const { isTrialEntitlement, validateTrialEntitlement } = require("./trial");
 const { takeDelegationTokenFromEnv, verifyRunDelegation } = require("./delegation");
 
 function applyEntitlementPolicy(result, feature) {
   if (!result || !result.allowed) return result || { allowed: false, state: GateState.MISSING, message: "Entitlement is unavailable." };
-  if (!VALID_PLAN_IDS.includes(result.entitlement?.plan_id)) {
+  const planId = result.entitlement?.plan_id;
+  if (!CURRENT_PLAN_IDS.includes(planId)) {
+    // A retired plan id is never a runtime entitlement. The legacy rows on
+    // the server stay readable, and the migration path normalizes them, but
+    // the entitlement itself is not usable. The message says which case it
+    // is so the holder is not left guessing.
+    if (isLegacyPlanId(planId)) {
+      return { ...result, allowed: false, state: GateState.SERVER_REJECTED, message: "This entitlement is on a retired plan that is no longer sold. A current Level 1 entitlement is required." };
+    }
     return { ...result, allowed: false, state: GateState.SERVER_REJECTED, message: "A paid or server-issued trial entitlement is required." };
   }
   if (isTrialEntitlement(result.entitlement)) {

@@ -2,7 +2,7 @@
   "api": {
     "defaultOrigin": "https://api.minitok.dev",
     "routes": {
-      "activate": "/api/entitlement/activate",
+      "activate": "/v1/activate",
       "validate": "/v1/validate",
       "activationKey": "/v1/activation-key",
       "checkout": "/v1/checkout/dodo"

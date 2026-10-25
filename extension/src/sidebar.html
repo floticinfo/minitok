@@ -889,7 +889,7 @@
     <main id="app" hidden>
       <div class="row" id="activateRow" hidden>
         <button id="activateButton" class="secondary" type="button">
-          Link a license key
+          Activate with a license key
         </button>
         <button id="billingButton" class="secondary" type="button">
           Get a plan
@@ -898,7 +898,7 @@
       <div id="bindPanel" class="row" hidden>
         <input id="bindKeyInput" type="text" placeholder="License key" autocomplete="off" aria-label="License key" style="flex:1;min-width:0">
         <button id="bindSubmitButton" type="button">
-          Link
+          Activate
         </button>
         <button id="bindCancelButton" class="secondary" type="button">
           Cancel
@@ -1260,9 +1260,9 @@ window.addEventListener('message',event=>{const m=event.data;
       document.getElementById('activateRow').hidden=!authenticated||entitled;
       // B2: toast exactly once for not-entitled -- a dedicated branch below used
       // to fire a second toast right after the authMsg one.
-      const authMsg=authenticated&&!entitled?(`${m.text||'This account is not entitled to run minitok.'} Link a license key or get a plan to continue.`):(authenticated?'':(checking?'':(m.text||'')));authError.textContent='';if(authMsg)showToast(authMsg,'error');
+      const authMsg=authenticated&&!entitled?(`${m.text||'This account is not entitled to run minitok.'} Activate with a license key or get a plan to continue.`):(authenticated?'':(checking?'':(m.text||'')));authError.textContent='';if(authMsg)showToast(authMsg,'error');
        return}if(m.type==='bind-panel-toggle'){const p=document.getElementById('bindPanel');p.hidden=!p.hidden;if(!p.hidden)document.getElementById('bindKeyInput').focus();
-      return}if(m.type==='bind-result'){if(m.ok){document.getElementById('bindPanel').hidden=true;document.getElementById('bindKeyInput').value='';showToast(m.text||'License linked.','info');}else{showToast(m.text||'Could not link the license key.','error');}
+      return}if(m.type==='bind-result'){if(m.ok){document.getElementById('bindPanel').hidden=true;document.getElementById('bindKeyInput').value='';showToast(m.text||'Activated.','info');}else{showToast(m.text||'Could not activate with the license key.','error');}
       return}if(m.type==='progress'){if(m.text)stage.textContent=m.text;
       return}if(m.type==='summary'){if(m.text)showToast(m.text,'info');
       return}if(m.type==='phase'){const e=m.event||{};const label={intel:'Gathering repository intelligence',plan:'Planning',work:'Implementing',review:'Reviewing',verify:'Verifying'}[e.phase]||e.phase;const done=e.state==='completed';stage.textContent=done?`${label} ✓`:`${label}…`;stage.className='task-status '+(e.phase==='verify'&&e.state==='completed'&&e.passed===false?'error':'running');if(e.state!=='started'&&e.total_tokens){const tin=Number(e.total_tokens.input||0),tout=Number(e.total_tokens.output||0);const cost=Number(e.total_cost||0);document.getElementById('productStatus').textContent=`${tin+tout} tokens · $${cost.toFixed(4)}`;}

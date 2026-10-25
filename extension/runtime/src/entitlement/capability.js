@@ -11,17 +11,23 @@ const FULL_TEST_PROFILE = "full_test";
 const FULL_TEST_CAPABILITIES = Object.freeze(["read", "inspect", "workspace_write", "local_mutation", "verify", "verify_exec", "auto_accept", "unrestricted_autonomous", "unrestricted_general_autonomous", "goal_inference", "criteria_inference", "replanning", "tool_discovery"]);
 const DENIED_CAPABILITIES = Object.freeze(["credential_use", "external_call", "publish", "deploy", "database_mutation", "force_push", "tag_overwrite", "protected_path_write", "always_blocked", "irreversible_operation", "safety_bypass"]);
 const LOCAL_SCOPE_MAP = Object.freeze({ read: "read", workspace_write: "write", local_mutation: "write", verify_exec: "verify_exec", auto_accept: "auto_accept", unrestricted_autonomous: "unrestricted_autonomous", unrestricted_general_autonomous: "unrestricted_general_autonomous" });
+const VALIDATED_STALENESS_MS = 24 * 60 * 60 * 1000;
 
 function capabilityFile(entitlementDir) { return path.join(entitlementDir || path.join(os.homedir(), ".minitok", "entitlement"), "capability-token.json"); }
-function safeRecord(record, now = Date.now()) {
+function capabilityIsStale(record, now = Date.now()) {
+  if (!record || !record.validated_at || !Number.isFinite(Date.parse(record.validated_at))) return false;
+  return now - Date.parse(record.validated_at) > VALIDATED_STALENESS_MS;
+}
+function safeRecord(record, now = Date.now(), checkStaleness = false) {
   if (!record || typeof record !== "object" || Array.isArray(record) || typeof record.token !== "string" || !record.token || record.profile !== FULL_TEST_PROFILE || typeof record.installation_id !== "string" || typeof record.validated_at !== "string" || !Number.isFinite(Date.parse(record.validated_at)) || !Array.isArray(record.capabilities) || !Number.isFinite(Date.parse(record.expires_at)) || now >= Date.parse(record.expires_at)) return null;
+  if (checkStaleness && now - Date.parse(record.validated_at) > VALIDATED_STALENESS_MS) return null;
   const capabilities = [...new Set(record.capabilities)];
   if (capabilities.some(item => DENIED_CAPABILITIES.includes(item)) || FULL_TEST_CAPABILITIES.some(item => !capabilities.includes(item))) return null;
   return { ...record, capabilities };
 }
 function readCapabilityRecord(options = {}) {
   const filePath = options.filePath || capabilityFile(options.entitlementDir);
-  try { return safeRecord(JSON.parse((options.fs || fs).readFileSync(filePath, "utf8")), options.now || Date.now()); } catch { return null; }
+  try { return safeRecord(JSON.parse((options.fs || fs).readFileSync(filePath, "utf8")), options.now || Date.now(), options.checkStaleness || false); } catch { return null; }
 }
 function writeCapabilityRecord(record, filePath = DEFAULT_CAPABILITY_FILE) {
   const valid = safeRecord(record);
@@ -43,11 +49,19 @@ async function importCapabilityToken(token, options = {}) {
   writeCapabilityRecord(record, options.filePath || capabilityFile(options.entitlementDir));
   return { success: true, record: { installation_id: record.installation_id, profile: record.profile, capabilities: record.capabilities, expires_at: record.expires_at, server_url: record.server_url } };
 }
+async function refreshCapabilityToken(options = {}) {
+  const record = readCapabilityRecord({ filePath: options.filePath, entitlementDir: options.entitlementDir, fs: options.fs, now: options.now });
+  if (!record) return { success: false, code: 404, error: "No capability record found" };
+  if (!capabilityIsStale(record, options.now || Date.now())) return { success: true, refreshed: false, record };
+  const result = await importCapabilityToken(record.token, options);
+  if (result.success) return { success: true, refreshed: true, record: result.record };
+  return { success: false, refreshed: false, code: result.code, error: result.error };
+}
 function capabilityPermissions(options = {}) {
   const record = readCapabilityRecord(options);
   if (!record) return { record: null, permissions: [] };
-  const permissions = [...new Set(record.capabilities.map(item => LOCAL_SCOPE_MAP[item]).filter(Boolean))];
+  const permissions = [...new Set(record.capabilities.map(item => LOCAL_SCOPE_MAP[item]))].filter(Boolean);
   return { record, permissions };
 }
 function clearCapabilityRecord(filePath = DEFAULT_CAPABILITY_FILE) { try { fs.unlinkSync(filePath); } catch {} }
-module.exports = { DEFAULT_CAPABILITY_FILE, FULL_TEST_PROFILE, FULL_TEST_CAPABILITIES, DENIED_CAPABILITIES, capabilityFile, safeRecord, readCapabilityRecord, writeCapabilityRecord, importCapabilityToken, capabilityPermissions, clearCapabilityRecord };
+module.exports = { DEFAULT_CAPABILITY_FILE, FULL_TEST_PROFILE, FULL_TEST_CAPABILITIES, DENIED_CAPABILITIES, VALIDATED_STALENESS_MS, capabilityFile, safeRecord, capabilityIsStale, readCapabilityRecord, writeCapabilityRecord, importCapabilityToken, refreshCapabilityToken, capabilityPermissions, clearCapabilityRecord };

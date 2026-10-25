@@ -77,7 +77,7 @@ test("entitlement gates execution controls and explains access state", () => {
   assert.match(html, /id="run"[^>]*disabled/);
   assert.match(html, /run\.disabled=!entitled/);
   assert.match(html, /Signed in, but this account is not entitled/);
-  assert.match(html, /Link a license key or get a plan/);
+  assert.match(html, /Activate with a license key or get a plan/);
   assert.match(html, /const notEntitled=state==='not-entitled'/);
   assert.match(html, /id="activateRow" hidden/);
   assert.match(html, /id="activateButton"/);
@@ -354,7 +354,7 @@ test("sidebar not-entitled auth-state toasts exactly once (B2 regression)", () =
   view.dispatch({ type: "auth-state", authenticated: true, entitled: false });
   assert.equal(view.toasts.length, 1, "not-entitled state must toast exactly once");
   assert.equal(view.toasts[0].kind, "error");
-  assert.match(view.toasts[0].text, /not entitled|Link a license key or get a plan/, "the single toast must still explain the not-entitled state");
+  assert.match(view.toasts[0].text, /not entitled|Activate with a license key or get a plan/, "the single toast must still explain the not-entitled state");
   assert.equal(view.els.get("activateRow").hidden, false, "the key/billing CTA row stays visible for not-entitled users");
 
   view.toasts.length = 0;

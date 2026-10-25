@@ -75,6 +75,11 @@ try {
   const consumer = path.join(prefix, "consumer");
   mkdirSync(consumer, { recursive: true });
   writeFileSync(path.join(consumer, "package.json"), JSON.stringify({ name: "packed-consumer", private: true }));
+  // The packed CLI's status command intentionally validates Git metadata. Make
+  // the disposable consumer a real empty repository so the smoke test proves
+  // the installed package starts in the same supported boundary as a customer
+  // project instead of failing on `git ls-files` before the CLI contract runs.
+  execFileSync("git", ["init", "--quiet", consumer], { cwd: root, stdio: "ignore" });
   runNpmWithRetry("npm install", ["install", "--prefix", consumer, "--ignore-scripts", ...npmNetworkFlags, archive]);
   const packageRoot = path.join(consumer, "node_modules", "@flotic", "minitok");
   const cli = path.join(packageRoot, "bin", "minitok.js");

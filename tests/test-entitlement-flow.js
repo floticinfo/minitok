@@ -1,15 +1,21 @@
 ﻿"use strict";
 
 /**
- * Phase 6 E2E ??full entitlement flow against the real Phase 1 server.
+ * Phase 6 E2E — the full entitlement flow against the canonical API.
  *
  * Covers:
- *   1. CLI activate (HTTP client) ??cache persisted ??status/run gate decision
- *      (the "Extension ?쒖떆 ??Run 媛?? leg: the extension reads the same
- *      EntitlementCache + /api/entitlement/status contract).
- *   2. Server restart ??offline cache fallback (grace).
- *   3. Entitlement revoked/expired ??run denied with the exact message the
- *      CLI shows (the "?뚮┝" contract).
+ *   1. CLI activate (HTTP client) → artifact + installation record + cache
+ *      persisted → the local gate authorizes a real run.
+ *   2. Server restart → the cached session survives and the offline fallback
+ *      still authorizes reads.
+ *   3. Entitlement revoked → run denied with the exact message the CLI shows
+ *      (the "denial" contract).
+ *
+ * [2026-10-22 E단계] This file used to drive the client against the in-repo
+ * Phase 1 express server under `server/`, which only serves the retired
+ * `/api/entitlement/*` routes. Production answers those routes with 404, so
+ * the client could not activate at all. The flow is now driven through the
+ * canonical /v1 contract, which is what the server actually serves.
  */
 
 const { describe, it, before, after } = require("node:test");
@@ -18,34 +24,43 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const crypto = require("node:crypto");
+const { ReadableStream } = require("node:stream/web");
 
-// The dev key "test" is gated behind an explicit opt-in so production never
-// accepts it. The E2E suite runs against the in-memory store, so enable it.
-if (!process.env.MINITOK_ACCEPTED_KEYS) process.env.MINITOK_ALLOW_TEST_KEY = "true";
-
-const { createApp } = require("../server/index");
+const { cmdActivate } = require("../src/cli/commands/activate");
 const client = require("../src/entitlement/client");
 const { EntitlementCache } = require("../src/entitlement/cache");
+const { EntitlementStore } = require("../src/entitlement/store");
+const { checkEntitlement } = require("../src/entitlement/gate");
 const { GateMessages, GateState, saveGateState } = require("../src/entitlement/gate");
 const { checkEntitlementOnline } = require("../src/entitlement/online");
 const pubKey = require("../src/entitlement/public-key");
 const { canonicalize } = require("../src/entitlement/model");
 
 const TEST_KEY = "test";
-const INSTALLATION_ID = "22222222-2222-4222-8222-222222222222";
 const ENTITLEMENT_DIR = fs.mkdtempSync(path.join(os.tmpdir(), "minitok-p6-e2e-"));
 const KEY_ID = "phase6-key";
+const SERVER_URL = "https://api.minitok.test";
 
 let kp; // ed25519 keypair for signing test artifacts
+let installationId; // the id the client generated for this machine
 
-function signArtifact({ expiresInMs = 30 * 86400000 } = {}) {
+function jsonResponse(body, status = 200) {
+  const bytes = new TextEncoder().encode(JSON.stringify(body));
+  return {
+    status,
+    headers: { get: name => (name === "content-length" ? String(bytes.byteLength) : null) },
+    body: new ReadableStream({ start(c) { c.enqueue(bytes); c.close(); } }),
+  };
+}
+
+function signArtifact({ expiresInMs = 30 * 86400000, installation_id } = {}) {
   // issued_at is anchored 2 days back so a negative expiresInMs yields a
   // schema-valid artifact that is simply past its expiry (MALFORMED would
   // mask the EXPIRED path this test exists to verify).
   const now = Date.now();
   const payload = {
     entitlement_id: crypto.randomUUID(),
-    installation_id: INSTALLATION_ID,
+    installation_id: installation_id || installationId,
     plan_id: "level1",
     features: ["run"],
     max_devices: 3,
@@ -57,21 +72,57 @@ function signArtifact({ expiresInMs = 30 * 86400000 } = {}) {
   return { payload, signature: signature.toString("base64url"), key_id: KEY_ID };
 }
 
-function writeInstallationRecord(dir) {
-  fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(
-    path.join(dir, "installation-token.json"),
-    JSON.stringify({ token: "phase6-token", installation_id: INSTALLATION_ID }),
-    "utf-8",
-  );
+function issueInstallationToken() {
+  const payload = {
+    sub: "phase6-customer",
+    installation_id: installationId,
+    subscription_id: "phase6-subscription",
+    iss: "minitok-server",
+    aud: "minitok:installation",
+    exp: Math.floor(Date.now() / 1000) + 30 * 86400,
+  };
+  const encode = (obj) => Buffer.from(JSON.stringify(obj)).toString("base64url");
+  return `${encode({ alg: "HS256", typ: "JWT" })}.${encode(payload)}.sig`;
+}
+
+/**
+ * A canonical server, in memory.
+ *
+ * `state.serverRunning` models a server restart: while it is false the
+ * validate route reports that the installation is unknown, exactly as a
+ * restarted server with an empty in-memory store would.
+ */
+const state = { serverRunning: true, revoked: false };
+
+function withFetchStub(fn) {
+  const saved = global.fetch;
+  const calls = [];
+  global.fetch = async (url, options) => {
+    calls.push({ url, method: options.method, body: options.body ? JSON.parse(options.body) : null });
+    const body = String(url);
+    if (body.endsWith("/v1/activate")) {
+      const artifact = signArtifact({ installation_id: calls[calls.length - 1].body.installation_id });
+      return jsonResponse({ entitlement: artifact, installation_token: issueInstallationToken() });
+    }
+    if (body.endsWith("/v1/validate")) {
+      if (!state.serverRunning || state.revoked) {
+        return jsonResponse({ valid: false, error: "This entitlement is no longer active.", reason: "installation_not_found" });
+      }
+      return jsonResponse({
+        valid: true,
+        installation: { installation_id: installationId, status: "active", subscription_id: "phase6-subscription" },
+        subscription: { status: "active", plan_id: "level1", current_period_end: new Date(Date.now() + 30 * 86400000).toISOString() },
+      });
+    }
+    return jsonResponse({ error: "not found" }, 404);
+  };
+  return Promise.resolve(fn(calls)).finally(() => { global.fetch = saved; });
 }
 
 describe("Phase 6 E2E: entitlement flow", () => {
-  let server;
-  let base;
   const cache = new EntitlementCache(ENTITLEMENT_DIR);
 
-  before(async () => {
+  before(() => {
     kp = crypto.generateKeyPairSync("ed25519");
     kp = {
       privateKeyPem: kp.privateKey.export({ type: "pkcs8", format: "pem" }),
@@ -79,96 +130,96 @@ describe("Phase 6 E2E: entitlement flow", () => {
     };
     pubKey.clearKeys();
     pubKey.registerKey(KEY_ID, kp.publicKeyPem);
-    writeInstallationRecord(ENTITLEMENT_DIR);
-    server = await new Promise((resolve) => {
-      const s = createApp().listen(0, "127.0.0.1", () => resolve(s));
-    });
-    base = `http://127.0.0.1:${server.address().port}`;
   });
 
-  after(async () => {
+  after(() => {
     pubKey.clearKeys();
-    if (server) await new Promise((r) => server.close(r));
     fs.rmSync(ENTITLEMENT_DIR, { recursive: true, force: true });
   });
 
-  // ?? 1. CLI activate ??cache ??status / run-gate decision ????????????????
+  // ── 1. CLI activate → persisted state → the gate authorizes a run ─────────
   it("CLI activate persists a usable session the gate can read", async () => {
-    const store = require("../server/models/entitlement");
-    store._reset();
+    await withFetchStub(async (calls) => {
+      const code = await cmdActivate(TEST_KEY, { server: SERVER_URL, entitlementDir: ENTITLEMENT_DIR });
+      assert.equal(code, 0);
+      assert.equal(calls.length, 1);
+      assert.equal(calls[0].url, `${SERVER_URL}/v1/activate`);
+      assert.equal(calls[0].body.key, TEST_KEY);
+      assert.ok(calls[0].body.installation_id, "the activation must carry an installation id");
+      installationId = calls[0].body.installation_id;
+    });
 
-    const result = await client.activate(TEST_KEY, { serverUrl: base });
-    assert.equal(result.ok, true, `activate failed: ${JSON.stringify(result.body)}`);
-    const { token, entitlement } = result.body;
-    assert.equal(typeof token, "string");
-    assert.equal(entitlement.plan, "level1");
-    assert.equal(entitlement.active, true);
-    assert.equal(typeof entitlement.installation_id, "string");
-
-    // The same persist step src/cli/commands/activate.js performs.
-    const payload = JSON.parse(Buffer.from(token.split(".")[1], "base64url").toString("utf8"));
-    cache.save(token, payload);
+    // The signed entitlement the server issued must be on disk, verifiable,
+    // and bound to this machine.
+    const artifact = new EntitlementStore(ENTITLEMENT_DIR).load();
+    assert.ok(artifact, "the entitlement artifact must be persisted");
+    assert.equal(artifact.payload.plan_id, "level1");
 
     const cached = cache.load();
     assert.ok(cached, "session must be readable from the local cache");
-    assert.equal(cached.token, token);
-    assert.equal(cached.payload.plan, "level1");
-
-    // The gate decision the extension renders: plan + expiry from the payload.
-    assert.equal(cached.payload.plan, "level1");
+    assert.equal(typeof cached.token, "string");
     assert.ok(cached.expires_at, "expiry must be surfaced for the UI");
+
+    // The gate decision the extension renders: the artifact verifies, so a
+    // real run is authorized.
+    const decision = checkEntitlement({ entitlementDir: ENTITLEMENT_DIR });
+    assert.equal(decision.allowed, true, `gate denied an activated machine: ${decision.message}`);
+    assert.equal(decision.state, GateState.ALLOWED);
   });
 
-  // ?? 2. Server restart ??cached session survives the restart ????????????
+  // ── 2. Server restart → the cached session survives ──────────────────────
   it("server restart: cached session still authorizes offline reads", async () => {
-    const store = require("../server/models/entitlement");
-    store._reset(); // simulate a server restart wiping in-memory state
+    state.serverRunning = false;
+    try {
+      const cached = cache.load();
+      assert.ok(cached, "cache must survive a server restart");
+      assert.ok(new Date(cached.expires_at).getTime() > Date.now(), "cached session must not be expired");
 
-    const cached = cache.load();
-    assert.ok(cached, "cache must survive a server restart");
-    assert.equal(cached.payload.plan, "level1");
-    // Offline expiry fallback the extension uses when the server is unreachable.
-    assert.ok(new Date(cached.expires_at).getTime() > Date.now(), "cached session must not be expired");
+      // Status against the restarted server: the installation is unknown, so
+      // the server refuses. The client must treat this as "not authorized" and
+      // the local gate must still authorize the signed artifact offline.
+      await withFetchStub(async () => {
+        const status = await client.status(cached.token, { serverUrl: SERVER_URL });
+        assert.equal(status.ok, true);
+        assert.equal(status.body.valid, false);
+        assert.equal(status.body.reason, "installation_not_found");
+      });
 
-    // Status against the restarted server: the JWT still verifies, but the
-    // entitlement record is gone ??active:false. The client must treat this as
-    // "not authorized" and surface the recovery message.
-    const status = await client.status(cached.token, { serverUrl: base });
-    assert.equal(status.ok, false);
-    assert.equal(status.body.active, false);
+      const decision = checkEntitlement({ entitlementDir: ENTITLEMENT_DIR });
+      assert.equal(decision.allowed, true, "a signed, unexpired artifact must still authorize a run offline");
+    } finally {
+      state.serverRunning = true;
+    }
   });
 
-  // ?? 3. Entitlement revoked ??run denied with the notification message ??
+  // ── 3. Entitlement revoked → run denied with the exact message ───────────
   it("revoked entitlement blocks run with the exact denial message", async () => {
-    const store = require("../server/models/entitlement");
-    store._reset();
+    state.revoked = true;
+    try {
+      const decision = await checkEntitlementOnline({
+        entitlementDir: ENTITLEMENT_DIR,
+        serverUrl: SERVER_URL,
+        _loadArtifact: () => signArtifact(),
+        _validate: async () => ({
+          ok: true,
+          body: { valid: false, error: "This entitlement is no longer active." },
+        }),
+      });
 
-    const result = await client.activate(TEST_KEY, { serverUrl: base });
-    assert.equal(result.ok, true);
-    const installationId = result.body.entitlement.installation_id;
-    store.revoke(TEST_KEY);
-
-    const decision = await checkEntitlementOnline({
-      entitlementDir: ENTITLEMENT_DIR,
-      serverUrl: base,
-      _loadArtifact: () => signArtifact(),
-      _validate: async () => ({
-        ok: false,
-        body: { valid: false, error: "This entitlement is no longer active." },
-      }),
-    });
-
-    assert.equal(decision.allowed, false);
-    assert.equal(decision.state, GateState.SERVER_REJECTED);
-    assert.equal(decision.message, "This entitlement is no longer active.");
-    assert.ok(installationId, "test sanity: installation id was issued");
+      assert.equal(decision.allowed, false);
+      assert.equal(decision.state, GateState.SERVER_REJECTED);
+      assert.equal(decision.message, "This entitlement is no longer active.");
+      assert.ok(installationId, "test sanity: an installation id was issued");
+    } finally {
+      state.revoked = false;
+    }
   });
 
-  // ?? 3b. Entitlement expired ??run denied with the exact notification ????
+  // ── 3b. Entitlement expired → run denied with the exact notification ──────
   it("expired entitlement blocks run with the exact denial message", async () => {
     const decision = await checkEntitlementOnline({
       entitlementDir: ENTITLEMENT_DIR,
-      serverUrl: base,
+      serverUrl: SERVER_URL,
       _loadArtifact: () => signArtifact({ expiresInMs: -61000 }),
       _validate: async () => ({ ok: true, body: { valid: true } }),
     });
@@ -180,7 +231,7 @@ describe("Phase 6 E2E: entitlement flow", () => {
     assert.match(decision.message, /Renew your subscription/);
   });
 
-  // ?? 3c. Server unreachable ??offline grace with day count ??????????????
+  // ── 3c. Server unreachable → offline grace with day count ─────────────────
   it("unreachable server falls back to offline grace after prior validation", async () => {
     // Simulate a machine that validated online 1 day ago (within 7-day grace).
     saveGateState(
@@ -190,7 +241,7 @@ describe("Phase 6 E2E: entitlement flow", () => {
 
     const decision = await checkEntitlementOnline({
       entitlementDir: ENTITLEMENT_DIR,
-      serverUrl: base,
+      serverUrl: SERVER_URL,
       _loadArtifact: () => signArtifact(),
       _validate: async () => { throw new Error("connect ECONNREFUSED"); },
     });

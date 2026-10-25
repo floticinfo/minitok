@@ -75,15 +75,18 @@ test("an activation key is never logged, echoed or persisted by the Extension", 
   assert.match(extension, /redactExtensionOutput\(result\.message\)/);
 });
 
-test("the not-entitled state offers both key-binding and billing paths", () => {
-  // A customer holding a pre-OAuth license key links it to their account via the
-  // bind panel; a customer without one goes to checkout. Both affordances must be
-  // present, and neither may shadow the other.
-  // The "activate" CTA opens the key-binding panel, not billing.
+test("the not-entitled state offers both activation and billing paths", () => {
+  // A customer holding a license key activates this installation via the
+  // activation panel; a customer without one goes to checkout. Both affordances
+  // must be present, and neither may shadow the other.
+  // The "activate" CTA opens the activation panel, not billing.
   assert.match(sidebar, /if \(message\.command === "activate"\) \{ this\.view\?\.webview\.postMessage\(\{ type: "bind-panel-toggle" \}\); return; \}/);
-  // Binding posts the key to the /api/entitlement/bind client with the auth token.
+  // [2026-10-22 F1단계] The panel hands the key to the CLI, which activates over
+  // the canonical POST /v1/activate. The Phase 1 bind route was retired and
+  // answered 404, so the extension must not call it.
   assert.match(sidebar, /if \(message\.command === "bind-license"\) \{ await this\.bindLicense\(message\.key\); return; \}/);
-  assert.match(sidebar, /bindLicenseToAccount\(trimmed, session\.access_token\)/);
+  assert.match(sidebar, /await activateEntitlement\(trimmed\)/);
+  assert.doesNotMatch(sidebar, /bindLicenseToAccount/);
   // Billing moved to its own command so a user without a key is never stranded.
   assert.match(sidebar, /if \(message\.command === "open-billing"\) \{ await this\.openBilling\(\); return; \}/);
   // The CTA still reaches the checkout flow, so pin the CLI subcommand itself

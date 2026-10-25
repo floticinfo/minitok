@@ -1,7 +1,7 @@
 {
   "source": "canonical-root-src",
   "cliPackage": "@flotic/minitok",
-  "cliVersion": "1.5.3",
+  "cliVersion": "1.5.5",
   "entry": "src/runtime/stdio-entry.js",
   "files": [
     "auth/aliases.js",
@@ -121,8 +121,8 @@
       "embedded": "8a6c64d18c87a1b4802ffe3dd8cb2b8b3c172d770cac5c8419132723c780a137"
     },
     "auth/installation.js": {
-      "source": "02e96d48ecb97dce83a106a8c0c93b0ae197aa5761fb401fd0b667d36a77af33",
-      "embedded": "02e96d48ecb97dce83a106a8c0c93b0ae197aa5761fb401fd0b667d36a77af33"
+      "source": "b115424cb4de85868c9f139ca6b3bcbc3d81fce6ffc59246c0d55b329d842471",
+      "embedded": "b115424cb4de85868c9f139ca6b3bcbc3d81fce6ffc59246c0d55b329d842471"
     },
     "auth/oauth.js": {
       "source": "6e5e3561fd421cf3414f809b4820d64b5a53eaaa33fa92fad03137e32ab72adc",
@@ -141,8 +141,8 @@
       "embedded": "46ee2057221fe19d6228c51385a91fb977684773d483c06de229b5824350b6d4"
     },
     "cli/commands/server-config.js": {
-      "source": "266cb457823a66187f52d4cbb025f01009e89e24f7014c0e5aa48eb8a4d5f0b7",
-      "embedded": "266cb457823a66187f52d4cbb025f01009e89e24f7014c0e5aa48eb8a4d5f0b7"
+      "source": "954e73b90a8eac882ef0bba82b57b23814aec51053ea51f06ebbd41721d9f6f6",
+      "embedded": "954e73b90a8eac882ef0bba82b57b23814aec51053ea51f06ebbd41721d9f6f6"
     },
     "config/loader.js": {
       "source": "eed2a7f08e1f12b3563d1561c8d3f00c08cfd693e16344328ff8b55e62a54a5d",
@@ -173,8 +173,8 @@
       "embedded": "e7822b3cea56604eaa508e1ddf5c7d77c0e4f6e0192d83b702032d3698310672"
     },
     "entitlement/capability.js": {
-      "source": "e6edb640bdbf2c3c3697efbbe4164d61142853929300e19dcee3e8c47f44ac4a",
-      "embedded": "e6edb640bdbf2c3c3697efbbe4164d61142853929300e19dcee3e8c47f44ac4a"
+      "source": "5a4f2f0b531a0ad0fdd2624067b238eea4d75d0e109ed4006e3d68284a665e1c",
+      "embedded": "5a4f2f0b531a0ad0fdd2624067b238eea4d75d0e109ed4006e3d68284a665e1c"
     },
     "entitlement/delegation.js": {
       "source": "d3d78a92d1cb9be5d3aff69ce694e935644064617cd492170a8515104e600e27",
@@ -185,16 +185,16 @@
       "embedded": "41134846a2a29534cd20d1f5145a12072d22b5934cb674dfd30b0dd87dedcec9"
     },
     "entitlement/model.js": {
-      "source": "933c86e990ba1f33d1aaf9c9aa890dbd5e7c14bcfa5a1cdf53b51a25b91528d5",
-      "embedded": "933c86e990ba1f33d1aaf9c9aa890dbd5e7c14bcfa5a1cdf53b51a25b91528d5"
+      "source": "56130c01faa3fbdd64abd910e46ac8de8b67416c47efa8df19df419041e9d990",
+      "embedded": "56130c01faa3fbdd64abd910e46ac8de8b67416c47efa8df19df419041e9d990"
     },
     "entitlement/online.js": {
       "source": "bebb86373c5a040f85ecfb7f9914c2a9116e769e43cd2e3a1a0646549cfe1473",
       "embedded": "bebb86373c5a040f85ecfb7f9914c2a9116e769e43cd2e3a1a0646549cfe1473"
     },
     "entitlement/policy.js": {
-      "source": "ef0242f656dc8226670cf9aa62f241989ef5e4970c1d66ecba899c609aafb8eb",
-      "embedded": "ef0242f656dc8226670cf9aa62f241989ef5e4970c1d66ecba899c609aafb8eb"
+      "source": "b398f9cc02415b2b99e47f423dd8028ca256032cfbfb79b0dcdc49408a4ddbb6",
+      "embedded": "b398f9cc02415b2b99e47f423dd8028ca256032cfbfb79b0dcdc49408a4ddbb6"
     },
     "entitlement/public-key.js": {
       "source": "7f8666cb8db97ec9a2f29f24f3ed8439dc0acb0461c1539e50747defb2439b2c",
@@ -289,8 +289,8 @@
       "embedded": "30539f05c8b896ce0ab152cf723ffb0d10b3934b6979e41582a43f6dae764450"
     },
     "goal/evidence.js": {
-      "source": "d6df001522d4550e74561b6678682a0f867b38fe205b28ae3857016ade816f7f",
-      "embedded": "d6df001522d4550e74561b6678682a0f867b38fe205b28ae3857016ade816f7f"
+      "source": "6723c38e605e11de9d141b5b01bc18bef95c0204c64323ecf4095c60301dd7b8",
+      "embedded": "6723c38e605e11de9d141b5b01bc18bef95c0204c64323ecf4095c60301dd7b8"
     },
     "goal/execution_audit.js": {
       "source": "56183bcdde805a1ee28973bb64591be68a7b6a5836f4065c1d50beaea3ec4355",

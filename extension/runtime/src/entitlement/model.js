@@ -28,7 +28,31 @@
 
 // `trial` is a server-issued, quota-bound entitlement; it is not a free plan.
 // `level1` (Level 1, $8.99/month) is the canonical paid plan the server issues.
-const VALID_PLAN_IDS = ["level1", "trial"];
+//
+// Identifier standard: the plan id is `level1` in every layer — the signed
+// entitlement payload, the server's `plans.plan_id` column, the checkout
+// request, the website and the CLI. The `level_1` spelling existed only as a
+// stored `plans.plan_id` value written by the 2026-09-26 server release; it was
+// never a valid entitlement plan id and is deliberately not accepted here.
+//
+// CURRENT_PLAN_IDS are the plan ids the server issues today, and the only
+// ones a signed entitlement payload may carry.
+// LEGACY_PLAN_IDS are retired. They live on the legacy rows on the server —
+// the subscription, the entitlement record, the billing history — which stay
+// readable and are labelled as legacy, and the migration path normalizes
+// them. A retired plan id is never a runtime-authorized entitlement, and
+// nothing in this client can acquire one: the server refuses to sign it and
+// the purchase path refuses to sell it.
+//
+// This mirrors the server contract in
+// `minitok-server-deploy/src/contract/commercial-contract.js`:
+// ENTITLEMENT_PLAN_IDS and RETIRED_PLAN_IDS.
+const CURRENT_PLAN_IDS = ["level1", "trial"];
+const LEGACY_PLAN_IDS = ["open", "select", "private"];
+
+function isLegacyPlanId(planId) {
+  return LEGACY_PLAN_IDS.includes(planId);
+}
 
 /**
  * Check whether a value is a valid ISO 8601 instant.
@@ -88,7 +112,7 @@ function validatePayload(payload) {
     return { valid: false, reason: "Invalid entitlement_id format" };
   }
 
-  if (typeof payload.plan_id !== "string" || !VALID_PLAN_IDS.includes(payload.plan_id)) {
+  if (typeof payload.plan_id !== "string" || !CURRENT_PLAN_IDS.includes(payload.plan_id)) {
     return { valid: false, reason: `Invalid plan_id: ${JSON.stringify(payload.plan_id)}` };
   }
 
@@ -198,5 +222,7 @@ module.exports = {
   canonicalize,
   isValidTimestamp,
   isValidUUID,
-  VALID_PLAN_IDS,
+  CURRENT_PLAN_IDS,
+  LEGACY_PLAN_IDS,
+  isLegacyPlanId,
 };

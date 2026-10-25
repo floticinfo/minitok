@@ -2,6 +2,33 @@
 
 ## Unreleased
 
+### Documentation and operations
+
+- Updated billing examples to use the canonical purchasable `level1` plan instead of retired `open` identifiers.
+- Reconciled the server deployment, rollback, API, environment-variable, and CI runtime documentation with the current Fastify routes, production compose, immutable image flow, and host-injected secret/key layout.
+
+### Security
+
+- Provider credentials are environment-injected and never written into the repository. `providers.<name>.api_key_env` holds the NAME of the variable that carries the key; a literal credential next to a handle is refused at load time (`providers.<name>.api_key and providers.<name>.api_key_env are mutually exclusive`).
+- A missing credential is now reported by name — `aifromu: absent — AIFROMU_API_KEY not set` in the preflight, and `aifromu: no credentials — set the AIFROMU_API_KEY environment variable` on the request path — instead of an unauthenticated request that comes back as an opaque 401 from the vendor.
+- The secret scan detects the credential shapes that were still invisible: the JSON form (`"api_key": "<literal>"`), a YAML credential followed by a trailing comment, and a credential pasted into the `_env` field itself. A `.githooks/pre-commit` hook refuses a commit whose tree carries a credential; enable it once per clone with `git config core.hooksPath .githooks`.
+- Added `docs/provider-key-rotation.md`: when a rotation is required, how to issue and inject the replacement, how to verify it without printing it, and why a committed credential is removed by rotation plus an explicit maintainer decision on history rewriting rather than by an automated rewrite.
+
+### Fixed
+
+- A configuration that names a literal credential next to a credential handle is refused instead of being loaded.
+- `tests/test-config-wiring.js` no longer pins the fallback provider to a fixed vendor name: it asserts the contract (the fallback is the CONFIGURED `default_provider`), so the test follows the project's own choice instead of failing when that choice changes.
+
+### Fixed
+
+- The VS Code extension no longer calls the retired Phase 1 entitlement routes, which the server answers with `404 Route ... not found`. Activation now runs through the CLI, which owns the installation identity and calls the canonical `POST /v1/activate`; the account view is read from `GET /v1/account`. A plan permits exactly one installation, so an activation that minted its own identity would have occupied a second device slot and failed with 409.
+- `minitok activate` prints the server's machine-readable refusal reason next to the message, so a retired plan id is distinguishable from a missing key or a device limit.
+- A `404` from the activation route fails the command instead of being reported as a success.
+
+### Removed
+
+- The legacy Phase 1 Express entitlement server (`server/`) and its two references (`tests/test-oauth-entitlement.js`, `scripts/verify-deployment-contract.js`). It was never part of the published package, and the production server never served its routes — which is why every call to them answered `404`. The contract it verified is now enforced and tested where the code lives: `minitok-server-deploy/src/contract/jwt-contract.js`, `test/auth-contract-v1.test.js` and `test/cv34-final-security-audit.test.js`. The documents that described it are kept, with a dated correction, as the design record.
+
 ## 1.5.3 - 2026-10-06
 
 ### Fixed

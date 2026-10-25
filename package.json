@@ -1,6 +1,6 @@
 {
   "name": "@flotic/minitok",
-  "version": "1.5.3",
+  "version": "1.5.5",
   "mcpName": "dev.minitok/minitok",
   "description": "Verified coding workflows for the terminal",
   "main": "src/index.js",
@@ -103,25 +103,27 @@
   "overrides": {
     "node-forge": "^1.4.0",
     "@opentelemetry/core": "^2.8.0",
+    "follow-redirects": "^1.16.1",
     "simple-git": "4.0.1",
     "@simple-git/argv-parser": "2.0.1",
-    "@sap-ai-sdk/core": "2.16.0",
-    "@sap-ai-sdk/ai-api": "2.16.0",
-    "@sap-ai-sdk/foundation-models": "2.16.0",
-    "@sap-ai-sdk/orchestration": "2.16.0",
-    "@sap-ai-sdk/prompt-registry": "2.16.0",
+    "@sap-ai-sdk/core": "2.17.0",
+    "@sap-ai-sdk/ai-api": "2.17.0",
+    "@sap-ai-sdk/foundation-models": "2.17.0",
+    "@sap-ai-sdk/orchestration": "2.17.0",
+    "@sap-ai-sdk/prompt-registry": "2.17.0",
     "dify-ai-provider": {
       "@ai-sdk/provider-utils": {
-        "undici": "^8.10.1"
-      }
+        "undici": "^8.12.3"
+      },
+      "zod": "^4.6.7"
     }
   },
   "dependencies": {
     "commander": "^12.0.0",
     "js-yaml": "^4.3.2",
-    "undici": "^8.10.1",
-    "@cline/sdk": "^0.0.83",
-    "zod": "^3.25.76"
+    "undici": "^8.12.3",
+    "@cline/sdk": "^0.0.95",
+    "zod": "^4.6.7"
   },
   "files": [
     "bin/",

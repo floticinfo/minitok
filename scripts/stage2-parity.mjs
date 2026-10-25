@@ -25,7 +25,7 @@ const mcpCommand = read("src/cli/commands/mcp.js");
 expect(serverConfig.includes(`const DEFAULT_SERVER_URL = "${fixture.api.defaultOrigin}"`), "production API default", fixture.api.defaultOrigin);
 expect(serverConfig.includes("Remote http server URLs are not allowed") && serverConfig.includes("must not contain credentials"), "server URL safety", "remote HTTP and URL credentials rejected");
 // The CLI delegates to src/entitlement/client.js, which sends
-// POST /api/entitlement/activate with key (+ installation_id when known).
+// POST /v1/activate with key and installation_id.
 // Assert the contract on the client module and that activate.js uses it.
 const clientMod = read("src/entitlement/client.js");
 expect(clientMod.includes(`${fixture.api.routes.activate}`) && /key/.test(clientMod) && /installation_id/.test(clientMod), "activation contract", "POST /api/entitlement/activate with key and installation_id");

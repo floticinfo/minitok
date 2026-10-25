@@ -7,40 +7,62 @@ const { minitokVersion } = require("../../core/version");
 const git = require("../../git/operations");
 const path = require("path");
 const { EntitlementCache } = require("../../entitlement/cache");
+const { EntitlementStore } = require("../../entitlement/store");
+const { readInstallationRecord } = require("../../auth/installation");
 const client = require("../../entitlement/client");
 const { resolveServerUrl } = require("./server-config");
 
+function isValidationResponse(body) {
+  return Boolean(body && typeof body === "object" && !Array.isArray(body) && typeof body.valid === "boolean");
+}
 
 /**
  * Resolve entitlement state from the server (or offline cache fallback).
  * Returns { active, plan, expires_at, source } where source is "server"|"cache"|"none".
+ *
+ * [2026-10-22 E단계] The server call is the canonical `POST /v1/validate`.
+ * The Phase 1 status route the client used is not served any more, so every
+ * status check answered 404 and silently fell through to the local cache.
  */
 async function _resolveEntitlement(options = {}) {
   const serverUrl = resolveServerUrl({ cliServer: options.server });
-  const cache = new EntitlementCache();
+  const entitlementDir = options.entitlementDir;
+  const cache = new EntitlementCache(entitlementDir);
   const cached = cache.load({ allowStale: true });
+  const record = readInstallationRecord(entitlementDir);
+  const token = record?.token || cached?.token;
 
-  if (!cached || !cached.token) {
+  if (!token) {
     return { active: false, plan: null, expires_at: null, source: "none", serverUrl };
   }
 
   // Try the server first.
   try {
-    const result = await client.status(cached.token, { serverUrl });
-    if (result.ok && result.body) {
-      return { active: result.body.active === true, plan: result.body.plan || null, expires_at: result.body.expires_at || null, source: "server", serverUrl };
+    const artifact = new EntitlementStore(entitlementDir).load();
+    const result = await client.status(token, { serverUrl, entitlement: artifact || undefined });
+    if (result.ok && isValidationResponse(result.body)) {
+      const valid = result.body.valid === true;
+      const subscription = result.body.subscription && typeof result.body.subscription === "object" ? result.body.subscription : {};
+      return {
+        active: valid,
+        plan: subscription.plan_id || null,
+        expires_at: subscription.current_period_end || null,
+        source: "server",
+        serverUrl,
+        reason: valid ? null : (result.body.reason || null),
+      };
     }
     if (result.status === 401 || result.status === 403) {
       // Token invalid/revoked — clear the cache so we stop trying.
       cache.clear();
-      return { active: false, plan: null, expires_at: null, source: "server", serverUrl };
+      return { active: false, plan: null, expires_at: null, source: "server", serverUrl, reason: result.body?.reason || null };
     }
   } catch {
     // Server unreachable — fall through to cache.
   }
 
   // Offline fallback: use the cached payload if not expired.
-  if (cached.payload && cached.payload.exp) {
+  if (cached?.payload && cached.payload.exp) {
     const expired = Date.now() >= cached.payload.exp * 1000;
     if (!expired) {
       return { active: true, plan: cached.payload.plan || null, expires_at: cached.expires_at || null, source: "cache", serverUrl, stale: cached.stale };
@@ -60,6 +82,7 @@ async function cmdStatusHuman(options = {}) {
     } else {
       console.log("Entitlement: INACTIVE");
     }
+    if (ent.reason) console.log(`  Reason:     ${ent.reason}`);
     if (ent.plan) console.log(`  Plan:       ${ent.plan}`);
     if (ent.expires_at) console.log(`  Expires:    ${ent.expires_at}`);
     if (ent.source === "cache") console.log(`  Source:     local cache (server unreachable)`);
@@ -170,4 +193,4 @@ async function cmdStatus(options = {}) {
   return cmdStatusHuman(options);
 }
 
-module.exports = { cmdStatus };
+module.exports = { cmdStatus, _resolveEntitlement, isValidationResponse };

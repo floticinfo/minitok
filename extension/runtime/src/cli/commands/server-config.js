@@ -99,4 +99,16 @@ function _normalizeUrl(raw) {
   return parsed.origin + parsed.pathname.replace(/\/+$/, "");
 }
 
-module.exports = { resolveServerUrl, saveServerUrl, DEFAULT_SERVER_URL };
+const LOCALHOST_HOSTNAMES = ["localhost", "127.0.0.1", "::1"];
+
+function isInsecureServerUrl(url) {
+  if (typeof url !== "string") return false;
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === "http:" && !LOCALHOST_HOSTNAMES.includes(parsed.hostname.toLowerCase());
+  } catch {
+    return false;
+  }
+}
+
+module.exports = { resolveServerUrl, saveServerUrl, DEFAULT_SERVER_URL, isInsecureServerUrl };

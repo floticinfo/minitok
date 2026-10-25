@@ -2,12 +2,11 @@ import { spawn } from "node:child_process";
 import { cliPath, workspacePath, spawnSpec, spawnOptionsFor, appendBoundedOutput } from "./workspace";
 import * as vscode from "vscode";
 import { readAdminSession, readExtensionSession, issueRunDelegation } from "./device-auth";
-import { EntitlementCache, decodeJwtPayload } from "./entitlement-cache";
 
 export type EntitlementState = { checked: boolean; allowed: boolean; plan?: string | null; message?: string; cached?: boolean };
 
 // ---------------------------------------------------------------------------
-// Phase 3: Server API client (mirrors src/entitlement/client.js in the CLI)
+// Server API client (the canonical /v1 contract)
 // ---------------------------------------------------------------------------
 
 /**
@@ -35,153 +34,46 @@ async function parseJsonBody(res: Response): Promise<any> {
   try { return JSON.parse(await res.text()); } catch { return undefined; }
 }
 
-/** POST /api/entitlement/activate — validate a key, receive a JWT. */
-export async function activateEntitlementSession(key: string, base = entitlementServerUrl()): Promise<{ ok: boolean; status: number; token?: string; plan?: string; error?: string }> {
-  const trimmed = typeof key === "string" ? key.trim() : "";
-  if (!trimmed) return { ok: false, status: 0, error: "An activation key is required." };
-  try {
-    const res = await fetch(`${trimBase(base)}/api/entitlement/activate`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key: trimmed }),
-      signal: AbortSignal.timeout(30_000),
-    });
-    const body = await parseJsonBody(res);
-    const entitlement = body?.entitlement || {};
-    return {
-      ok: res.ok && typeof body?.token === "string",
-      status: res.status,
-      token: typeof body?.token === "string" ? body.token : undefined,
-      plan: typeof entitlement.plan === "string" ? entitlement.plan : undefined,
-      error: typeof body?.error === "string" ? body.error : undefined,
-    };
-  } catch (error) {
-    return { ok: false, status: 0, error: error instanceof Error ? error.message : String(error) };
-  }
-}
-
-/** GET /api/entitlement/me — resolve entitlement from an auth-server JWT. */
-export async function meEntitlementSession(authToken: string, base = entitlementServerUrl()): Promise<{ ok: boolean; status: number; active?: boolean; plan?: string; error?: string }> {
-  try {
-    const res = await fetch(`${trimBase(base)}/api/entitlement/me`, {
-      headers: { Authorization: `Bearer ${authToken}` },
-      signal: AbortSignal.timeout(15_000),
-    });
-    const body = await parseJsonBody(res);
-    return {
-      ok: res.ok && body?.active === true,
-      status: res.status,
-      active: body?.active === true,
-      plan: typeof body?.plan === "string" ? body.plan : undefined,
-      error: typeof body?.error === "string" ? body.error : undefined,
-    };
-  } catch (error) {
-    return { ok: false, status: 0, error: error instanceof Error ? error.message : String(error) };
-  }
-}
-
 /**
- * POST /api/entitlement/bind — link a license key to the signed-in account.
+ * GET /v1/account — the signed-in customer's account view.
  *
- * Migration path for customers holding a key that was activated before the
- * OAuth entitlement flow: the key authorizes the binding and the verified
- * auth token supplies the customer_id, so after this succeeds GET /me resolves.
+ * [2026-10-22 F1단계] This replaces the retired Phase 1 "me" route, which the
+ * server answered with `404 Route ... not found` — so the extension's
+ * auth-first entitlement check could never resolve and the sidebar fell
+ * through to a cache the server no longer issued.
+ *
+ * The canonical account view carries the same facts the retired route did — the
+ * customer's subscriptions, their installations and their entitlements — under
+ * `/v1/account`, which the server does serve. It answers with the customer
+ * bearer token, the same credential the retired route used.
  */
-export async function bindLicenseToAccount(key: string, authToken: string, base = entitlementServerUrl()): Promise<{ ok: boolean; status: number; plan?: string; error?: string }> {
-  const trimmed = typeof key === "string" ? key.trim() : "";
-  if (!trimmed) return { ok: false, status: 0, error: "An activation key is required." };
+export async function accountEntitlementState(authToken?: string): Promise<{ ok: boolean; status: number; active?: boolean; plan?: string; error?: string }> {
+  const token = authToken ?? (extensionContext ? (await readExtensionSession(extensionContext))?.access_token : undefined);
+  if (!token) return { ok: false, status: 0, error: "Not signed in." };
   try {
-    const res = await fetch(`${trimBase(base)}/api/entitlement/bind`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ key: trimmed, auth_token: authToken }),
-      signal: AbortSignal.timeout(15_000),
-    });
-    const body = await parseJsonBody(res);
-    const entitlement = body?.entitlement || {};
-    return {
-      ok: res.ok && body?.bound === true,
-      status: res.status,
-      plan: typeof entitlement.plan === "string" ? entitlement.plan : undefined,
-      error: typeof body?.error === "string" ? body.error : undefined,
-    };
-  } catch (error) {
-    return { ok: false, status: 0, error: error instanceof Error ? error.message : String(error) };
-  }
-}
-
-
-/** GET /api/entitlement/status — validate a JWT, return current state. */
-export async function statusEntitlementSession(token: string, base = entitlementServerUrl()): Promise<{ ok: boolean; status: number; active?: boolean; plan?: string; expiresAt?: string; error?: string }> {
-  try {
-    const res = await fetch(`${trimBase(base)}/api/entitlement/status`, {
+    const res = await fetch(`${trimBase(entitlementServerUrl())}/v1/account`, {
       headers: { Authorization: `Bearer ${token}` },
       signal: AbortSignal.timeout(15_000),
     });
     const body = await parseJsonBody(res);
-    return {
-      ok: res.ok && body?.active === true,
-      status: res.status,
-      active: body?.active === true,
-      plan: typeof body?.plan === "string" ? body.plan : undefined,
-      expiresAt: typeof body?.expires_at === "string" ? body.expires_at : undefined,
-      error: typeof body?.error === "string" ? body.error : undefined,
-    };
+    if (!res.ok) {
+      return { ok: false, status: res.status, error: typeof body?.error === "string" ? body.error : undefined };
+    }
+    const subscriptions = Array.isArray(body?.subscriptions) ? body.subscriptions : [];
+    const installations = Array.isArray(body?.installations) ? body.installations : [];
+    const entitlements = Array.isArray(body?.entitlements) ? body.entitlements : [];
+    // `paid` is the server's own answer to "does this subscription grant access
+    // right now" — it folds the status and the billing period together, so the
+    // extension must not re-derive it from the two fields separately.
+    const paid = subscriptions.find((s: any) => s?.paid === true);
+    const activeInstallation = installations.find((i: any) => i?.status === "active");
+    const activeEntitlement = entitlements.find((e: any) => e?.status === "active");
+    const plan = paid?.plan_id || activeEntitlement?.plan_id || undefined;
+    const active = Boolean(paid || activeInstallation || activeEntitlement);
+    return { ok: true, status: res.status, active, plan, error: undefined };
   } catch (error) {
     return { ok: false, status: 0, error: error instanceof Error ? error.message : String(error) };
   }
-}
-
-/** POST /api/entitlement/refresh — renew a (possibly expired) JWT. */
-export async function refreshEntitlementSession(token: string, base = entitlementServerUrl()): Promise<{ ok: boolean; status: number; token?: string; error?: string }> {
-  try {
-    const res = await fetch(`${trimBase(base)}/api/entitlement/refresh`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(15_000),
-    });
-    const body = await parseJsonBody(res);
-    return {
-      ok: res.ok && typeof body?.token === "string",
-      status: res.status,
-      token: typeof body?.token === "string" ? body.token : undefined,
-      error: typeof body?.error === "string" ? body.error : undefined,
-    };
-  } catch (error) {
-    return { ok: false, status: 0, error: error instanceof Error ? error.message : String(error) };
-  }
-}
-
-/** DELETE /api/entitlement — revoke the JWT. */
-export async function deactivateEntitlementSession(token: string, base = entitlementServerUrl()): Promise<{ ok: boolean; status: number; error?: string }> {
-  try {
-    const res = await fetch(`${trimBase(base)}/api/entitlement`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` },
-      signal: AbortSignal.timeout(15_000),
-    });
-    const body = await parseJsonBody(res);
-    return { ok: res.ok, status: res.status, error: typeof body?.error === "string" ? body.error : undefined };
-  } catch (error) {
-    return { ok: false, status: 0, error: error instanceof Error ? error.message : String(error) };
-  }
-}
-
-/**
- * Phase 3 server-validated activation: activate against the server, then
- * persist the JWT in SecretStorage. Also runs the CLI activation so the
- * on-disk artifact stays in sync for CLI runs outside the extension.
- */
-export async function activateWithServer(context: vscode.ExtensionContext, key: string): Promise<{ ok: boolean; message: string; plan?: string | null }> {
-  const result = await activateEntitlementSession(key);
-  if (!result.ok || !result.token) {
-    return { ok: false, message: result.error || `Activation failed (HTTP ${result.status}).` };
-  }
-  const cache = new EntitlementCache(context.secrets);
-  await cache.save(result.token);
-  invalidateEntitlementCache();
-  const payload = decodeJwtPayload(result.token);
-  return { ok: true, message: "Activation successful.", plan: result.plan || payload?.plan || null };
 }
 
 /** Environment variable that carries the activation key to the CLI child. */
@@ -213,6 +105,12 @@ export async function adminRunDelegationEnv(context: vscode.ExtensionContext, ru
  * artifact and the installation token under ~/.minitok; the Extension neither
  * stores nor returns either secret, and the child environment is discarded with
  * the spawn.
+ *
+ * [2026-10-22 F1단계] This is the only activation path the extension has. The
+ * direct-HTTP Phase 1 activation was removed because the server retired that
+ * route, and because a plan permits exactly one installation: the CLI owns the
+ * installation identity, so an activation that minted its own would occupy a
+ * second device slot and fail with 409.
  */
 export function activateEntitlement(key: string): Promise<{ ok: boolean; message: string; plan?: string | null }> {
   return new Promise(resolve => {
@@ -286,85 +184,35 @@ export function invalidateEntitlementCache() {
   cachedDecision = undefined;
 }
 
+/**
+ * The entitlement decision.
+ *
+ * [2026-10-22 F1단계] The CLI owns the installation identity and the signed
+ * entitlement artifact, and its `status --json` validates that artifact against
+ * the canonical `POST /v1/validate` route and honours the offline grace window.
+ * It is therefore the single source of truth, and the extension makes exactly
+ * one server call of its own: `GET /v1/account`, which says whether the
+ * signed-in account has a plan.
+ *
+ * The Phase 1 server-session cache (a 24h JWT in SecretStorage) is gone with
+ * the route that issued it. A route that answers 404 is not a plan, and a
+ * decision derived from a 404 is indistinguishable from a missing plan.
+ */
 export async function requireEntitlement(): Promise<EntitlementState> {
   if (await isAdminSessionActive()) return { checked: true, allowed: true, plan: "admin", message: undefined };
-  // Phase 3: prefer the server-validated session stored in SecretStorage.
-  // When the server is unreachable, an unexpired cached `exp` is the fallback.
-  if (extensionContext) {
-    const serverState = await checkServerEntitlement(extensionContext);
-    if (serverState.checked) return serverState;
-    // Surface server errors so the user knows it is not "no plan".
-    if (serverState.message) throw new Error(serverState.message);
-  }
   const entitlement = await checkEntitlement();
-  if (!entitlement.allowed) throw new Error(entitlement.message || "An active paid minitok plan is required.");
+  if (entitlement.allowed) return entitlement;
+  // The CLI denied. The account view separates "this account has no plan" from
+  // "the server is unreachable", so an outage is not reported as a missing plan
+  // and a missing plan is not reported as an outage.
+  const account = await accountEntitlementState();
+  if (account.status >= 500) {
+    return { checked: true, allowed: false, plan: null, message: `Entitlement server error: ${account.error || account.status}` };
+  }
+  if (account.ok && account.active) {
+    return { checked: true, allowed: true, plan: account.plan || null, message: undefined };
+  }
   return entitlement;
-}
-
-/**
- * Server-validated entitlement check with local cache fallback.
- *
- * Auth-first: when an OAuth session exists, resolve entitlement via
- * GET /api/entitlement/me with the auth token. Falls back to the
- * SecretStorage-cached entitlement JWT, then to the offline `exp` claim.
- *
- * Returns { checked: true, ... } when the server (or the offline fallback)
- * produced a decision, and { checked: false } when neither is available so
- * the caller can fall back to the CLI-based gate.
- */
-export async function checkServerEntitlement(context: vscode.ExtensionContext): Promise<EntitlementState> {
-  let serverError: string | undefined;
-  // Auth-first: OAuth session → /api/entitlement/me
-  const authSession = await readExtensionSession(context);
-  if (authSession?.access_token) {
-    const me = await meEntitlementSession(authSession.access_token);
-    if (me.ok) {
-      invalidateEntitlementCache();
-      return { checked: true, allowed: true, plan: me.plan || null, message: undefined };
-    }
-    if (me.status === 404) {
-      return { checked: true, allowed: false, plan: null, message: "No active plan found for this account." };
-    }
-    // 5xx: server error — surface it distinctly so the user does not confuse
-    // an outage with "no plan". Fall through to the cached token as a degraded
-    // path, but remember the server error for the final message.
-    if (me.status >= 500) {
-      serverError = me.error || `Entitlement server returned ${me.status}.`;
-    }
-    // 401/403: auth token issue — fall through to cached entitlement token.
-  }
-
-  // Fallback: SecretStorage-cached entitlement JWT (legacy key-based flow).
-  const cache = new EntitlementCache(context.secrets);
-  const session = await cache.load();
-  if (!session) return { checked: false, allowed: false };
-  const status = await statusEntitlementSession(session.token);
-  if (status.ok) {
-    invalidateEntitlementCache();
-    return { checked: true, allowed: true, plan: status.plan || session.payload.plan || null, message: undefined };
-  }
-  // 401/403: the token is revoked or expired on the server. Try a refresh
-  // before falling back to the local `exp` so a near-expiry session survives.
-  if (status.status === 401 || status.status === 403) {
-    const refreshed = await refreshEntitlementSession(session.token);
-    if (refreshed.ok && refreshed.token) {
-      await cache.save(refreshed.token);
-      invalidateEntitlementCache();
-      const payload = decodeJwtPayload(refreshed.token);
-      return { checked: true, allowed: true, plan: payload?.plan || null, message: undefined };
-    }
-    // A definite server-side rejection: do not honor the offline fallback.
-    if (refreshed.status !== 0) {
-      await cache.clear();
-      return { checked: true, allowed: false, plan: null, message: status.error || refreshed.error || "Your minitok plan is no longer active." };
-    }
-  }
-  // Network failure (status 0): offline fallback via the `exp` claim.
-  const offline = await cache.loadValidOffline();
-  if (offline) return { checked: true, allowed: true, plan: offline.payload.plan || null, message: undefined, cached: true };
-  // Nothing produced a decision. If the server errored, say so — otherwise the
-  // caller treats it as "no plan" which is misleading during an outage.
-  return { checked: false, allowed: false, message: serverError ? `Entitlement server error: ${serverError}` : undefined };
 }
 
 export function checkEntitlement(): Promise<EntitlementState> {
@@ -380,47 +228,47 @@ export function checkEntitlement(): Promise<EntitlementState> {
     resolve({ ...cachedDecision.state, cached: true });
     return;
   }
-    let settled = false;
-    const settle = (state: EntitlementState, cacheable = true) => {
-      if (settled) return;
-      settled = true;
-      // Only a decision the CLI actually reached is worth caching. A local spawn
-      // failure (ENOENT — CLI not installed yet) or a killed timeout says nothing
-      // about the plan, and caching it locked a just-installed user out for the
-      // denial window.
-      if (cacheable) cachedDecision = { at: Date.now(), state };
-      resolve(state);
-    };
-    const spec = spawnSpec(cliPath(), ["status", "--json"]);
-    let child: import("node:child_process").ChildProcessWithoutNullStreams;
-    try { child = spawn(spec.command, spec.args, spawnOptionsFor(spec, { cwd: workspacePath() })); }
-    catch (error) { settle({ checked: true, allowed: false, message: error instanceof Error ? error.message : String(error) }, false); return; }
-    let stdout = "";
-    let stderr = "";
-    const timer = setTimeout(() => {
-      try {
-        child.kill();
-      } catch {
-        // A failed kill leaves the child running; the settle guard drops its
-        // output, so stop watching rather than throw out of the timer.
-      }
-      settle({ checked: true, allowed: false, message: "Entitlement check timed out" }, false);
-    }, 30000);
-    child.stdout.on("data", chunk => { stdout = appendBoundedOutput(stdout, chunk.toString()); });
-    child.stderr.on("data", chunk => { stderr = appendBoundedOutput(stderr, chunk.toString()); });
-    child.on("error", error => { clearTimeout(timer); settle({ checked: true, allowed: false, message: stderr || error.message }, false); });
-    child.on("close", code => {
-      clearTimeout(timer);
-      if (code !== 0) { settle({ checked: true, allowed: false, message: stderr || `minitok exited with code ${code}` }); return; }
-      try {
-        const result = JSON.parse(stdout);
-        const entitlement = result.entitlement || {};
-        const allowed = entitlement.allowed === true && typeof entitlement.plan === "string" && entitlement.plan.length > 0;
-        settle({ checked: true, allowed, plan: entitlement.plan || null, message: allowed ? undefined : "An active paid minitok plan is required." });
-      } catch (parseError) {
-        settle({ checked: true, allowed: false, message: `Could not verify minitok entitlement: ${parseError instanceof Error ? parseError.message : String(parseError)}` });
-      }
-    });
+  let settled = false;
+  const settle = (state: EntitlementState, cacheable = true) => {
+    if (settled) return;
+    settled = true;
+    // Only a decision the CLI actually reached is worth caching. A local spawn
+    // failure (ENOENT — CLI not installed yet) or a killed timeout says nothing
+    // about the plan, and caching it locked a just-installed user out for the
+    // denial window.
+    if (cacheable) cachedDecision = { at: Date.now(), state };
+    resolve(state);
+  };
+  const spec = spawnSpec(cliPath(), ["status", "--json"]);
+  let child: import("node:child_process").ChildProcessWithoutNullStreams;
+  try { child = spawn(spec.command, spec.args, spawnOptionsFor(spec, { cwd: workspacePath() })); }
+  catch (error) { settle({ checked: true, allowed: false, message: error instanceof Error ? error.message : String(error) }, false); return; }
+  let stdout = "";
+  let stderr = "";
+  const timer = setTimeout(() => {
+    try {
+      child.kill();
+    } catch {
+      // A failed kill leaves the child running; it only drops the output, so
+      // stop watching rather than throw out of the timer.
+    }
+    settle({ checked: true, allowed: false, message: "Entitlement check timed out" }, false);
+  }, 30000);
+  child.stdout.on("data", chunk => { stdout = appendBoundedOutput(stdout, chunk.toString()); });
+  child.stderr.on("data", chunk => { stderr = appendBoundedOutput(stderr, chunk.toString()); });
+  child.on("error", error => { clearTimeout(timer); settle({ checked: true, allowed: false, message: stderr || error.message }, false); return; });
+  child.on("close", code => {
+    clearTimeout(timer);
+    if (code !== 0) { settle({ checked: true, allowed: false, message: stderr || `minitok exited with code ${code}` }); return; }
+    try {
+      const result = JSON.parse(stdout);
+      const entitlement = result.entitlement || {};
+      const allowed = entitlement.allowed === true && typeof entitlement.plan === "string" && entitlement.plan.length > 0;
+      settle({ checked: true, allowed, plan: entitlement.plan || null, message: allowed ? undefined : "An active paid minitok plan is required." });
+    } catch (parseError) {
+      settle({ checked: true, allowed: false, message: `Could not verify minitok entitlement: ${parseError instanceof Error ? parseError.message : String(parseError)}` });
+    }
+  });
     });
   });
 }

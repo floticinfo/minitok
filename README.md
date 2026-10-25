@@ -153,7 +153,7 @@ minitok account switch                     # Switch account through the browser
 
 minitok activate <activation-key>         # Bind a purchased key to this machine
 minitok license activate <key>           # Alias for activate
-minitok checkout --plan open              # Purchase a canonical plan
+minitok checkout --plan level1            # Purchase the canonical Level 1 plan
 minitok portal                            # Legacy billing portal command
 minitok activation-key                    # Legacy activation-key command
 minitok billing checkout                 # Alias for checkout
@@ -204,6 +204,23 @@ providers:
 
 A provider name without an endpoint is refused with `Unknown LLM provider: <name>. Set base_url for custom providers.`, and `api_key_env` must name an environment variable rather than hold a literal key, so a typo is reported instead of leaving the provider without credentials.
 
+**The credential never lives in the repository.** `api_key_env` holds the NAME of the variable that carries the key; the value is injected into the process environment. A literal credential next to a handle is refused at load time (`providers.<name>.api_key and providers.<name>.api_key_env are mutually exclusive`), and the secret scan reports a credential written into a configuration file, a `.env`, a compose block or a CI `env:` block:
+
+```bash
+# PowerShell (current session)
+$env:OPENROUTER_API_KEY = '<the key>'
+# bash / zsh
+export OPENROUTER_API_KEY='<the key>'
+```
+
+A missing variable is reported by name rather than as an opaque 401 from the vendor:
+
+```
+openrouter: absent — OPENROUTER_API_KEY not set
+```
+
+`minitok doctor --verify` checks the credential against the provider's own API and prints the verdict without echoing the key. `scripts/secret-scan.mjs` runs the same rules the CI `security` job runs; `git config core.hooksPath .githooks` enables the pre-commit gate that refuses a commit whose tree carries a credential. Replacing a key is an operator action — issuing it, injecting it, verifying it, and only then revoking the old one — and the full procedure is in [docs/provider-key-rotation.md](docs/provider-key-rotation.md).
+
 The VS Code Extension's custom-provider settings use the child-process contract `MINITOK_CUSTOM_BASE_URL` plus `OPENAI_API_KEY`; the older `MINITOK_OPENAI_COMPATIBLE_BASE_URL` name remains accepted for compatibility. The CLI materializes this into `providers.custom` without writing the endpoint key or credential into workspace config. Named custom providers (one endpoint + key per name, e.g. `custom-plan` for the plan role and `custom-work` for the work role) are managed in the Extension settings UI and travel as `MINITOK_CUSTOM_PROVIDERS_JSON` plus per-provider `MINITOK_CUSTOM_BASE_URL_<NAME>` / `MINITOK_CUSTOM_API_KEY_<NAME>` pairs, materialized into `providers.<name>` with `api_key_env` pointing at the per-name key variable. Both `https://host` and `https://host/v1` endpoint forms are supported for model discovery.
 
 After purchasing, run `minitok activate <activation-key>` once. The key is bound to the current installation; use `minitok doctor` to diagnose missing, expired, or server-rejected entitlements.
@@ -226,15 +243,14 @@ The entitlement gate state is a local, owner-only monotonic clock marker. Deleti
 
 ```bash
 minitok account login user@example.com       # Alias for auth customer-login
-minitok billing checkout --plan open
-minitok billing checkout --plan open
+minitok billing checkout --plan level1
 minitok billing activation-key                # Alias for activation-key
 minitok billing portal                        # Alias for portal
 
 # Existing commands remain supported:
 minitok auth customer-login user@example.com
-minitok checkout --plan open
-minitok billing checkout --plan open
+minitok checkout --plan level1
+minitok billing checkout --plan level1
 minitok activation-key
 minitok portal
 ```
