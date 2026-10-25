@@ -46,8 +46,10 @@ const node_crypto_1 = require("node:crypto");
 const workspace_1 = require("./workspace");
 const mcp_1 = require("./mcp");
 const entitlement_1 = require("./entitlement");
-// activateWithServer, statusEntitlementSession, refreshEntitlementSession, deactivateEntitlementSession removed: license management is auth-based only.
-// EntitlementCache removed: license management is auth-based only.
+// [2026-10-22 F1단계] The Phase 1 HTTP client is gone. Every function in it
+// called a route the server retired, so every one of them answered 404. The
+// extension now uses the canonical contract only — the CLI for activation and
+// the signed artifact, and GET /v1/account for the account view.
 const device_auth_1 = require("./device-auth");
 const entitlement_2 = require("./entitlement");
 const redaction_1 = require("./redaction");
@@ -667,7 +669,7 @@ class minitokSidebar {
                 return;
             }
         }
-        const commands = new Set(["device-login", "device-logout", "show-output", "stop", "interrupt", "approve", "reject", "open-evidence", "open-diff", "restore-session", "mcp-status", "mcp-connect", "mcp-list", "sessions", "clear-history", "info", "discover-models", "validate-key", "activate", "attach-file", "attach-folder", "attach-problems", "settings", "save-settings", "update", "run", "dry-run"]);
+        const commands = new Set(["device-login", "device-logout", "show-output", "stop", "interrupt", "approve", "reject", "open-evidence", "open-diff", "restore-session", "mcp-status", "mcp-connect", "mcp-list", "sessions", "clear-history", "info", "discover-models", "validate-key", "activate", "attach-file", "attach-folder", "attach-problems", "settings", "save-settings", "open-billing", "bind-license", "forget-approvals", "update", "run", "dry-run"]);
         if (!message || typeof message.command !== "string" || !commands.has(message.command)) {
             this.view?.webview.postMessage({ type: "result", ok: false, text: "Unsupported command" });
             return;
@@ -903,11 +905,14 @@ class minitokSidebar {
     // this helper has no second call path. The CLI still ships `minitok portal`
     // as its own public command; the Extension just never spawns it.
     /**
-     * Link a legacy license key to the signed-in account via /api/entitlement/bind.
+     * Activate this installation with a license key.
      *
-     * The server verifies the key and the auth token, so a successful bind makes
-     * GET /api/entitlement/me resolve on the next refreshAuth — no separate
-     * entitlement JWT is stored locally.
+     * [2026-10-22 F1단계] The Phase 1 flow bound the key to the signed-in account
+     * over a route the server retired. The canonical flow activates the
+     * installation over `POST /v1/activate`, and the CLI performs it: the CLI
+     * owns the installation identity, and a plan permits exactly one
+     * installation, so an activation that minted its own id would occupy a
+     * second device slot and fail with 409.
      */
     async bindLicense(key) {
         const trimmed = typeof key === "string" ? key.trim() : "";
@@ -917,19 +922,16 @@ class minitokSidebar {
         }
         const session = await (0, device_auth_1.refreshExtensionSession)(this.context);
         if (!session?.access_token) {
-            this.view?.webview.postMessage({ type: "bind-result", ok: false, text: "Sign in before linking a license key." });
+            this.view?.webview.postMessage({ type: "bind-result", ok: false, text: "Sign in before activating with a license key." });
             return;
         }
-        const result = await (0, entitlement_1.bindLicenseToAccount)(trimmed, session.access_token);
+        const result = await (0, entitlement_1.activateEntitlement)(trimmed);
         if (!result.ok) {
-            const text = result.status === 0
-                ? `Could not reach the entitlement server: ${result.error || "network error"}`
-                : result.error || "The license key could not be linked.";
-            this.view?.webview.postMessage({ type: "bind-result", ok: false, text: redactOutputText(text) });
+            this.view?.webview.postMessage({ type: "bind-result", ok: false, text: redactOutputText(result.message || "The license key could not be applied.") });
             return;
         }
         (0, entitlement_1.invalidateEntitlementCache)();
-        this.view?.webview.postMessage({ type: "bind-result", ok: true, text: `License linked to your account (${result.plan || "plan"}).` });
+        this.view?.webview.postMessage({ type: "bind-result", ok: true, text: `Activated this installation (${result.plan || "plan"}).` });
         // Re-resolve entitlement so the gate flips to entitled without a reload.
         await this.refreshAuth();
     }
