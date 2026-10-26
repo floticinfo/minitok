@@ -8,7 +8,7 @@ This file is the canonical version map for the current checkout. Historical tags
 - CLI release tag: `v1.5.6`
 - Extension: `0.3.3`
 - MCP Registry namespace: `dev.minitok/minitok`
-- Canonical branch: `release/1.4.4-mcp-registry`
+- Canonical branch: `release/1.5.6-candidate`
 - Release commit: `326d1ef` (`release: prepare minitok 1.5.6`)
 - Release manifest commit: `33a9191`
 - VSIX: `extension/artifacts/minitok-extension-0.3.3.vsix`
