@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.5.6 - 2026-10-27
+
+### Added
+
+- Added a browser-based administrator console command with explicit read-only status checks that never reads browser cookies or prints bearer tokens.
+- Added MCP Registry metadata validation for the current `dev.minitok/minitok` namespace and synchronized CLI, runtime, extension, and server metadata for the 1.5.6 release candidate.
+
 ## 1.4.4 - 2026-09-15
 
 ### Added

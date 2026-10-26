@@ -10,12 +10,13 @@ const errors = [];
 const expect = (condition, message) => { if (!condition) errors.push(message); };
 
 expect(packageJson.name === "@flotic/minitok", "package name must be @flotic/minitok");
-expect(packageJson.version === "1.4.4", `package version must be 1.4.4 (got ${packageJson.version || "missing"})`);
+expect(/^\d+\.\d+\.\d+$/.test(packageJson.version || ""), `package version must be valid semver (got ${packageJson.version || "missing"})`);
 expect(packageJson.mcpName === server.name, "package.json mcpName must exactly match server.json name");
-expect(/^io\.github\.floticinfo\/[a-z0-9][a-z0-9-]*$/.test(server.name), "server name must use the verified GitHub namespace");
+expect(/^(?:io\.github\.floticinfo|dev\.minitok)\/[a-z0-9][a-z0-9-]*$/.test(server.name), "server name must use an approved verified namespace");
 expect(server.version === packageJson.version, "server.json version must match package.json version");
 expect(server.repository?.source === "github", "server repository source must be github");
 expect(server.repository?.url === "https://github.com/floticinfo/minitok", "server repository URL is incorrect");
+expect(typeof server.description === "string" && server.description.length >= 1 && server.description.length <= 100, "server description must be 1-100 characters");
 expect(server.websiteUrl === "https://minitok.dev/docs", "server websiteUrl must point to product documentation");
 expect(server.$schema === "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json", "server.json must use the official Registry schema");
 expect(Array.isArray(server.packages) && server.packages.length === 1, "server.json must define exactly one npm package");
