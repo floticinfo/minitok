@@ -110,7 +110,7 @@
     "@modelcontextprotocol/sdk": "1.32.1"
   },
   "dependencies": {
-    "@cline/sdk": "^0.0.83",
+    "@cline/sdk": "0.2.0",
     "commander": "^12.0.0",
     "js-yaml": "^4.3.2",
     "undici": "^8.12.3",
