@@ -4,6 +4,7 @@
 
 ### Added
 
+- Added `npm run status:all` and `node scripts/status-all.mjs --json` for consolidated release, package, extension, MCP, production, publication, worktree, and verification status reporting. External publication and credential-dependent checks are explicitly classified without printing secrets.
 - Added a browser-based administrator console command with explicit read-only status checks that never reads browser cookies or prints bearer tokens.
 - Added MCP Registry metadata validation for the current `dev.minitok/minitok` namespace and synchronized CLI, runtime, extension, and server metadata for the 1.5.6 release candidate.
 

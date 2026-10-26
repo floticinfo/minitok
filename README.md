@@ -276,7 +276,11 @@ Local dry-run validation:
 npm run check:mcp-registry
 npm run mcp:registry:check
 npm pack --dry-run --json
+npm run status:all
+npm run status:all -- --json
 ```
+
+`status:all` consolidates release metadata, Git synchronization, package and extension verification, MCP readiness, production read-only probes, publication availability, worktree state, and external credential-dependent blockers. It never prints tokens, cookies, JWTs, or secrets.
 
 Operator-controlled publication after review:
 

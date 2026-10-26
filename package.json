@@ -48,6 +48,7 @@
     "registry:verify": "node scripts/registry-compat.mjs",
     "commercial:readiness": "node scripts/commercial-readiness.mjs --json",
     "readiness:all": "node scripts/readiness-checks.mjs --target all",
+    "status:all": "node scripts/status-all.mjs",
     "readiness:mcp": "node scripts/readiness-checks.mjs --target mcp",
     "readiness:mcp:live": "node scripts/mcp-live-readiness.mjs",
     "readiness:checks": "node scripts/readiness-checks.mjs --target all",

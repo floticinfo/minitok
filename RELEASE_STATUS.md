@@ -22,6 +22,7 @@ This file is the canonical version map for the current checkout. Historical tags
 - VS Code Marketplace `Flotic.minitok@0.3.3`: **BLOCKED** — publisher/publish credential unavailable; Marketplace query returned not found; publish not attempted
 - VSIX `extension/artifacts/minitok-extension-0.3.3.vsix` SHA-256: `5ae031b17125eaa67f3e3ec8458d38ea9ed3544fa39ffb01abed0de88cd271be`
 - External publication verification timestamp: `2026-10-27` UTC; local artifact and clean-install verification passed
+- Consolidated status command: `npm run status:all` / `node scripts/status-all.mjs --json`
 - Remote MCP production entitlement/authentication: unverified without customer credentials
 
 ## Server versioning
