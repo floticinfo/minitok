@@ -23,7 +23,10 @@ function loadCustomerSession(filePath = ACCOUNT_SESSION_FILE) {
   try {
     const value = JSON.parse(fs.readFileSync(filePath, "utf-8"));
     if (value?.revoked_at) return null;
-    return normalizeCustomerSession(value);
+    const session = normalizeCustomerSession(value);
+    if (!session) return null;
+    if (session.expires_at && Date.now() >= new Date(session.expires_at).getTime() - 60000) return null;
+    return session;
   } catch { return null; }
 }
 
@@ -41,13 +44,18 @@ function loadCustomerToken(filePath = CUSTOMER_TOKEN_FILE) {
 
 function writeOwnerOnlyJson(filePath, value) {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const tempPath = `${filePath}.tmp.${process.pid}`;
-  fs.writeFileSync(tempPath, JSON.stringify(value, null, 2), { encoding: "utf-8", mode: 0o600 });
-  setOwnerOnlyPermissions(tempPath);
-  fs.renameSync(tempPath, filePath);
-  // chmod/ACL must be applied after rename too: Windows inherits ACLs from
-  // the destination directory and mode: 0o600 is not an ACL guarantee.
-  setOwnerOnlyPermissions(filePath);
+  const tempPath = `${filePath}.tmp.${process.pid}.${require("node:crypto").randomBytes(8).toString("hex")}`;
+  try {
+    fs.writeFileSync(tempPath, JSON.stringify(value, null, 2), { encoding: "utf-8", flag: "wx", mode: 0o600 });
+    setOwnerOnlyPermissions(tempPath);
+    fs.renameSync(tempPath, filePath);
+    // chmod/ACL must be applied after rename too: Windows inherits ACLs from
+    // the destination directory and mode: 0o600 is not an ACL guarantee.
+    setOwnerOnlyPermissions(filePath);
+  } catch (error) {
+    try { fs.unlinkSync(tempPath); } catch {}
+    throw error;
+  }
 }
 
 function saveCustomerSession(session, filePath = ACCOUNT_SESSION_FILE) {
