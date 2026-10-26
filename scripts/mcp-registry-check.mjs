@@ -11,8 +11,8 @@ const expect = (condition, message) => { if (!condition) errors.push(message); }
 
 expect(packageJson.name === "@flotic/minitok", "package name must be @flotic/minitok");
 expect(/^\d+\.\d+\.\d+$/.test(packageJson.version || ""), `package version must be valid semver (got ${packageJson.version || "missing"})`);
-expect(packageJson.mcpName === server.name, "package.json mcpName must exactly match server.json name");
-expect(/^(?:io\.github\.floticinfo|dev\.minitok)\/[a-z0-9][a-z0-9-]*$/.test(server.name), "server name must use an approved verified namespace");
+expect(packageJson.mcpName === "dev.minitok/minitok", "package.json mcpName must use the canonical Registry namespace");
+expect(server.name === "dev.minitok/minitok", "server.json name must use the canonical Registry namespace");
 expect(server.version === packageJson.version, "server.json version must match package.json version");
 expect(server.repository?.source === "github", "server repository source must be github");
 expect(server.repository?.url === "https://github.com/floticinfo/minitok", "server repository URL is incorrect");

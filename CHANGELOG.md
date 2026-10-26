@@ -11,7 +11,7 @@
 
 ### Added
 
-- Added official MCP Registry and downstream marketplace publication metadata. `server.json` follows the official npm/stdio Registry schema and uses `io.github.floticinfo/minitok` with npm ownership verification through `package.json.mcpName`. `mcp-marketplace.json` documents transports, tools, resources, prompts, authentication, active paid entitlement, scopes, approval behavior, privacy, telemetry, and provider-cost boundaries. Added offline metadata validation, npm-pack inclusion checks, and an OIDC-based tag publication workflow for operator-approved releases. No credentials or automatic publication are performed by local checks.
+- Added official MCP Registry and downstream marketplace publication metadata. `server.json` follows the official npm/stdio Registry schema and uses the verified domain namespace `dev.minitok/minitok`, matched by `package.json.mcpName`. `mcp-marketplace.json` documents transports, tools, resources, prompts, authentication, active paid entitlement, scopes, approval behavior, privacy, telemetry, and provider-cost boundaries. Added offline metadata validation, npm-pack inclusion checks, and an OIDC-based tag publication workflow for operator-approved releases. No credentials or automatic publication are performed by local checks.
 
 ## 1.4.3 - 2026-09-15
 

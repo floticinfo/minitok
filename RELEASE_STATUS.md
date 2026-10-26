@@ -10,7 +10,7 @@ This file is the canonical version map for the current checkout. Historical tags
 - MCP Registry namespace: `dev.minitok/minitok`
 - Canonical branch: `release/1.5.6-candidate`
 - Release commit: `326d1ef` (`release: prepare minitok 1.5.6`)
-- Current canonical checkout: `7ccf121` (`docs: record canonical 1.5.6 checkout`)
+- Current canonical checkout: `dbdf221` (`docs: refresh canonical checkout status`)
 - Release manifest commit: `33a9191`
 - VSIX: `extension/artifacts/minitok-extension-0.3.3.vsix`
 
