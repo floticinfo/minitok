@@ -2,16 +2,16 @@
   "schemaVersion": 1,
   "release": {
     "package": "@flotic/minitok",
-    "version": "1.4.4",
-    "commit": "1194f46ea70364526d586b938816c2d37efbe57c",
-    "tree": "a2697e31ead8f7e95ffe9a4b47f562531347a088",
-    "tag": "v1.4.4",
-    "changelog": "## 1.4.4",
+    "version": "1.5.6",
+    "commit": "326d1efff940b838372240db7bd285e3e77745ec",
+    "tree": "f57a0bbf2e6536763f451aea3ab3e53ee8d07d0e",
+    "tag": "v1.5.6",
+    "changelog": "## 1.5.6",
     "artifact": {
-      "filename": "flotic-minitok-1.4.4.tgz",
-      "size": 239888,
-      "sha256": "5a2b45b2e2198c9a37f810ae16987369d5a32eb1400a4cfc6383521ac5b7ba7d",
-      "integrity": "sha512-dBcfPU9nwknxVqFGuSFZe7WdbjFuvfRtMf9HbnH9OFAdn9LD8lpR4tg42MMIrE19OE3Hvl0AT4nZPnT5YsH+Vw==",
+      "filename": "flotic-minitok-1.5.6.tgz",
+      "size": 250299,
+      "sha256": "89fe5f4a5fe8ee006b54707d9682f3852364632e3c6957deab40f8878d2eec7d",
+      "integrity": "sha512-l2EYKdW2lPA3d5BLHBgPREqQwNK0AmDHxuuBo3knUdEcNtCrSZYRfS0PqG3bz/hy4jqGzcgiRe69ZkxbdJyPYg==",
       "files": [
         {
           "path": "BENCHMARK_EVIDENCE.json",
@@ -20,8 +20,8 @@
         },
         {
           "path": "CHANGELOG.md",
-          "size": 48262,
-          "sha256": "35e8519b536eacf553b6dbebec6853e15c0a9d250e57e678933b5a521b153032"
+          "size": 48638,
+          "sha256": "2adb0e524792e0435d13b012d82b86f7cd12088361410260b5b68d18c901373c"
         },
         {
           "path": "DATA_CLASSIFICATION.md",
@@ -40,8 +40,8 @@
         },
         {
           "path": "LAUNCH_CHECKLIST.md",
-          "size": 3504,
-          "sha256": "cb83d2160303a806371570ad26eb7b620e846bc4bf9fd8e1c68f6f8f2cb84930"
+          "size": 3495,
+          "sha256": "d772d44feff3579031ad64e26c71aa758870acd39e24e6204ee06bfe90df6aca"
         },
         {
           "path": "LICENSE",
@@ -55,8 +55,8 @@
         },
         {
           "path": "PROMOTION_KIT.md",
-          "size": 6737,
-          "sha256": "da12de2e9b37998dc9ea66fb45709da8de2f3117882cc4b07124eb0f692891d1"
+          "size": 6728,
+          "sha256": "7233a92fa50b167f57b11127ad0abd70a2ad7cec772c6e7496ae556dcdd8c7b7"
         },
         {
           "path": "README.md",
@@ -65,8 +65,8 @@
         },
         {
           "path": "assets/minitok-harlekin-mark.png",
-          "size": 16441,
-          "sha256": "0277acee94c3a82a1d8d315128f0eed79bf566276bc53ba5ff8cda087702f346"
+          "size": 17468,
+          "sha256": "75129222801891da2062a122a7cbeecf2b21f04b47a24b6d02e390e2aba115e9"
         },
         {
           "path": "assets/README.md",
@@ -75,18 +75,18 @@
         },
         {
           "path": "bin/minitok.js",
-          "size": 10571,
-          "sha256": "5933807e4ceb5d2c57d673f49b6bafefd592634cafd58cce0aabf807f977c10d"
+          "size": 10628,
+          "sha256": "b3f9ae51c812f619cdd85aebcaaeb3518a5fa120541f62a6ab66ad7021575c5f"
         },
         {
           "path": "mcp-marketplace.json",
-          "size": 2864,
-          "sha256": "c769e4b45acb218a8f12c021e131d28b6ea801f430ff37ef18683d67822d4951"
+          "size": 2855,
+          "sha256": "5cfcb6b80e09dfc4756a6302262eb71a0b5cf3bdef9cc8c9712745b377df059a"
         },
         {
           "path": "package.json",
-          "size": 5720,
-          "sha256": "43ed85eaababf46e06d92e1b6001ee712b8c8dc88644af5f5d4cbc1e0752548c"
+          "size": 5726,
+          "sha256": "74cb97232b870e8eae9b77cb99306c93fa3a0d13dd58a6505b1cd59030d4ae7e"
         },
         {
           "path": "promotion-posts/linkedin.md",
@@ -95,8 +95,8 @@
         },
         {
           "path": "promotion-posts/mcp-directory.md",
-          "size": 3078,
-          "sha256": "903d0d7426a55402089ba168d684e904618f81ab796b37100538756015af8a30"
+          "size": 3069,
+          "sha256": "a2e9c110a9530f8fb2f41f66cb2aad3aa90ec9ad805c130d4485c9fbbd79f044"
         },
         {
           "path": "promotion-posts/product-hunt.md",
@@ -110,8 +110,8 @@
         },
         {
           "path": "server.json",
-          "size": 1985,
-          "sha256": "6c3d9fb400135859438d130b92ea22290d57b651a14ede6770d65f73ca7ee214"
+          "size": 1888,
+          "sha256": "82bdb585ae3688399061a93b43008ebca0df7c18bd0a3672342054b50855c72c"
         },
         {
           "path": "src/auth/aliases.js",
@@ -162,6 +162,11 @@
           "path": "src/cli/commands/activation-key.js",
           "size": 2341,
           "sha256": "50d5357d77321ba37c3f957dc990f9cc433cd39d1cc8b63d8189c7a0b5a5f62e"
+        },
+        {
+          "path": "src/cli/commands/admin.js",
+          "size": 2755,
+          "sha256": "c31ae5e8c11d2096a60478df88647fde85c226faca1c9d5167b0bf3c78e8f097"
         },
         {
           "path": "src/cli/commands/auth.js",
