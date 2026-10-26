@@ -17,8 +17,11 @@ This file is the canonical version map for the current checkout. Historical tags
 ## Publication status
 
 - npm published latest: `1.5.5`
-- npm `1.5.6`: release candidate only; not published
-- VS Code Marketplace: `0.3.3` not published; Marketplace lookup previously returned 404
+- npm `1.5.6`: **BLOCKED** — npm authentication unavailable (`npm whoami` returned 401); publish not attempted
+- npm `1.5.6` local tarball SHA-256: `c94d0a428a27465a53e0ff2023f417922e9db90dad0a28b6e8c38e81da61a0a8`
+- VS Code Marketplace `Flotic.minitok@0.3.3`: **BLOCKED** — publisher/publish credential unavailable; Marketplace query returned not found; publish not attempted
+- VSIX `extension/artifacts/minitok-extension-0.3.3.vsix` SHA-256: `5ae031b17125eaa67f3e3ec8458d38ea9ed3544fa39ffb01abed0de88cd271be`
+- External publication verification timestamp: `2026-10-27` UTC; local artifact and clean-install verification passed
 - Remote MCP production entitlement/authentication: unverified without customer credentials
 
 ## Server versioning
