@@ -52,6 +52,15 @@ const TOOLS = [
   { name: "minitok_collect_evidence", description: "Collect project evidence", annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", properties: { project: { type: "string", minLength: 1, maxLength: 4096 } }, required: ["project"], additionalProperties: false } },
   { name: "minitok_status", description: "Show minitok status", annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", properties: {}, additionalProperties: false } },
   { name: "minitok_observe", description: "Submit redacted observation events", annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false }, inputSchema: { type: "object", properties: { project: { type: "string", maxLength: 4096 }, events: { type: "array", maxItems: 100, items: { type: "object", additionalProperties: true } } }, required: ["events"], additionalProperties: false } },
+  // ── Trading add-on tools (bidirectional bridge) ──────────────────────────
+  // These tools are `external`: the tool registry's preflight gate requires an
+  // explicit external capability before a host may call them, and every call is
+  // forwarded through the minitok server's /v1/addon-proxy so the add-on's own
+  // entitlement gate still applies on the far side.
+  { name: "tossinvest_status", description: "Get current status of the tossinvest trading add-on (mode, kill switch, event store health)", annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, external: true, inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+  { name: "tossinvest_escalate", description: "Create a human escalation request on the tossinvest add-on (severity, summary, response options)", annotations: { readOnlyHint: false, destructiveHint: false, openWorldHint: false }, external: true, inputSchema: { type: "object", properties: { severity: { type: "string", enum: ["info", "warn", "critical"] }, summary: { type: "string", minLength: 1, maxLength: 500 }, bullets: { type: "array", items: { type: "string" }, maxItems: 10 }, options: { type: "array", items: { type: "object", additionalProperties: true }, maxItems: 8 }, timeout_ms: { type: "integer", minimum: 1000, maximum: 86400000 } }, required: ["severity", "summary", "options"], additionalProperties: false } },
+  { name: "tossinvest_lifecycle_list", description: "List the tossinvest add-on's strategy lifecycle (phase, allocation, promotion level)", annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, external: true, inputSchema: { type: "object", properties: {}, additionalProperties: false } },
+  { name: "tossinvest_goal_bridge_state", description: "Read the tossinvest add-on's goal bridge state (goal mappings, history, counters)", annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false }, external: true, inputSchema: { type: "object", properties: {}, additionalProperties: false } },
 ];
 
 /**
@@ -77,6 +86,7 @@ const TOOL_SCOPES = Object.freeze({
   minitok_goal_pause: "write",
   minitok_goal_resume: "write",
   minitok_goal_cancel: "write",
+  tossinvest_escalate: "write",
 });
 function requiredScopeFor(name) { return TOOL_SCOPES[name] || "read"; }
 
@@ -203,6 +213,36 @@ async function _getToolHandler(name, args, services, runtimeOptions = {}) {
     return { content: [{ type: "text", text: JSON.stringify({ schema_version: 1, ...result }) }] };
   }
   if (["minitok_approve_run", "minitok_reject_run"].includes(name)) { const approvalFile = requireApprovalPath(args.approval_file, runtimeOptions.workspaceRoot || process.cwd()); if (typeof runtimeOptions.writeApproval !== "function") throw Object.assign(new Error("Approval transport unavailable"), { code: "APPROVAL_UNAVAILABLE" }); const decision = name === "minitok_approve_run" ? "approve" : "reject"; runtimeOptions.writeApproval(approvalFile, decision, { nonce: args.nonce, runId: args.run_id }); return { content: [{ type: "text", text: JSON.stringify({ decision, approval_file: approvalFile }) }] }; }
+  // Trading add-on tools: forwarded through the minitok server's addon-proxy.
+  // The server authenticates the caller (installation token) and forwards the
+  // call to the add-on daemon, which applies its own entitlement gate. The
+  // add-on name and target path are fixed per tool; only the payload varies.
+  if (name.startsWith("tossinvest_")) {
+    const addon = runtimeOptions.addonName || "tossinvest";
+    const pathByTool = {
+      tossinvest_status: "/api/v1/health",
+      tossinvest_escalate: "/api/v1/escalation/create",
+      tossinvest_lifecycle_list: "/api/v1/goal-bridge/state",
+      tossinvest_goal_bridge_state: "/api/v1/goal-bridge/state",
+    };
+    const targetPath = pathByTool[name];
+    if (!targetPath) throw Object.assign(new Error(`Unknown tool: ${name}`), { code: "TOOL_NOT_FOUND" });
+    if (!runtimeOptions.addonProxyUrl) throw Object.assign(new Error("Add-on proxy is not configured (addonProxyUrl)"), { code: "ADDON_PROXY_UNAVAILABLE" });
+    if (!runtimeOptions.installationToken) throw Object.assign(new Error("Installation token is not configured (installationToken)"), { code: "ADDON_PROXY_UNAVAILABLE" });
+    const response = await fetch(`${runtimeOptions.addonProxyUrl.replace(/\/$/, "")}/v1/addon-proxy/${addon}`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ token: runtimeOptions.installationToken, path: targetPath, payload: args }),
+      signal: AbortSignal.timeout(Number(runtimeOptions.addonProxyTimeoutMs || 15000)),
+    });
+    const text = await response.text();
+    let parsed;
+    try { parsed = JSON.parse(text); } catch { parsed = { raw: text }; }
+    if (!response.ok) {
+      return { content: [{ type: "text", text: JSON.stringify({ schema_version: 1, error: parsed }) }], isError: true, structuredContent: { schema_version: 1, error: parsed } };
+    }
+    return { content: [{ type: "text", text: JSON.stringify({ schema_version: 1, ...parsed }) }], structuredContent: { schema_version: 1, ...parsed } };
+  }
   switch (name) {
     case "minitok_task": {
       // The facade intentionally delegates to the canonical run handler. This
