@@ -98,7 +98,7 @@
     "node": ">=22.19.0"
   },
   "overrides": {
-    "node-forge": "^1.4.0",
+    "node-forge": "^1.4.3",
     "@opentelemetry/core": "^2.8.0",
     "dify-ai-provider": {
       "@ai-sdk/provider-utils": {
